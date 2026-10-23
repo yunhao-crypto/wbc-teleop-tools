@@ -1,0 +1,80 @@
+# Local environments and vendor distributions (keep pinned metadata in config/).
+/venv/
+/.venv/
+/model_dependencies_readonly/
+/vendor_packages/
+/packages/
+
+# Native build outputs, recordings and run evidence.
+/build/
+/outputs/
+/logs/
+/reference/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+
+# Model weights, derived SMPL assets, tensor dumps and platform binaries.
+# JSON manifests/contracts and URDFs remain versioned.
+*.onnx
+*.hbm
+*.f32
+*.bin
+*.npy
+*.npz
+*.pt
+*.pth
+*.ckpt
+*.pkl
+*.pickle
+*.safetensors
+*.so
+*.so.*
+*.a
+*.o
+*.whl
+*.mcap
+*.bag
+*.db3
+*.tar
+*.tar.gz
+*.tgz
+*.zip
+*.7z
+
+# Device-local authentication, network profiles and device identities.
+/config/zenoh_no_auto_shm.json5
+/config/xbox_bluetooth.json
+*.private.json
+*.private.json5
+*.passwd
+*.key
+*.pem
+*.p12
+*.pfx
+.env
+.env.*
+!.env.example
+
+# Historical machine-specific install receipts stay with the local snapshot.
+/T074-*.json
+/W1019-*.json
+
+# Snapshot backups and editor/OS files.
+*.bak
+*.bak.*
+*.before_*
+*~
+*.swp
+*.swo
+.DS_Store
+.idea/
+.vscode/
+
+# Deliberate, versioned actor delivery inputs. These are not build outputs.
+!/deploy/actor_s100/wheelhouse/*.whl
+!/deploy/actor_s100/runtime/*.tar.gz
+!/tests/fixtures/actor_pico/pico_replay.npz

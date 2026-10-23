@@ -1,0 +1,34 @@
+robot:
+  serial: "00000000026ID100001"
+  aorta_group: default
+  aorta_profile: /home/dpx/holomotion_vita/config/pc_session_client.json5
+  joystick: /dev/input/js0
+
+runtime:
+  policy_hz: 50.0
+  state_max_age: 0.10
+  pico_max_age: 0.60
+  stand_transition_seconds: 3.0
+  # A new Aorta session can need tens of seconds for cold discovery.
+  aorta_startup_timeout: 30.0
+  # Timeout for one SDK enter/exit RPC; this is not a session duration.
+  sdk_rpc_timeout: 5.0
+  # Operator-approved temporary 2-hour control window; NOT unlimited.
+  # BACK/Ctrl-C can end earlier. Server acceptance is checked on entry.
+  sdk_lease_duration_seconds: 7200.0
+  logs: /home/dpx/holomotion_vita/logs
+
+controller:
+  velocity:
+    forward: 0.90
+    backward: 0.70
+    lateral: 0.0
+    yaw: 0.80
+    deadzone: 0.15
+  lateral_command_supported: false
+
+contracts:
+  interface: vita02a_a_sample_full_interface.json
+  imu_alignment: vita02a_imu_alignment.json
+  stand_profile: vita02a_policy_default_stand.json
+  policy_to_sdk_slots: vita02a_policy_to_sdk_slots.json

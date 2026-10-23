@@ -1,0 +1,46 @@
+# @package _global_
+
+defaults:
+  - /robot/vbot/Vita02A/vita02a_linkerhand_30dof_training_isaaclab
+  - _self_
+
+# Official no-hand 30-DoF asset delivered after VitaPower split the wrist-roll
+# collision mesh. This inherits only the reviewed Vita02A controller, joint
+# ordering, semantic bodies and shared HoloMotion interface; physical geometry,
+# mass, inertia and limits are read from the v3 asset below.
+robot:
+  humanoid_type: vbot/Vita02A/official_meshcoll_v3
+
+  init_state:
+    # Derived from the v3 10-sphere soles: the complete +/-0.06-rad reset
+    # envelope clears the floor by at least 5.4 mm.
+    pos: [0.0, 0.0, 0.894926]
+    default_joint_angles:
+      # q=0 points both arms forward. Elbow=1.5 makes the wrists hang down;
+      # shoulder roll +/-0.25 keeps them clear of the hips under reset noise.
+      left_shoulder_roll_joint: 0.25
+      right_shoulder_roll_joint: -0.25
+      left_elbow_joint: 1.5
+      right_elbow_joint: 1.5
+
+  physical_parameter_provenance:
+    status: vbot_reference_control_with_official_v3_mass_inertia
+    neck_source:
+      effort_nm: official_meshcoll_v3_urdf
+      velocity_rad_s: official_meshcoll_v3_urdf
+      armature: official_meshcoll_v3_mjcf
+      pd_gains: derived_from_armature_and_pd_rule
+
+  asset:
+    # Preserve the official mesh/sphere representation. Motion follows the
+    # same enabled-self-collision flow as G1/K1/R1; no VBot-only pair filters.
+    replace_cylinders_with_capsules: false
+    enabled_self_collisions: true
+    urdf_file: assets/robots/${robot.humanoid_type}/urdf/vita02a_meshcoll.urdf
+    assetFileName: assets/robots/${robot.humanoid_type}/scene_meshcoll.xml
+
+  motion:
+    asset:
+      assetRoot: ./
+      assetFileName: ${robot.asset.assetFileName}
+    fk_robot_file_path: ${robot.asset.urdf_file}

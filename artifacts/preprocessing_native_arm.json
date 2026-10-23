@@ -1,0 +1,30 @@
+{
+  "schema": "vita_cpu_preprocessing_native_v1",
+  "architecture": "aarch64",
+  "compiler": "g++ (Ubuntu 11.4.0-1ubuntu1~22.04.3) 11.4.0",
+  "command": [
+    "g++",
+    "-O3",
+    "-std=c++17",
+    "-shared",
+    "-fPIC",
+    "-ffp-contract=fast",
+    "-march=armv8.2-a+simd",
+    "/userdata/holomotion_vita_shadow_20260929/onboard/src/deployment/vita_s100_aorta_30dof/onboard_preprocessing_native.cpp",
+    "-o",
+    "/userdata/holomotion_vita_shadow_20260929/onboard/artifacts/preprocessing_native_arm.so"
+  ],
+  "source_sha256": "94e745d986ca5417e6439a4ff2891efd80a32c3ddd6bb625d56c1e2f236fa145",
+  "wrapper_sha256_at_build": "02bbc65a5afa38c6239c723cd64614b8ed28b8ecee1ce31f757b618c1dd65d0c",
+  "library_sha256": "a2eac3973e385f85774f6062c5c11bca434d8fbd45f771293f9f422102983141",
+  "exports": [
+    "pp_pico",
+    "pp_features",
+    "pp_gather",
+    "pp_build"
+  ],
+  "arithmetic": "float32 scalar expressions; compiler FMA contraction enabled; no fast-math/reassociation flag",
+  "runtime_dependencies": "C++ standard library and libm only; Python wrapper uses NumPy/ctypes",
+  "accuracy_status": "must validate this exact binary on this architecture against original GPU/action oracle",
+  "license_scope": "Original project preprocessing expressions ported to portable C++; no CUDA libdevice or proprietary SDK implementation linked or copied. Skeleton asset remains separately licensed."
+}

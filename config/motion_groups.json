@@ -1,0 +1,54 @@
+{
+  "schema": "vita_motion_groups_v2",
+  "comparison": "latest_per_group",
+  "groups": {
+    "P1": {
+      "iteration": 6000,
+      "source_sha256": "90f1b59bc0d578006311626ad32428308badf688c029f441514909b661cc4733",
+      "manifest": {
+        "path": "model_groups/P1/model_runtime_manifest.json",
+        "sha256": "d4ff8a3819e2b085ec7538910f39647b6ef4db492d3b69d8dd3e8a8af9b4f437"
+      },
+      "contracts": {
+        "path": "model_groups/P1/policy_contracts.json",
+        "sha256": "249e041d01dbcacd3a4a0f046a9da0a45040f1fc5da4472db4306211ef558a1f"
+      },
+      "envelopes": {
+        "path": "model_groups/P1/output_envelopes.json",
+        "sha256": "26780fb47287eec6f331da0ecbff902728c3dadf95b01f9782587ec8071ed40b"
+      }
+    },
+    "P2": {
+      "iteration": 8000,
+      "source_sha256": "76e7637d0ed5f5b29c29378bc510515d4a3f31269377248f7a4acf06db98aebb",
+      "manifest": {
+        "path": "model_groups/P2/model_runtime_manifest.json",
+        "sha256": "d0e10f8c4461a88989965d14fbd2264090b1b2876e6113c331a813162d49a3af"
+      },
+      "contracts": {
+        "path": "model_groups/P2/policy_contracts.json",
+        "sha256": "9c1a2f87ca71a93795ee0e3092c699d7755ad107c17ac414d390c9cdb484671e"
+      },
+      "envelopes": {
+        "path": "model_groups/P2/output_envelopes.json",
+        "sha256": "2f92d3d84761ddec4778eac5493046ad191bfacf382238bdb98dd1c3a46461a2"
+      }
+    },
+    "P3": {
+      "iteration": 6000,
+      "source_sha256": "d922dcc0a24607cfac83e406ca528e495598560f1102739ae1faa066a8474ce5",
+      "manifest": {
+        "path": "model_groups/P3/model_runtime_manifest.json",
+        "sha256": "1cdb945e05237692abacd37c41e930e1a055f417761f5471e5905b30a8dce47a"
+      },
+      "contracts": {
+        "path": "model_groups/P3/policy_contracts.json",
+        "sha256": "1d57a182a7dc7b3322c49b4d39f71c677dbaa8d4b845624e6d3680566edde59e"
+      },
+      "envelopes": {
+        "path": "model_groups/P3/output_envelopes.json",
+        "sha256": "0dcec8d935973692b1e6686cc1b173f19155efc69acef4de5c1eb4a6d8cd4bc6"
+      }
+    }
+  }
+}

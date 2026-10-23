@@ -1,0 +1,8 @@
+locomotion-aorta==0.2.1
+aorta-sdk==2026.10.20
+aorta-msgs==2026.10.20
+vbot-humanoid-msgs==0.1.5
+flatbuffers==25.12.19
+numpy==1.26.4
+PyYAML==6.0.3
+pybind11==2.13.6

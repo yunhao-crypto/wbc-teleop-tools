@@ -1,0 +1,77 @@
+{
+  "source_onnx": "/home/dpx/holomotion_vita/bundles/vita_velocity17000_motion20000/motion/model_20000.onnx",
+  "source_size_bytes": 1681691883,
+  "source_sha256_previously_verified": "881d936f560e22e81302483b394cd6a89ba5648e6c2893fa153172dec38033a7",
+  "method": "Exact source expert rows transposed [0,2,1] as bit-preserving permutation with streaming SHA256; no arithmetic",
+  "source_metadata": "artifacts/model_motion/cuts/manifest.json",
+  "pools": [
+    {
+      "index": 0,
+      "source_tensor": "actor_module.layers.0.gate_up_proj",
+      "file": "artifacts/model_motion/pools_nk/expert_pool_0_nk.f32",
+      "shape": [
+        1024,
+        512,
+        512
+      ],
+      "source_shape": [
+        1024,
+        512,
+        512
+      ],
+      "flat_shape": [
+        1024,
+        262144
+      ],
+      "dtype": "float32",
+      "byte_order": "little",
+      "bytes": 1073741824,
+      "row_bytes": 1048576,
+      "sha256": "3c59981abb683223a317b5c560f59448399739f983cb00669ec95ba93fa499e7",
+      "source_raw_offset": 34076299,
+      "transposed": true,
+      "transpose_axes": [
+        0,
+        2,
+        1
+      ],
+      "layout": "nk",
+      "quantized": false
+    },
+    {
+      "index": 1,
+      "source_tensor": "actor_module.layers.0.down_proj",
+      "file": "artifacts/model_motion/pools_nk/expert_pool_1_nk.f32",
+      "shape": [
+        1024,
+        512,
+        256
+      ],
+      "source_shape": [
+        1024,
+        256,
+        512
+      ],
+      "flat_shape": [
+        1024,
+        131072
+      ],
+      "dtype": "float32",
+      "byte_order": "little",
+      "bytes": 536870912,
+      "row_bytes": 524288,
+      "sha256": "e9f2e3ab9a01758a008b50efea829f2907f426255b5002914bd0867fc88ca131",
+      "source_raw_offset": 1107818179,
+      "transposed": true,
+      "transpose_axes": [
+        0,
+        2,
+        1
+      ],
+      "layout": "nk",
+      "quantized": false
+    }
+  ],
+  "complete": true,
+  "selected_total_bytes_per_step": 3145728
+}

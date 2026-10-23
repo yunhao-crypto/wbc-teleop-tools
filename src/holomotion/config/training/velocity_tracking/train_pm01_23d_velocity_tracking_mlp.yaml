@@ -1,0 +1,52 @@
+# @package _global_
+
+defaults:
+  - /training: train_base
+  - /algo: ppo
+  - /robot: engineai/PM01/pm01_edu_24dof_training_isaaclab
+  - /env: velocity_tracking
+  - /env/terminations: termination_velocity_tracking
+  - /env/observations: velocity_tracking/obs_velocity_tracking_headless_subset
+  - /env/rewards: velocity_tracking/rew_velocity_tracking_pm01
+  - /env/domain_randomization: domain_rand_medium_engineai_pm01
+  - /env/terrain: isaaclab_rough
+  - /modules: velocity_tracking/velocity_tracking_mlp
+  - _self_
+
+project_name: GMRFreeHoloMotionPM01Velocity
+experiment_name: gmr_free_pm01_velocity_from_scratch_10000
+checkpoint: null
+base_seed: 20260819
+train_hdf5_roots: []
+
+env:
+  config:
+    seed: ${sum:[${base_seed},${process_id}]}
+    actions:
+      dof_pos:
+        type: joint_position
+        params:
+          asset_name: robot
+          joint_names: ${robot.velocity_policy_dof_names}
+          preserve_order: true
+          use_default_offset: true
+          scale: ${robot.actuators.velocity_policy_action_scale}
+
+robot: {actions_dim: 23}
+
+algo:
+  config:
+    seed: ${sum:[${base_seed},${process_id}]}
+    num_learning_iterations: 10000
+    save_interval: 1000
+    export_policy: true
+    init_noise_std: 0.2
+    symmetry_loss: {enabled: false}
+
+velocity_policy_contract:
+  policy_action_dim: 23
+  controller_target_dim: 24
+  policy_joint_names: ${robot.velocity_policy_dof_names}
+  controller_joint_names: ${robot.dof_names}
+  omitted_head_joint_names: ${robot.head_dof_names}
+  omitted_head_target_source: asset_default

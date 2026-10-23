@@ -1,0 +1,71 @@
+# @package _global_
+defaults:
+  - /training: train_base
+  - /algo: ppo
+  - /robot: vbot/Vita02A/vita02a_meshcoll_v3_30dof_training_isaaclab
+  - /env: velocity_tracking
+  - /env/terminations: termination_velocity_tracking
+  - /env/observations: velocity_tracking/obs_velocity_tracking_headless_subset
+  - /env/rewards: velocity_tracking/rew_velocity_tracking_vita02a
+  - /env/domain_randomization: domain_rand_vita02a_velocity
+  - /env/terrain: isaaclab_rough
+  - /modules: velocity_tracking/velocity_tracking_mlp
+  - _self_
+
+project_name: HoloMotionVita02AVelocity
+experiment_name: vita02a_meshcoll_v3_unified_action_dr_v1_velocity_from_scratch
+checkpoint: null
+base_seed: 20260902
+train_hdf5_roots: []
+
+# Match the shared K1/R1 headless-velocity contract: the policy controls the
+# 28 body/wrist joints while the complete 30-DoF articulation keeps both neck
+# joints at their asset defaults.
+robot:
+  actions_dim: 28
+
+env:
+  config:
+    seed: ${sum:[${base_seed},${process_id}]}
+    actions:
+      dof_pos:
+        type: joint_position
+        params:
+          asset_name: robot
+          joint_names: ${robot.velocity_policy_dof_names}
+          preserve_order: true
+          use_default_offset: true
+          scale: ${robot.actuators.velocity_policy_action_scale}
+
+algo:
+  config:
+    seed: ${sum:[${base_seed},${process_id}]}
+    num_learning_iterations: 10000
+    save_interval: 1000
+    export_policy: true
+    # Match the proven R1/H2/PM01 from-scratch velocity bootstrap rather than
+    # injecting large initial action targets into the new self-collision model.
+    init_noise_std: 0.2
+    symmetry_loss: {enabled: false}
+
+velocity_policy_contract:
+  actor_observation_dim: 752
+  actor_command_dim: 4
+  actor_context_length: 8
+  policy_action_dim: 28
+  controller_target_dim: 30
+  policy_joint_names: ${robot.velocity_policy_dof_names}
+  controller_joint_names: ${robot.dof_names}
+  omitted_head_joint_names: ${robot.head_dof_names}
+  omitted_head_target_source: asset_default
+
+holomotion_training_contract:
+  required: true
+  profile: holomotion_unified_200hz_v1
+  task: velocity_tracking
+  embodiment: vbot_vita02a_meshcoll_v3_30dof
+  policy_action_dim: 28
+  controller_target_dim: 30
+  robot_specific_overrides:
+    ppo: {init_noise_std: 0.2}
+    reward_weights: {is_terminated: -200.0}

@@ -1,0 +1,21 @@
+# @package _global_
+
+defaults:
+  - domain_rand_medium
+  - _self_
+
+# PM01's public IsaacLab baseline uses ideal implicit PD without actuator
+# transport delay.  Keep its published COM/material/push prior rather than
+# silently inheriting G1's motor-delay assumptions.
+domain_rand:
+  action_delay: {enabled: false, min_delay: 0, max_delay: 0}
+  rigid_body_com:
+    mode: startup
+    params:
+      body_names: ${robot.torso_name}
+      com_range:
+        x: [-0.025, 0.025]
+        y: [-0.05, 0.05]
+        z: [-0.05, 0.05]
+  randomize_mass: null
+  randomize_actuator_gains: null

@@ -1,0 +1,76 @@
+# @package _global_
+
+defaults:
+  - domain_rand_medium
+  - _self_
+
+# Vita02A's measured packet delay is embedded once in its single explicit
+# actuator group.  Keep environment delay disabled to avoid double counting.
+domain_rand:
+  action_delay: {enabled: false, min_delay: 0, max_delay: 0}
+  # The official LinkerHand collision model has less reset clearance than the
+  # legacy proxy. Keep the shared reset mechanism but use the largest audited
+  # perturbation that produced no self contacts in the 10k MuJoCo contract.
+  motion_init_perturb:
+    dof_pos_perturb_range: [-0.06, 0.06]
+  # Fixed DR event baseline, using the existing shared K1/R1 event mechanism.
+  # The nonzero ranges below are VBot's declared targets, not curriculum anchors.
+  # Historical filename retained for compatibility; do not enable a completion
+  # curriculum on top of this baseline without a separately reviewed experiment.
+  default_dof_pos_bias:
+    mode: startup
+    params:
+      joint_names: [".*"]
+      pos_distribution_params: [-0.01, 0.01]
+      operation: add
+      distribution: uniform
+  rigid_body_com:
+    mode: startup
+    params:
+      body_names: ${robot.torso_name}
+      com_range: {x: [-0.03, 0.03], y: [-0.03, 0.03], z: [-0.03, 0.03]}
+  randomize_mass:
+    mode: startup
+    params:
+      body_names: ${robot.torso_name}
+      # Use the common HoloMotion torso-payload range. The light base_link is
+      # deliberately excluded and remains under multiplicative mass DR below.
+      mass_range: [-1.0, 2.0]
+      operation: add
+      recompute_inertia: true
+  randomize_mass_others:
+    mode: startup
+    func: randomize_mass_by_mirror_pair
+    params:
+      body_names: ["^(?!${robot.torso_name}$).*"]
+      mass_range: [0.9, 1.1]
+      recompute_inertia: true
+  rigid_body_material:
+    mode: startup
+    params:
+      body_names: ".*"
+      static_friction_range: [0.6, 1.5]
+      dynamic_friction_range: [0.5, 1.3]
+      restitution_range: [0.0, 0.2]
+      make_consistent: true
+      num_buckets: 64
+  push_by_setting_velocity:
+    mode: interval
+    interval_range_s: [3.0, 3.0]
+    params:
+      velocity_range:
+        x: [-0.35, 0.35]
+        y: [-0.35, 0.35]
+        z: [0.0, 0.0]
+        roll: [-0.25, 0.25]
+        pitch: [-0.25, 0.25]
+        yaw: [-0.5, 0.5]
+  randomize_actuator_gains:
+    mode: startup
+    params:
+      asset_name: robot
+      body_names: ".*"
+      stiffness_distribution_params: [0.9, 1.1]
+      damping_distribution_params: [0.9, 1.1]
+      operation: scale
+      distribution: uniform

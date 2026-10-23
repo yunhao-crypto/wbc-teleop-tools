@@ -1,0 +1,11 @@
+# @package _global_
+
+defaults:
+  - domain_rand_vita02a_reference_repro
+  - _self_
+
+# Velocity keeps the reviewed VBot three-second push cadence during initial
+# gait acquisition. The event implementation and units remain shared.
+domain_rand:
+  push_by_setting_velocity:
+    interval_range_s: [3.0, 3.0]

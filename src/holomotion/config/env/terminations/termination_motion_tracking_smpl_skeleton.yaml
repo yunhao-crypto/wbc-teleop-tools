@@ -1,0 +1,12 @@
+# @package _global_
+
+# SMPL-target termination path.  The legacy Robot-reference termination config
+# remains unchanged for controlled comparisons and historical reproduction.
+terminations:
+  time_out:
+    time_out: true
+
+  smpl_torso_gravity_projection_far:
+    params:
+      threshold: 0.8
+

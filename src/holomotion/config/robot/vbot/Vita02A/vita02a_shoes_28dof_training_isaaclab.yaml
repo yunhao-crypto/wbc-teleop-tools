@@ -1,0 +1,224 @@
+# @package _global_
+
+# Vita02A shoes contract.  Both Motion and Velocity control the same physical
+# 28 joints.  The fixed neck and LinkerHand finger joints are deliberately not
+# policy DOFs.  The order is pinned to model17000_deploy.onnx metadata.
+robot:
+  humanoid_type: vbot/Vita02A/28dof
+  root_name: base_link
+  torso_name: waist_pitch_link
+  anchor_body: waist_pitch_link
+  dof_obs_size: 28
+  actions_dim: 28
+  num_bodies: 29
+  num_extend_bodies: 0
+  undesired_contacts_regrex: "^(?!left_ankle_roll_link$)(?!right_ankle_roll_link$)(?!left_wrist_pitch_link$)(?!right_wrist_pitch_link$).+$"
+  feet_body_names: {left: [left_ankle_roll_link], right: [right_ankle_roll_link]}
+  feet_geom_names: {left: [], right: []}
+
+  dof_names: &all_dofs
+    [left_hip_pitch_joint, right_hip_pitch_joint, waist_yaw_joint,
+     left_hip_roll_joint, right_hip_roll_joint, waist_pitch_joint,
+     left_hip_yaw_joint, right_hip_yaw_joint,
+     left_shoulder_pitch_joint, right_shoulder_pitch_joint,
+     left_knee_joint, right_knee_joint,
+     left_shoulder_roll_joint, right_shoulder_roll_joint,
+     left_ankle_pitch_joint, right_ankle_pitch_joint,
+     left_shoulder_yaw_joint, right_shoulder_yaw_joint,
+     left_ankle_roll_joint, right_ankle_roll_joint,
+     left_elbow_joint, right_elbow_joint,
+     left_wrist_roll_joint, right_wrist_roll_joint,
+     left_wrist_yaw_joint, right_wrist_yaw_joint,
+     left_wrist_pitch_joint, right_wrist_pitch_joint]
+  velocity_policy_dof_names: *all_dofs
+  head_dof_names: []
+  waist_dof_names: [waist_yaw_joint, waist_pitch_joint]
+  left_leg_dof_names: [left_hip_pitch_joint, left_hip_roll_joint, left_hip_yaw_joint, left_knee_joint, left_ankle_pitch_joint, left_ankle_roll_joint]
+  right_leg_dof_names: [right_hip_pitch_joint, right_hip_roll_joint, right_hip_yaw_joint, right_knee_joint, right_ankle_pitch_joint, right_ankle_roll_joint]
+  leg_dof_names: [left_hip_pitch_joint, left_hip_roll_joint, left_hip_yaw_joint, left_knee_joint, left_ankle_pitch_joint, left_ankle_roll_joint, right_hip_pitch_joint, right_hip_roll_joint, right_hip_yaw_joint, right_knee_joint, right_ankle_pitch_joint, right_ankle_roll_joint]
+  left_arm_dof_names: [left_shoulder_pitch_joint, left_shoulder_roll_joint, left_shoulder_yaw_joint, left_elbow_joint, left_wrist_roll_joint, left_wrist_yaw_joint, left_wrist_pitch_joint]
+  right_arm_dof_names: [right_shoulder_pitch_joint, right_shoulder_roll_joint, right_shoulder_yaw_joint, right_elbow_joint, right_wrist_roll_joint, right_wrist_yaw_joint, right_wrist_pitch_joint]
+  arm_dof_names: [left_shoulder_pitch_joint, left_shoulder_roll_joint, left_shoulder_yaw_joint, left_elbow_joint, left_wrist_roll_joint, left_wrist_yaw_joint, left_wrist_pitch_joint, right_shoulder_pitch_joint, right_shoulder_roll_joint, right_shoulder_yaw_joint, right_elbow_joint, right_wrist_roll_joint, right_wrist_yaw_joint, right_wrist_pitch_joint]
+  upper_body_dof_names: [waist_yaw_joint, waist_pitch_joint, left_shoulder_pitch_joint, left_shoulder_roll_joint, left_shoulder_yaw_joint, left_elbow_joint, left_wrist_roll_joint, left_wrist_yaw_joint, left_wrist_pitch_joint, right_shoulder_pitch_joint, right_shoulder_roll_joint, right_shoulder_yaw_joint, right_elbow_joint, right_wrist_roll_joint, right_wrist_yaw_joint, right_wrist_pitch_joint]
+  lower_body_dof_names: ${robot.leg_dof_names}
+
+  body_names: &all_bodies
+    [base_link,
+     left_hip_pitch_link, left_hip_roll_link, left_hip_yaw_link, left_knee_link, left_ankle_pitch_link, left_ankle_roll_link,
+     right_hip_pitch_link, right_hip_roll_link, right_hip_yaw_link, right_knee_link, right_ankle_pitch_link, right_ankle_roll_link,
+     waist_yaw_link, waist_pitch_link,
+     left_shoulder_pitch_link, left_shoulder_roll_link, left_shoulder_yaw_link, left_elbow_link, left_wrist_roll_link, left_wrist_yaw_link, left_wrist_pitch_link,
+     right_shoulder_pitch_link, right_shoulder_roll_link, right_shoulder_yaw_link, right_elbow_link, right_wrist_roll_link, right_wrist_yaw_link, right_wrist_pitch_link]
+  left_leg_body_names: [left_hip_pitch_link, left_hip_roll_link, left_hip_yaw_link, left_knee_link, left_ankle_pitch_link, left_ankle_roll_link]
+  right_leg_body_names: [right_hip_pitch_link, right_hip_roll_link, right_hip_yaw_link, right_knee_link, right_ankle_pitch_link, right_ankle_roll_link]
+  leg_body_names: [left_hip_pitch_link, left_hip_roll_link, left_hip_yaw_link, left_knee_link, left_ankle_pitch_link, left_ankle_roll_link, right_hip_pitch_link, right_hip_roll_link, right_hip_yaw_link, right_knee_link, right_ankle_pitch_link, right_ankle_roll_link]
+  left_arm_body_names: [left_shoulder_pitch_link, left_shoulder_roll_link, left_shoulder_yaw_link, left_elbow_link, left_wrist_roll_link, left_wrist_yaw_link, left_wrist_pitch_link]
+  right_arm_body_names: [right_shoulder_pitch_link, right_shoulder_roll_link, right_shoulder_yaw_link, right_elbow_link, right_wrist_roll_link, right_wrist_yaw_link, right_wrist_pitch_link]
+  arm_body_names: [left_shoulder_pitch_link, left_shoulder_roll_link, left_shoulder_yaw_link, left_elbow_link, left_wrist_roll_link, left_wrist_yaw_link, left_wrist_pitch_link, right_shoulder_pitch_link, right_shoulder_roll_link, right_shoulder_yaw_link, right_elbow_link, right_wrist_roll_link, right_wrist_yaw_link, right_wrist_pitch_link]
+  torso_body_names: [base_link, waist_yaw_link, waist_pitch_link]
+  head_hand_bodies: [left_wrist_pitch_link, right_wrist_pitch_link]
+  key_bodies: [base_link, left_hip_roll_link, left_knee_link, left_ankle_roll_link, right_hip_roll_link, right_knee_link, right_ankle_roll_link, waist_pitch_link, left_shoulder_pitch_link, left_elbow_link, left_wrist_pitch_link, right_shoulder_pitch_link, right_elbow_link, right_wrist_pitch_link]
+  key_dofs: [left_knee_joint, right_knee_joint, left_elbow_joint, right_elbow_joint]
+
+  init_state:
+    pos: [0.0, 0.0, 0.891088]
+    rot: [0.0, 0.0, 0.0, 1.0]
+    lin_vel: [0.0, 0.0, 0.0]
+    ang_vel: [0.0, 0.0, 0.0]
+    default_joint_angles:
+      left_hip_pitch_joint: -0.2
+      right_hip_pitch_joint: -0.2
+      waist_yaw_joint: 0.0
+      left_hip_roll_joint: 0.02
+      right_hip_roll_joint: -0.02
+      waist_pitch_joint: 0.0
+      left_hip_yaw_joint: 0.0
+      right_hip_yaw_joint: 0.0
+      left_shoulder_pitch_joint: 0.0
+      right_shoulder_pitch_joint: 0.0
+      left_knee_joint: 0.4
+      right_knee_joint: 0.4
+      left_shoulder_roll_joint: 0.4226
+      right_shoulder_roll_joint: -0.4226
+      left_ankle_pitch_joint: -0.2
+      right_ankle_pitch_joint: -0.2
+      left_shoulder_yaw_joint: 0.0
+      right_shoulder_yaw_joint: 0.0
+      left_ankle_roll_joint: -0.02
+      right_ankle_roll_joint: 0.02
+      left_elbow_joint: 0.0
+      right_elbow_joint: 0.0
+      left_wrist_roll_joint: 0.0
+      right_wrist_roll_joint: 0.0
+      left_wrist_yaw_joint: 0.0
+      right_wrist_yaw_joint: 0.0
+      left_wrist_pitch_joint: 0.0
+      right_wrist_pitch_joint: 0.0
+
+  # One explicit group is intentional: DelayedPDActuator samples one delay per
+  # environment, so every target in the hardware packet shares the same 1--5
+  # physics-step lag.  A second environment action-delay is forbidden.
+  actuators:
+    actuator_type: vita02a_parallel_ankle_delayed_pd
+    all_joints:
+      joint_names_expr: [".*_joint"]
+      min_delay: 1
+      max_delay: 5
+      effort_limit:
+        ".*_(hip_.*|knee)_joint": 120.0
+        "waist_.*_joint": 70.5
+        ".*_(shoulder_.*|elbow)_joint": 60.0
+        ".*_wrist_.*_joint": 15.0
+        # The coupled motor-space projection is the only ankle software cap.
+        ".*_ankle_.*_joint": 1.0e9
+      effort_limit_sim:
+        ".*_(hip_.*|knee)_joint": 120.0
+        "waist_.*_joint": 70.5
+        ".*_(shoulder_.*|elbow)_joint": 60.0
+        ".*_wrist_.*_joint": 15.0
+        ".*_ankle_.*_joint": 141.0
+      velocity_limit:
+        ".*_(hip_.*|knee)_joint": 14.66
+        "waist_.*_joint": 7.85
+        ".*_(shoulder_.*|elbow)_joint": 15.71
+        ".*_wrist_.*_joint": 15.71
+        ".*_ankle_.*_joint": 7.85
+      velocity_limit_sim:
+        ".*_(hip_.*|knee)_joint": 14.66
+        "waist_.*_joint": 7.85
+        ".*_(shoulder_.*|elbow)_joint": 15.71
+        ".*_wrist_.*_joint": 15.71
+        ".*_ankle_.*_joint": 7.85
+      stiffness:
+        ".*_(hip_.*|knee)_joint": 176.8663
+        "waist_.*_joint": 59.4841
+        ".*_(shoulder_.*|elbow)_joint": 62.7707
+        ".*_wrist_.*_joint": 20.0
+        ".*_ankle_pitch_joint": 40.0
+        ".*_ankle_roll_joint": 7.569
+      damping:
+        ".*_(hip_.*|knee)_joint": 5.62983
+        "waist_.*_joint": 1.89344
+        ".*_(shoulder_.*|elbow)_joint": 1.99805
+        ".*_wrist_.*_joint": 1.0
+        ".*_ankle_pitch_joint": 2.0
+        ".*_ankle_roll_joint": 0.378
+      armature:
+        ".*_(hip_.*|knee)_joint": 0.04480075
+        "waist_.*_joint": 0.0150675
+        ".*_(shoulder_.*|elbow)_joint": 0.0159
+        ".*_wrist_.*_joint": 0.00316508
+        # Reference-reproduction value: two LZ5735 reflected inertias.
+        ".*_ankle_.*_joint": 0.030135
+      tau_motor_max: 50.0
+      qd_motor_max: 7.85
+      lx: 0.05
+      ly: 0.02175
+      z_top: 0.31
+      z_bot: 0.235
+    action_scale: {".*_joint": 0.25}
+    velocity_policy_action_scale: {".*_joint": 0.25}
+
+  physical_parameter_provenance:
+    status: reference_reproduction_not_hardware_verified
+    pd_rule: {natural_frequency_hz: 10.0, damping_ratio: 1.0}
+    packet_delay_ms: [5.0, 25.0]
+    known_open_items:
+      - Vita02A-specific motor BOM and hip-roll motor proof
+      - wrist reflected inertia
+      - ankle-roll reflected inertia versus Jacobian-projected alternative
+      - non-ankle torque-speed curves
+      - ankle motor end stops
+      - controller joint sign and zero table
+      - firmware gains, IMU frame/filter/latency, and shoe contact material
+
+  dof_sign_by_name: {}
+  asset:
+    collapse_fixed_joints: true
+    require_explicit_replace_cylinders_with_capsules: true
+    replace_cylinders_with_capsules: true
+    resolve_relative_mesh_paths: true
+    enabled_self_collisions: false
+    flip_visual_attachments: false
+    asset_root: ./
+    urdf_file: assets/robots/${robot.humanoid_type}/urdf/vita02a_shoes_28dof.urdf
+    assetFileName: assets/robots/${robot.humanoid_type}/mjcf/scene_28dof.xml
+    fix_base_link: false
+    force_usd_conversion: true
+  extend_config: []
+  motion:
+    asset:
+      assetRoot: ./
+      assetFileName: ${robot.asset.assetFileName}
+    sampling_strategy: ${algo.config.sampling_strategy}
+    weighted_bin: ${algo.config.weighted_bin}
+    curriculum: ${algo.config.curriculum}
+    dump_sampled_motion_keys: false
+    dump_sampled_motion_keys_interval: 1
+    dump_sampled_motion_keys_dir: sampled_motion_cache_keys
+    max_frame_length: 300
+    min_frame_length: 50
+    handpicked_motion_names: null
+    excluded_motion_names: null
+    world_frame_normalization: true
+    backend: hdf5_v2
+    train_hdf5_roots: ${train_hdf5_roots}
+    val_hdf5_roots: ${train_hdf5_roots}
+    dof_names: *all_dofs
+    body_names: *all_bodies
+    key_bodies: ${robot.key_bodies}
+    extend_config: ${robot.extend_config}
+    dataloader: {num_workers: 2, prefetch_factor: 1, pin_memory: true, persistent_workers: false, timeout: 600}
+    # The source URDF also describes non-policy neck/finger joints.  Formal
+    # SMPL pose-grounding requires exact controller/FK DoF set equality and
+    # its differentiable runtime parses URDF, so use the audited policy-only
+    # URDF derived by the asset hydrator.
+    fk_robot_file_path: ${robot.asset.urdf_file}
+    fk_vel_smoothing_sigma: 2.0
+    online_filter: {enabled: false, butter_order: 4, butter_cutoff_hz_pool: []}
+    cache:
+      batch_progress_bar: false
+      max_num_clips: ${num_envs}
+      device: cuda
+      swap_interval_steps: ${robot.motion.max_frame_length}
+      allowed_prefixes: [ref_, ft_ref_]

@@ -1,0 +1,74 @@
+{
+  "schema": "robotops.vita02a_policy_default_stand.v1",
+  "status": "reviewed_candidate_for_suspended_test",
+  "robot": "Vita02A A-sample full",
+  "command_slots": 42,
+  "transition": {
+    "duration_s": 8.0,
+    "interpolation": "cubic_smoothstep",
+    "gain_ramp": "same_cubic_smoothstep",
+    "initial_command": "current_q_with_zero_gains",
+    "final_command": "policy_default_q_with_profile_gains"
+  },
+  "sources": {
+    "model_config": {
+      "path": "models/gmr_free_vita02a_motion_model_4000_candidate/config.yaml",
+      "sha256": "a4e6025b8be90058c7ab7bfd6a2d6f46e6eaf02ea9dd59f2e0dc36d97873c683"
+    },
+    "resolved_training_environment": {
+      "path": "models/gmr_free_vita02a_motion_model_4000_candidate/provenance/isaaclab_env_cfg.yaml",
+      "sha256": "3a97226e2e62087a38dd05bc1b712c71a7b0197a76a5d89b231c67f186a86ea3"
+    },
+    "policy_to_sdk_mapping": {
+      "path": "contracts/vita02a_policy_to_sdk_slots.json",
+      "sha256": "7f52e4078d892269ac90c6763f0eac39533ca1168e030dd658d58aad23dc914e"
+    },
+    "sdk_interface": {
+      "path": "contracts/vita02a_a_sample_full_interface.json",
+      "sha256": "4f8b25c5c440df3083abd5f9feb6c6ba28b3793d3d9c161e7e28421e5f4e4df9"
+    }
+  },
+  "gain_policy": {
+    "source": "training actuator nominal stiffness and damping",
+    "modification": "none; the reviewed EXTERNAL limit is max_kp=600 and max_kd=60",
+    "finger_slots": "hold current q with kp=0 and kd=0"
+  },
+  "controlled_joints": [
+    {"slot": 0, "joint": "left_hip_pitch_joint", "target_q_rad": -0.2, "kp": 176.8663, "kd": 5.62983},
+    {"slot": 1, "joint": "left_hip_roll_joint", "target_q_rad": 0.02, "kp": 176.8663, "kd": 5.62983},
+    {"slot": 2, "joint": "left_hip_yaw_joint", "target_q_rad": 0.0, "kp": 176.8663, "kd": 5.62983},
+    {"slot": 3, "joint": "left_knee_joint", "target_q_rad": 0.4, "kp": 176.8663, "kd": 5.62983},
+    {"slot": 4, "joint": "left_ankle_pitch_joint", "target_q_rad": -0.2, "kp": 40.0, "kd": 2.0},
+    {"slot": 5, "joint": "left_ankle_roll_joint", "target_q_rad": -0.02, "kp": 7.569, "kd": 0.378},
+    {"slot": 6, "joint": "right_hip_pitch_joint", "target_q_rad": -0.2, "kp": 176.8663, "kd": 5.62983},
+    {"slot": 7, "joint": "right_hip_roll_joint", "target_q_rad": -0.02, "kp": 176.8663, "kd": 5.62983},
+    {"slot": 8, "joint": "right_hip_yaw_joint", "target_q_rad": 0.0, "kp": 176.8663, "kd": 5.62983},
+    {"slot": 9, "joint": "right_knee_joint", "target_q_rad": 0.4, "kp": 176.8663, "kd": 5.62983},
+    {"slot": 10, "joint": "right_ankle_pitch_joint", "target_q_rad": -0.2, "kp": 40.0, "kd": 2.0},
+    {"slot": 11, "joint": "right_ankle_roll_joint", "target_q_rad": 0.02, "kp": 7.569, "kd": 0.378},
+    {"slot": 12, "joint": "waist_yaw_joint", "target_q_rad": 0.0, "kp": 59.4841, "kd": 1.89344},
+    {"slot": 13, "joint": "waist_pitch_joint", "target_q_rad": 0.0, "kp": 59.4841, "kd": 1.89344},
+    {"slot": 14, "joint": "left_shoulder_pitch_joint", "target_q_rad": 0.0, "kp": 62.7707, "kd": 1.99805},
+    {"slot": 15, "joint": "left_shoulder_roll_joint", "target_q_rad": 0.25, "kp": 62.7707, "kd": 1.99805},
+    {"slot": 16, "joint": "left_shoulder_yaw_joint", "target_q_rad": 0.0, "kp": 62.7707, "kd": 1.99805},
+    {"slot": 17, "joint": "left_elbow_joint", "target_q_rad": 1.5, "kp": 62.7707, "kd": 1.99805},
+    {"slot": 18, "joint": "right_shoulder_pitch_joint", "target_q_rad": 0.0, "kp": 62.7707, "kd": 1.99805},
+    {"slot": 19, "joint": "right_shoulder_roll_joint", "target_q_rad": -0.25, "kp": 62.7707, "kd": 1.99805},
+    {"slot": 20, "joint": "right_shoulder_yaw_joint", "target_q_rad": 0.0, "kp": 62.7707, "kd": 1.99805},
+    {"slot": 21, "joint": "right_elbow_joint", "target_q_rad": 1.5, "kp": 62.7707, "kd": 1.99805},
+    {"slot": 22, "joint": "left_wrist_roll_joint", "target_q_rad": 0.0, "kp": 20.0, "kd": 1.0},
+    {"slot": 23, "joint": "left_wrist_yaw_joint", "target_q_rad": 0.0, "kp": 20.0, "kd": 1.0},
+    {"slot": 24, "joint": "left_wrist_pitch_joint", "target_q_rad": 0.0, "kp": 20.0, "kd": 1.0},
+    {"slot": 31, "joint": "right_wrist_roll_joint", "target_q_rad": 0.0, "kp": 20.0, "kd": 1.0},
+    {"slot": 32, "joint": "right_wrist_yaw_joint", "target_q_rad": 0.0, "kp": 20.0, "kd": 1.0},
+    {"slot": 33, "joint": "right_wrist_pitch_joint", "target_q_rad": 0.0, "kp": 20.0, "kd": 1.0},
+    {"slot": 40, "joint": "neck_pitch_joint", "target_q_rad": 0.0, "kp": 2.9115333, "kd": 0.09267698},
+    {"slot": 41, "joint": "neck_yaw_joint", "target_q_rad": 0.0, "kp": 2.9115333, "kd": 0.09267698}
+  ],
+  "hold_current_zero_gain_slots": [25, 26, 27, 28, 29, 30, 34, 35, 36, 37, 38, 39],
+  "notes": [
+    "SDK command coordinates are used directly; rotation_direction and joint_calib_angle are not reapplied.",
+    "The deployed S100 FIXED_STAND keyframe is not used because its 42 positions are still zero and marked TODO.",
+    "This profile is limited to a reliably suspended test until physical response, wrist direction, parallel-ankle behavior and final tracking error are reviewed."
+  ]
+}

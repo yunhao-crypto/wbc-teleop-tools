@@ -1,0 +1,884 @@
+{
+  "src/deployment/common/bluetooth_xbox.py": {
+    "repository": "public",
+    "path": "deployment/common/bluetooth_xbox.py",
+    "imported_sha256": "dfc0510958929323a1a52afed5ffb7a95b0f2a944114418b1dea0726a0be0910",
+    "captured_sha256": "dfc0510958929323a1a52afed5ffb7a95b0f2a944114418b1dea0726a0be0910"
+  },
+  "src/deployment/common/resilient_xbox.py": {
+    "repository": "public",
+    "path": "deployment/common/resilient_xbox.py",
+    "imported_sha256": "7b51af164e55744f862d4cd3a6a7810d058bc21313eeec85e5ccbecc15a9ce13",
+    "captured_sha256": "7b51af164e55744f862d4cd3a6a7810d058bc21313eeec85e5ccbecc15a9ce13"
+  },
+  "src/deployment/common/wifi_controller.py": {
+    "repository": "public",
+    "path": "deployment/common/wifi_controller.py",
+    "imported_sha256": "3c052972ad7bccaf56f8f37ee8dbb56a662e9de52e706f83902f6f12a2a3ba17",
+    "captured_sha256": "3c052972ad7bccaf56f8f37ee8dbb56a662e9de52e706f83902f6f12a2a3ba17"
+  },
+  "src/deployment/common/xbox_linux_mapping.py": {
+    "repository": "public",
+    "path": "deployment/common/xbox_linux_mapping.py",
+    "imported_sha256": "3e7ba285e7c5d3b625711ad70c69f6c541e49e02beb58625a7323349e250ec9d",
+    "captured_sha256": "3e7ba285e7c5d3b625711ad70c69f6c541e49e02beb58625a7323349e250ec9d"
+  },
+  "src/deployment/vita_s100_aorta_30dof/aorta_adapter.py": {
+    "repository": "public",
+    "path": "deployment/vita_s100_aorta_30dof/aorta_adapter.py",
+    "imported_sha256": "41c02bafb3699679fcf6f1a1d91dfed3fc37b77f19962baea0eaa53749e66efd",
+    "captured_sha256": "41c02bafb3699679fcf6f1a1d91dfed3fc37b77f19962baea0eaa53749e66efd"
+  },
+  "src/deployment/vita_s100_aorta_30dof/command_conditioning.py": {
+    "repository": "public",
+    "path": "deployment/vita_s100_aorta_30dof/command_conditioning.py",
+    "imported_sha256": "b8fccbf1aed6cb400056badb8df24aea3e84bb34f3f74fe3b6ddbfd8e5f673c3",
+    "captured_sha256": "30df698e38553b118fc48d013e3717bfe5e49fcb24f94c6d5d2a79ab75ae55b8",
+    "import_difference": "EOF whitespace only"
+  },
+  "src/deployment/vita_s100_aorta_30dof/real_teleop.py": {
+    "repository": "public",
+    "path": "deployment/vita_s100_aorta_30dof/real_teleop.py",
+    "imported_sha256": "69a3992c84904c4c38efa07552fb2df9f2baa6bdb1ecba2ed2fd8638d2aa6bc4",
+    "captured_sha256": "69a3992c84904c4c38efa07552fb2df9f2baa6bdb1ecba2ed2fd8638d2aa6bc4",
+    "round2_change": "Latency candidate 20261009; see C_LATENCY_ROUND2_20261009.md",
+    "round2_source_sha256": "c933db696414a6578b8f3d242b12ad8293dafca40d3fff477a06993d9bce97f0"
+  },
+  "src/deployment/vita_s100_aorta_30dof/runtime.py": {
+    "repository": "public",
+    "path": "deployment/vita_s100_aorta_30dof/runtime.py",
+    "imported_sha256": "6a09df4bc559da54b8c9e88d033de8ab5b6b7412ce0f26dc7ee963f440353ae8",
+    "captured_sha256": "6a09df4bc559da54b8c9e88d033de8ab5b6b7412ce0f26dc7ee963f440353ae8"
+  },
+  "src/tests/test_vita_external_entry_timing.py": {
+    "repository": "public",
+    "path": "tests/test_vita_external_entry_timing.py",
+    "imported_sha256": "d3cc8c7a011dc5992181a8676c150504f0ab50e2bcc59d4763f9c512f31ab619",
+    "captured_sha256": "d3cc8c7a011dc5992181a8676c150504f0ab50e2bcc59d4763f9c512f31ab619",
+    "import_difference": "Maintained public START transition regression; historical capture retained outside repository"
+  },
+  "src/tests/test_vita_s100_command_guard.py": {
+    "repository": "internal",
+    "path": "deployment/vita_s100_onboard/src/tests/test_vita_s100_command_guard.py",
+    "imported_sha256": "5b8131da8962ffa8ac58615035659a6578b4839613f62065d21d7a85c051b76c",
+    "captured_sha256": "5b8131da8962ffa8ac58615035659a6578b4839613f62065d21d7a85c051b76c"
+  },
+  "src/tests/test_vita_s100_product_runtime.py": {
+    "repository": "internal",
+    "path": "deployment/vita_s100_onboard/src/tests/test_vita_s100_product_runtime.py",
+    "imported_sha256": "f6c7bb5615579556b1005ca4fdc5217277c225f0cf0f6480e10990d12c496ec4",
+    "captured_sha256": "f6c7bb5615579556b1005ca4fdc5217277c225f0cf0f6480e10990d12c496ec4"
+  },
+  "src/tests/test_bluetooth_xbox.py": {
+    "repository": "public",
+    "path": "tests/test_bluetooth_xbox.py",
+    "imported_sha256": "896639e65ce949ea7488ecdace6afcf64a611ecf9226c2aba774d97699f50193",
+    "captured_sha256": "baaf2df065a895fc69139e7e655e28f86e550a4228c90424a520b88fae853707",
+    "import_difference": "test updates from colleague or repository layout"
+  },
+  "src/tests/test_resilient_xbox.py": {
+    "repository": "public",
+    "path": "tests/test_resilient_xbox.py",
+    "imported_sha256": "e82d40ad02ba88bbb0f95a6b0addd3b5b57509e5755f5a59758daa31de277ab5",
+    "captured_sha256": "e82d40ad02ba88bbb0f95a6b0addd3b5b57509e5755f5a59758daa31de277ab5"
+  },
+  "src/tests/test_wifi_controller.py": {
+    "repository": "public",
+    "path": "tests/test_wifi_controller.py",
+    "imported_sha256": "4cde0a98afa9baf54145aa168b31004d882b4b4f2269484720c93e03e5bd8f38",
+    "captured_sha256": "d26e04e892167141bd71cd88a7a69f52ae655b567e7ce02173573a37fbe6fdad",
+    "import_difference": "test updates from colleague or repository layout"
+  },
+  "src/tests/test_wifi_recovery.py": {
+    "repository": "internal",
+    "path": "deployment/vita_s100_onboard/src/tests/test_wifi_recovery.py",
+    "imported_sha256": "6593bd4cda61d3796c18512979ab45bb9d8cbb31eaa4d87ca8a57d846cae2d3a",
+    "captured_sha256": "6593bd4cda61d3796c18512979ab45bb9d8cbb31eaa4d87ca8a57d846cae2d3a"
+  },
+  "src/tests/test_xbox_linux_mapping.py": {
+    "repository": "public",
+    "path": "tests/test_xbox_linux_mapping.py",
+    "imported_sha256": "dd06ce7d8dadcf5b213312a9aaf71187d2ce3c14bb956eee93665022cca0d86a",
+    "captured_sha256": "dd06ce7d8dadcf5b213312a9aaf71187d2ce3c14bb956eee93665022cca0d86a"
+  },
+  "src/deployment/vita_s100_aorta_30dof/onboard_shadow.py": {
+    "repository": "internal",
+    "path": "deployment/vita_s100_onboard/src/deployment/vita_s100_aorta_30dof/onboard_shadow.py",
+    "imported_sha256": "bb17fdf3f6bf475a3cd1610f28e7df625661c297fafb488dcd1029ecf76b866b",
+    "captured_sha256": "bb17fdf3f6bf475a3cd1610f28e7df625661c297fafb488dcd1029ecf76b866b"
+  },
+  "src/deployment/vita_s100_aorta_30dof/onboard_state.py": {
+    "repository": "internal",
+    "path": "deployment/vita_s100_onboard/src/deployment/vita_s100_aorta_30dof/onboard_state.py",
+    "imported_sha256": "4f9f5f6433cbcbacec244b0f84b5dd3f12b3a77d4a3784fc450872d1e8b79bcd",
+    "captured_sha256": "4f9f5f6433cbcbacec244b0f84b5dd3f12b3a77d4a3784fc450872d1e8b79bcd",
+    "round2_change": "Latency candidate 20261009; see C_LATENCY_ROUND2_20261009.md",
+    "round2_source_sha256": "fa1f6fc647b146b6005254e321e8e86d0b733fc77ba9fca12c1021880f36d75d"
+  },
+  "src/deployment/vita_s100_aorta_30dof/onboard_state_native.cpp": {
+    "repository": "internal",
+    "path": "deployment/vita_s100_onboard/src/deployment/vita_s100_aorta_30dof/onboard_state_native.cpp",
+    "imported_sha256": "6fb95e08cf8e8693e5087632190fc124ef77062075cd9e9d72b7811ec982f716",
+    "captured_sha256": "6fb95e08cf8e8693e5087632190fc124ef77062075cd9e9d72b7811ec982f716"
+  },
+  "src/deployment/vita_s100_aorta_30dof/onboard_preprocessing.py": {
+    "repository": "internal",
+    "path": "deployment/vita_s100_onboard/src/deployment/vita_s100_aorta_30dof/onboard_preprocessing.py",
+    "imported_sha256": "02bbc65a5afa38c6239c723cd64614b8ed28b8ecee1ce31f757b618c1dd65d0c",
+    "captured_sha256": "02bbc65a5afa38c6239c723cd64614b8ed28b8ecee1ce31f757b618c1dd65d0c"
+  },
+  "src/deployment/vita_s100_aorta_30dof/onboard_preprocessing_native.cpp": {
+    "repository": "internal",
+    "path": "deployment/vita_s100_onboard/src/deployment/vita_s100_aorta_30dof/onboard_preprocessing_native.cpp",
+    "imported_sha256": "5c53107990739526bd084e6cc41afc72bebbe9f953860a938f1e53b9489b6449",
+    "captured_sha256": "5c53107990739526bd084e6cc41afc72bebbe9f953860a938f1e53b9489b6449"
+  },
+  "src/deployment/vita_s100_aorta_30dof/onboard_output.py": {
+    "repository": "internal",
+    "path": "deployment/vita_s100_onboard/src/deployment/vita_s100_aorta_30dof/onboard_output.py",
+    "imported_sha256": "d62a430844bce5427f3b88bcd1a9ca792e0834eea0532594404a33fd4440c90f",
+    "captured_sha256": "d62a430844bce5427f3b88bcd1a9ca792e0834eea0532594404a33fd4440c90f"
+  },
+  "src/deployment/vita_s100_aorta_30dof/onboard_runtime.py": {
+    "repository": "internal",
+    "path": "deployment/vita_s100_onboard/src/deployment/vita_s100_aorta_30dof/onboard_runtime.py",
+    "imported_sha256": "1c975b2c1a009358e9803e3cb4dcc52ecb752834c4a1c333174b0bd6483ee20e",
+    "captured_sha256": "2970ee5f004877c103709fb09d9d1f9890e5c7e951b3add09f4bebfa7d95fd0d",
+    "import_difference": "EOF whitespace only",
+    "round2_change": "Retain native phase timing in control logs",
+    "round2_source_sha256": "ba00487f045683479207e36ec1a9773a4f4bab6582ddb3a20afb9953291953a0"
+  },
+  "src/deployment/vita_s100_aorta_30dof/onboard_live_io.py": {
+    "repository": "internal",
+    "path": "deployment/vita_s100_onboard/src/deployment/vita_s100_aorta_30dof/onboard_live_io.py",
+    "imported_sha256": "efd39af9d54401adb84c1fccf5dfec49ad8f50e45b3ab008ed0c1be3b83b5e12",
+    "captured_sha256": "efd39af9d54401adb84c1fccf5dfec49ad8f50e45b3ab008ed0c1be3b83b5e12"
+  },
+  "src/deployment/vita_s100_aorta_30dof/onboard_live_session.py": {
+    "repository": "internal",
+    "path": "deployment/vita_s100_onboard/src/deployment/vita_s100_aorta_30dof/onboard_live_session.py",
+    "imported_sha256": "81c097ebd80ea0017405a6fb791e3845eeb29229928f670dda2f43b443c9fa0d",
+    "captured_sha256": "81c097ebd80ea0017405a6fb791e3845eeb29229928f670dda2f43b443c9fa0d"
+  },
+  "src/deployment/vita_s100_aorta_30dof/onboard_backend/__init__.py": {
+    "repository": "internal",
+    "path": "deployment/vita_s100_onboard/src/deployment/vita_s100_aorta_30dof/onboard_backend/__init__.py",
+    "imported_sha256": "28513b502b0ef739831f8cdc7839cd64636c543d88490abeb74daa6dd19937dc",
+    "captured_sha256": "28513b502b0ef739831f8cdc7839cd64636c543d88490abeb74daa6dd19937dc"
+  },
+  "src/deployment/vita_s100_aorta_30dof/onboard_backend/backend.cpp": {
+    "repository": "internal",
+    "path": "deployment/vita_s100_onboard/src/deployment/vita_s100_aorta_30dof/onboard_backend/backend.cpp",
+    "imported_sha256": "3908d3c3e46c75a992c6d123ff93064b2b0122d77c9b3301c5385f7ae5388eb7",
+    "captured_sha256": "3908d3c3e46c75a992c6d123ff93064b2b0122d77c9b3301c5385f7ae5388eb7"
+  },
+  "src/deployment/vita_s100_aorta_30dof/onboard_backend/native_router.h": {
+    "repository": "internal",
+    "path": "deployment/vita_s100_onboard/src/deployment/vita_s100_aorta_30dof/onboard_backend/native_router.h",
+    "imported_sha256": "015bb92374e91b4e404f2384cae15d69ba436ffd762b46dbcc6b5de710280bca",
+    "captured_sha256": "015bb92374e91b4e404f2384cae15d69ba436ffd762b46dbcc6b5de710280bca",
+    "round2_change": "Latency candidate 20261009; see C_LATENCY_ROUND2_20261009.md",
+    "round2_source_sha256": "28f62527518824a4b75a089ed70bec156b5963b1d6976fb55ea9bf3beaa7202a"
+  },
+  "src/deployment/vita_s100_aorta_30dof/onboard_backend/README.md": {
+    "repository": "internal",
+    "path": "deployment/vita_s100_onboard/src/deployment/vita_s100_aorta_30dof/onboard_backend/README.md",
+    "imported_sha256": "9c23f7bc8343538ac31e5cb4ec995b48ac49901a36d2d1bc15b2d4d33739a562",
+    "captured_sha256": "9c23f7bc8343538ac31e5cb4ec995b48ac49901a36d2d1bc15b2d4d33739a562"
+  },
+  "src/deployment/vita_s100_aorta_30dof/onboard_backend/backend.h": {
+    "repository": "internal",
+    "path": "deployment/vita_s100_onboard/src/deployment/vita_s100_aorta_30dof/onboard_backend/backend.h",
+    "imported_sha256": "4ccc7694e129a755b22fc19f34294ad66e532e08efdd24fc7961e46e7f9c7bf1",
+    "captured_sha256": "4ccc7694e129a755b22fc19f34294ad66e532e08efdd24fc7961e46e7f9c7bf1"
+  },
+  "src/deployment/vita_s100_aorta_30dof/onboard_backend/router_worker.h": {
+    "repository": "internal",
+    "path": "deployment/vita_s100_onboard/src/deployment/vita_s100_aorta_30dof/onboard_backend/router_worker.h",
+    "imported_sha256": "ec37c6c89e0dc8662a58969dfec9db1857c2f0389cd3d66c07fdd09d962d9f62",
+    "captured_sha256": "ec37c6c89e0dc8662a58969dfec9db1857c2f0389cd3d66c07fdd09d962d9f62"
+  },
+  "src/deployment/vita_s100_aorta_30dof/onboard_backend/ucp_buffers.h": {
+    "repository": "internal",
+    "path": "deployment/vita_s100_onboard/src/deployment/vita_s100_aorta_30dof/onboard_backend/ucp_buffers.h",
+    "imported_sha256": "693b1e02fd448e41c424f0348c255ab2dc1c36b8bce7c87452db838d9d8fdc45",
+    "captured_sha256": "693b1e02fd448e41c424f0348c255ab2dc1c36b8bce7c87452db838d9d8fdc45"
+  },
+  "src/deployment/vita_s100_aorta_30dof/onboard_backend/artifact_sha256.h": {
+    "repository": "internal",
+    "path": "deployment/vita_s100_onboard/src/deployment/vita_s100_aorta_30dof/onboard_backend/artifact_sha256.h",
+    "imported_sha256": "4624d33dad0cebd2cc2ecec230b3984c6627daf5ea745c6aef1adaa810d8b15f",
+    "captured_sha256": "4624d33dad0cebd2cc2ecec230b3984c6627daf5ea745c6aef1adaa810d8b15f"
+  },
+  "src/deployment/vita_s100_aorta_30dof/onboard_backend/native.py": {
+    "repository": "internal",
+    "path": "deployment/vita_s100_onboard/src/deployment/vita_s100_aorta_30dof/onboard_backend/native.py",
+    "imported_sha256": "81ae38623ef8e1e55c5a09ef1a8f450087b116c656905b6cac0082bff80da989",
+    "captured_sha256": "81ae38623ef8e1e55c5a09ef1a8f450087b116c656905b6cac0082bff80da989"
+  },
+  "src/deployment/vita_s100_aorta_30dof/onboard_backend/ort_cuts.h": {
+    "repository": "internal",
+    "path": "deployment/vita_s100_onboard/src/deployment/vita_s100_aorta_30dof/onboard_backend/ort_cuts.h",
+    "imported_sha256": "7e9b590cb782f7a8822170d3e98628b8d4ab1c96ae24770a73e8e515a6e7a732",
+    "captured_sha256": "7e9b590cb782f7a8822170d3e98628b8d4ab1c96ae24770a73e8e515a6e7a732",
+    "round2_change": "Latency candidate 20261009; see C_LATENCY_ROUND2_20261009.md",
+    "round2_source_sha256": "c2437c9343618916990f94b5fda5a3a2e276f6b6d69dd734d2ca096f6cd6632e"
+  },
+  "src/deployment/vita_s100_aorta_30dof/onboard_backend/tests/test_host_contract.py": {
+    "repository": "internal",
+    "path": "deployment/vita_s100_onboard/src/deployment/vita_s100_aorta_30dof/onboard_backend/tests/test_host_contract.py",
+    "imported_sha256": "182646daa195cb516c8a565709a47f417d67e947deaca42d84b296868250bc9f",
+    "captured_sha256": "182646daa195cb516c8a565709a47f417d67e947deaca42d84b296868250bc9f"
+  },
+  "src/deployment/vita_s100_aorta_30dof/onboard_backend/tests/layout_probe.cpp": {
+    "repository": "internal",
+    "path": "deployment/vita_s100_onboard/src/deployment/vita_s100_aorta_30dof/onboard_backend/tests/layout_probe.cpp",
+    "imported_sha256": "a86f6dd1a71fe3292c623422a856c8ab2a3288993b6234d71c0c3b2dad3f76fa",
+    "captured_sha256": "a86f6dd1a71fe3292c623422a856c8ab2a3288993b6234d71c0c3b2dad3f76fa"
+  },
+  "src/deployment/unitree_g1_ros2_29dof/src/humanoid_policy/pico_body_pose_reader.py": {
+    "repository": "internal",
+    "path": "deployment/vita_s100_onboard/src/deployment/unitree_g1_ros2_29dof/src/humanoid_policy/pico_body_pose_reader.py",
+    "imported_sha256": "de395cba5e3afc61116b6ac35e3644fb3d71d739673ad039089640845aa3211b",
+    "captured_sha256": "de395cba5e3afc61116b6ac35e3644fb3d71d739673ad039089640845aa3211b"
+  },
+  "src/deployment/vita_s100_aorta_30dof/scripts/build_xrobotoolkit_sdk.sh": {
+    "repository": "internal",
+    "path": "deployment/vita_s100_onboard/src/deployment/vita_s100_aorta_30dof/scripts/build_xrobotoolkit_sdk.sh",
+    "imported_sha256": "758da8e79f2498110ce19ea765043d1beb32bbb53aa159d95e8595a218e9c507",
+    "captured_sha256": "60710b1378547f682840ff7a55129ee77b522ad8fbfe29f7cfc05d3a08e5c80f",
+    "import_difference": "EOF whitespace only"
+  },
+  "scripts/decode_incident_mcap.py": {
+    "repository": "internal",
+    "path": "deployment/vita_s100_onboard/scripts/decode_incident_mcap.py",
+    "imported_sha256": "ad640663589b7011fd082d3db73f0ce974c0c89c3a5cca6fb9cdbf9a7ebc25e3",
+    "import_difference": "colleague-only analysis script"
+  },
+  "scripts/freeze_live_preparation.py": {
+    "repository": "internal",
+    "path": "deployment/vita_s100_onboard/scripts/freeze_live_preparation.py",
+    "imported_sha256": "9318f665528004690a216f78c584b825319d1a28acb28b437a1ed0b9d38d3a7c",
+    "captured_sha256": "9318f665528004690a216f78c584b825319d1a28acb28b437a1ed0b9d38d3a7c"
+  },
+  "scripts/model_compile.py": {
+    "repository": "internal",
+    "path": "deployment/vita_s100_onboard/scripts/model_compile.py",
+    "imported_sha256": "56becee5e9fb707cee6cecbb09ce555bc4a2396a02a22398c931b9c7a8e5c7bc",
+    "captured_sha256": "56becee5e9fb707cee6cecbb09ce555bc4a2396a02a22398c931b9c7a8e5c7bc"
+  },
+  "scripts/state_native_fuzz.cpp": {
+    "repository": "internal",
+    "path": "deployment/vita_s100_onboard/scripts/state_native_fuzz.cpp",
+    "imported_sha256": "3a5b1f3f4eb47b7bf7a21b456d2bf42fe23de32b9fe0623f09bf57d20c00762a",
+    "captured_sha256": "3a5b1f3f4eb47b7bf7a21b456d2bf42fe23de32b9fe0623f09bf57d20c00762a"
+  },
+  "scripts/decode_incident_cdr.py": {
+    "repository": "internal",
+    "path": "deployment/vita_s100_onboard/scripts/decode_incident_cdr.py",
+    "imported_sha256": "52a37072b3117fda774351f08bea78da6ca920ea2cf1c8f7d8d40b9561c6c975",
+    "import_difference": "colleague-only analysis script"
+  },
+  "scripts/flow_gpu_oracle.py": {
+    "repository": "internal",
+    "path": "deployment/vita_s100_onboard/scripts/flow_gpu_oracle.py",
+    "imported_sha256": "d010ec4e33c94ac701e97d498606e027167971a545014abb6a4b7cb8bc83c70c",
+    "captured_sha256": "d010ec4e33c94ac701e97d498606e027167971a545014abb6a4b7cb8bc83c70c"
+  },
+  "scripts/preprocess_build_native.py": {
+    "repository": "internal",
+    "path": "deployment/vita_s100_onboard/scripts/preprocess_build_native.py",
+    "imported_sha256": "08f02f868301fe08f8266ce54828fb0cbd9680ac0c5c2ea5050395353c75c98e",
+    "captured_sha256": "08f02f868301fe08f8266ce54828fb0cbd9680ac0c5c2ea5050395353c75c98e"
+  },
+  "scripts/oracle_diagnose_action_joints.py": {
+    "repository": "internal",
+    "path": "deployment/vita_s100_onboard/scripts/oracle_diagnose_action_joints.py",
+    "imported_sha256": "402cb3aa8dc2173c68f6b9ed5f66924282d65f0cb3bc15d25962f138698269d6",
+    "captured_sha256": "402cb3aa8dc2173c68f6b9ed5f66924282d65f0cb3bc15d25962f138698269d6"
+  },
+  "scripts/freeze_shadow_acceptance.py": {
+    "repository": "internal",
+    "path": "deployment/vita_s100_onboard/scripts/freeze_shadow_acceptance.py",
+    "imported_sha256": "09e5d8f0cadb776fb4a9fdd78ce8f557a413339c753e6d5d305f537cde30eff6",
+    "captured_sha256": "09e5d8f0cadb776fb4a9fdd78ce8f557a413339c753e6d5d305f537cde30eff6"
+  },
+  "scripts/state_validate_live_io.py": {
+    "repository": "internal",
+    "path": "deployment/vita_s100_onboard/scripts/state_validate_live_io.py",
+    "imported_sha256": "b34ebddb8b672227c62fb449ef4b91a1c182e28442f3578324a0d79c3f631ae0",
+    "captured_sha256": "b34ebddb8b672227c62fb449ef4b91a1c182e28442f3578324a0d79c3f631ae0"
+  },
+  "scripts/model_router_utils.py": {
+    "repository": "internal",
+    "path": "deployment/vita_s100_onboard/scripts/model_router_utils.py",
+    "imported_sha256": "9df5c86b8e659a04a86c4ee03ef92f683e5f2fea6a3856d940842eb274167d8a",
+    "captured_sha256": "9df5c86b8e659a04a86c4ee03ef92f683e5f2fea6a3856d940842eb274167d8a"
+  },
+  "scripts/build_pico_arm64.sh": {
+    "repository": "internal",
+    "path": "deployment/vita_s100_onboard/scripts/build_pico_arm64.sh",
+    "imported_sha256": "750389f045e52f9dcdcc4164bce64cbdee379a4c2743858df5c83407e2b16f28",
+    "captured_sha256": "750389f045e52f9dcdcc4164bce64cbdee379a4c2743858df5c83407e2b16f28"
+  },
+  "scripts/xbox_bluetooth.py": {
+    "repository": "internal",
+    "path": "deployment/vita_s100_onboard/scripts/xbox_bluetooth.py",
+    "imported_sha256": "b55194a596dea9e796df7283645d6020eb197024ae94ef3dc324f5ea98e61b63",
+    "captured_sha256": "b55194a596dea9e796df7283645d6020eb197024ae94ef3dc324f5ea98e61b63"
+  },
+  "scripts/model_artifact_manifest.py": {
+    "repository": "internal",
+    "path": "deployment/vita_s100_onboard/scripts/model_artifact_manifest.py",
+    "imported_sha256": "a80a1622fdc01c4b2645598806a50daf9ad166fd6e579d0c3f60bad34741de1c",
+    "captured_sha256": "a80a1622fdc01c4b2645598806a50daf9ad166fd6e579d0c3f60bad34741de1c"
+  },
+  "scripts/output_export_envelopes.py": {
+    "repository": "internal",
+    "path": "deployment/vita_s100_onboard/scripts/output_export_envelopes.py",
+    "imported_sha256": "8f7a6d3e2aba18de97733d6daf2ae91b3cb5cfb2c989aeda86b4a68097f8c205",
+    "captured_sha256": "8f7a6d3e2aba18de97733d6daf2ae91b3cb5cfb2c989aeda86b4a68097f8c205"
+  },
+  "scripts/analyze_live_clipping.py": {
+    "repository": "internal",
+    "path": "deployment/vita_s100_onboard/scripts/analyze_live_clipping.py",
+    "imported_sha256": "9d9702b4866124d801a01bbd0f585ee718bdde96024793522b4343e0d8c2b0f4",
+    "captured_sha256": "9d9702b4866124d801a01bbd0f585ee718bdde96024793522b4343e0d8c2b0f4"
+  },
+  "scripts/model_validate_moe.py": {
+    "repository": "internal",
+    "path": "deployment/vita_s100_onboard/scripts/model_validate_moe.py",
+    "imported_sha256": "4a8c703fb22cdcdfea50db0cd174918b4fa10995a1f1b8a98a1c28d39e0c1bc9",
+    "captured_sha256": "4a8c703fb22cdcdfea50db0cd174918b4fa10995a1f1b8a98a1c28d39e0c1bc9"
+  },
+  "scripts/fake_pico_host_selftest.py": {
+    "repository": "internal",
+    "path": "deployment/vita_s100_onboard/scripts/fake_pico_host_selftest.py",
+    "imported_sha256": "a4ac1f5eab36997bf3664c3eb9b870d1997f2aa0ee16dfc9f9fbdd8c667cf9b3",
+    "captured_sha256": "a4ac1f5eab36997bf3664c3eb9b870d1997f2aa0ee16dfc9f9fbdd8c667cf9b3"
+  },
+  "scripts/oracle_live_shadow.py": {
+    "repository": "internal",
+    "path": "deployment/vita_s100_onboard/scripts/oracle_live_shadow.py",
+    "imported_sha256": "53df753170f50c640c28665b083906266629b530cc4a93142057e46181382544",
+    "captured_sha256": "53df753170f50c640c28665b083906266629b530cc4a93142057e46181382544"
+  },
+  "scripts/preprocess_validate_cpu.py": {
+    "repository": "internal",
+    "path": "deployment/vita_s100_onboard/scripts/preprocess_validate_cpu.py",
+    "imported_sha256": "ac33acafbdd5c3ccb5b0ed30bcd50d401a85c630d05f85a656c736699b590170",
+    "captured_sha256": "ac33acafbdd5c3ccb5b0ed30bcd50d401a85c630d05f85a656c736699b590170"
+  },
+  "scripts/preprocess_export_skeleton.py": {
+    "repository": "internal",
+    "path": "deployment/vita_s100_onboard/scripts/preprocess_export_skeleton.py",
+    "imported_sha256": "9220fe2094c86724dd850ac0d240bcb3da5d3aab990f3c606b6c4dfee3970970",
+    "captured_sha256": "9220fe2094c86724dd850ac0d240bcb3da5d3aab990f3c606b6c4dfee3970970"
+  },
+  "scripts/build_onboard_backend.sh": {
+    "repository": "internal",
+    "path": "deployment/vita_s100_onboard/scripts/build_onboard_backend.sh",
+    "imported_sha256": "0c1d651a0bf5f0ad95404856d09ef9de2db7d4d870531702c864df62d03df20b",
+    "captured_sha256": "0c1d651a0bf5f0ad95404856d09ef9de2db7d4d870531702c864df62d03df20b"
+  },
+  "scripts/flow_common.py": {
+    "repository": "internal",
+    "path": "deployment/vita_s100_onboard/scripts/flow_common.py",
+    "imported_sha256": "f36fbb8bdb8a7f77813a0e0c8cd5f3d5f7e57ac8e651a1db1860146f6200ef15",
+    "captured_sha256": "f36fbb8bdb8a7f77813a0e0c8cd5f3d5f7e57ac8e651a1db1860146f6200ef15"
+  },
+  "scripts/model_export_pools.py": {
+    "repository": "internal",
+    "path": "deployment/vita_s100_onboard/scripts/model_export_pools.py",
+    "imported_sha256": "d0a944a9df647616e3cf0b295018ae336cf58858955c1042691af4953c73d7e8",
+    "captured_sha256": "d0a944a9df647616e3cf0b295018ae336cf58858955c1042691af4953c73d7e8"
+  },
+  "scripts/fake_pico_host_protocol.py": {
+    "repository": "internal",
+    "path": "deployment/vita_s100_onboard/scripts/fake_pico_host_protocol.py",
+    "imported_sha256": "1533196f91eca2d2f24198831d32ba871a0ff8e2197f9fbda8a17f02358da65b",
+    "captured_sha256": "1533196f91eca2d2f24198831d32ba871a0ff8e2197f9fbda8a17f02358da65b"
+  },
+  "scripts/flow_board_replay.py": {
+    "repository": "internal",
+    "path": "deployment/vita_s100_onboard/scripts/flow_board_replay.py",
+    "imported_sha256": "f423aa4c985efad11e370419072094626029a87f550b5b108c8ee34c1ad19305",
+    "captured_sha256": "f423aa4c985efad11e370419072094626029a87f550b5b108c8ee34c1ad19305"
+  },
+  "scripts/preprocess_gpu_oracle.py": {
+    "repository": "internal",
+    "path": "deployment/vita_s100_onboard/scripts/preprocess_gpu_oracle.py",
+    "imported_sha256": "9d1776a2a82f9b0437636208423387ddc67f6614cd07ebfb691257d9b8f548cb",
+    "captured_sha256": "9d1776a2a82f9b0437636208423387ddc67f6614cd07ebfb691257d9b8f548cb"
+  },
+  "scripts/preprocess_compare_candidates.py": {
+    "repository": "internal",
+    "path": "deployment/vita_s100_onboard/scripts/preprocess_compare_candidates.py",
+    "imported_sha256": "8b65ce0b7746bf2ff0ed69c7119a65e98f47962ce3ade68c7a05f60ab3ea52fa",
+    "captured_sha256": "8b65ce0b7746bf2ff0ed69c7119a65e98f47962ce3ade68c7a05f60ab3ea52fa"
+  },
+  "scripts/oracle_final_shadow.py": {
+    "repository": "internal",
+    "path": "deployment/vita_s100_onboard/scripts/oracle_final_shadow.py",
+    "imported_sha256": "95370476850fbdbb1c6d0c0be98d24aa761bf64944dd118d6f3eb5eef77e146a",
+    "captured_sha256": "95370476850fbdbb1c6d0c0be98d24aa761bf64944dd118d6f3eb5eef77e146a"
+  },
+  "scripts/probe_bluetooth_xbox.py": {
+    "repository": "internal",
+    "path": "deployment/vita_s100_onboard/scripts/probe_bluetooth_xbox.py",
+    "imported_sha256": "8c55eb9d6c7988080355db20107db0b2bfceb92b1b6a0ecbf7b0e678522f4e70",
+    "captured_sha256": "8c55eb9d6c7988080355db20107db0b2bfceb92b1b6a0ecbf7b0e678522f4e70"
+  },
+  "scripts/state_validate_guards.py": {
+    "repository": "internal",
+    "path": "deployment/vita_s100_onboard/scripts/state_validate_guards.py",
+    "imported_sha256": "3ac7ed68a32d620fba18f715caf254b74adc2904a37f4148faa280c94da6014e",
+    "captured_sha256": "3ac7ed68a32d620fba18f715caf254b74adc2904a37f4148faa280c94da6014e"
+  },
+  "scripts/oracle_policy_replay.py": {
+    "repository": "internal",
+    "path": "deployment/vita_s100_onboard/scripts/oracle_policy_replay.py",
+    "imported_sha256": "5a485a09d749ca2ee6ea6cff77e016576aad9b490d3a90d54c50d3e759f5459d",
+    "captured_sha256": "5a485a09d749ca2ee6ea6cff77e016576aad9b490d3a90d54c50d3e759f5459d"
+  },
+  "scripts/summarize_incident_decoded.py": {
+    "repository": "internal",
+    "path": "deployment/vita_s100_onboard/scripts/summarize_incident_decoded.py",
+    "imported_sha256": "23355247f089aee824f1f816bd737a962420f742718d97d3db4c305dafa0e36e",
+    "import_difference": "colleague-only analysis script"
+  },
+  "scripts/oracle_diagnose_action_groups.py": {
+    "repository": "internal",
+    "path": "deployment/vita_s100_onboard/scripts/oracle_diagnose_action_groups.py",
+    "imported_sha256": "6ab4054781fb9bd4922301d2c539c7329c848dab8560b7ebdbe12eed423916ac",
+    "captured_sha256": "6ab4054781fb9bd4922301d2c539c7329c848dab8560b7ebdbe12eed423916ac"
+  },
+  "scripts/state_validate_selected.py": {
+    "repository": "internal",
+    "path": "deployment/vita_s100_onboard/scripts/state_validate_selected.py",
+    "imported_sha256": "a70a43c6c59e984522d3dc5d24cd666c72eba1ba92f963868f696547037c8d54",
+    "captured_sha256": "a70a43c6c59e984522d3dc5d24cd666c72eba1ba92f963868f696547037c8d54"
+  },
+  "scripts/preprocess_diagnose_native_stages.py": {
+    "repository": "internal",
+    "path": "deployment/vita_s100_onboard/scripts/preprocess_diagnose_native_stages.py",
+    "imported_sha256": "ec2b96fc8cb1d235b04b68af69004acd181e81a5deee16342515f34892a7879c",
+    "captured_sha256": "ec2b96fc8cb1d235b04b68af69004acd181e81a5deee16342515f34892a7879c"
+  },
+  "scripts/host_robot_tcp.py": {
+    "repository": "internal",
+    "path": "deployment/vita_s100_onboard/scripts/host_robot_tcp.py",
+    "imported_sha256": "b0a0541414cd56c6a4b361e3e80a4688ed73284624bc5114540d572468df3cd4",
+    "captured_sha256": "b0a0541414cd56c6a4b361e3e80a4688ed73284624bc5114540d572468df3cd4"
+  },
+  "scripts/probe_bluetooth_xbox.sh": {
+    "repository": "internal",
+    "path": "deployment/vita_s100_onboard/scripts/probe_bluetooth_xbox.sh",
+    "imported_sha256": "f9a2314439982e4ee6146dcc3378cd60374855cbf9444f650fd32e7f6a11bcca",
+    "captured_sha256": "f9a2314439982e4ee6146dcc3378cd60374855cbf9444f650fd32e7f6a11bcca"
+  },
+  "scripts/oracle_preprocessing_actions.py": {
+    "repository": "internal",
+    "path": "deployment/vita_s100_onboard/scripts/oracle_preprocessing_actions.py",
+    "imported_sha256": "be50d23bf5b21299a8ae65764953fba3bb106ab1a2f8d97e8442ee77549f269e",
+    "captured_sha256": "be50d23bf5b21299a8ae65764953fba3bb106ab1a2f8d97e8442ee77549f269e"
+  },
+  "scripts/oracle_diagnose_body_features.py": {
+    "repository": "internal",
+    "path": "deployment/vita_s100_onboard/scripts/oracle_diagnose_body_features.py",
+    "imported_sha256": "539bbde5ebe8df22c32e7e4a1842e9a888c0a87390ac6f6c3485c34f0fd638c4",
+    "captured_sha256": "539bbde5ebe8df22c32e7e4a1842e9a888c0a87390ac6f6c3485c34f0fd638c4"
+  },
+  "scripts/oracle_final_pico_transport.py": {
+    "repository": "internal",
+    "path": "deployment/vita_s100_onboard/scripts/oracle_final_pico_transport.py",
+    "imported_sha256": "b959155f1c8b981d116f12eee78146d228bb3cb051dcc740f119be781d405c8f",
+    "captured_sha256": "b959155f1c8b981d116f12eee78146d228bb3cb051dcc740f119be781d405c8f"
+  },
+  "scripts/onboard_operator.py": {
+    "repository": "internal",
+    "path": "deployment/vita_s100_onboard/scripts/onboard_operator.py",
+    "imported_sha256": "bf0cb060c2d59c2171ba6a6bbbd6f11c320ca98011b660bace71d34fcd6e518c",
+    "captured_sha256": "bf0cb060c2d59c2171ba6a6bbbd6f11c320ca98011b660bace71d34fcd6e518c",
+    "round2_change": "Latency candidate 20261009; see C_LATENCY_ROUND2_20261009.md",
+    "round2_source_sha256": "f6e645bc621f802e007584190cdf80bcf5a0b148fab903535274d4aae6faa946"
+  },
+  "scripts/oracle_diagnose_router_groups.py": {
+    "repository": "internal",
+    "path": "deployment/vita_s100_onboard/scripts/oracle_diagnose_router_groups.py",
+    "imported_sha256": "35e17143553187eac335a93ae66ae8810826af6c9ec6943cb054e7ebeec05eed",
+    "captured_sha256": "35e17143553187eac335a93ae66ae8810826af6c9ec6943cb054e7ebeec05eed"
+  },
+  "scripts/extract_incident_attitude.py": {
+    "repository": "internal",
+    "path": "deployment/vita_s100_onboard/scripts/extract_incident_attitude.py",
+    "imported_sha256": "63a552c99d2d54fa1fb66fdcd88abd3b24af999f543a9d2449851215c763fb94",
+    "import_difference": "colleague-only analysis script"
+  },
+  "scripts/send_xbox_wifi.py": {
+    "repository": "internal",
+    "path": "deployment/vita_s100_onboard/scripts/send_xbox_wifi.py",
+    "imported_sha256": "6530da701e305fcf71801d652403fa647d9ac791d0d1f8065cdbd8c7a326a0db",
+    "captured_sha256": "6530da701e305fcf71801d652403fa647d9ac791d0d1f8065cdbd8c7a326a0db"
+  },
+  "scripts/report_shadow_metrics.py": {
+    "repository": "internal",
+    "path": "deployment/vita_s100_onboard/scripts/report_shadow_metrics.py",
+    "imported_sha256": "22103dc5df6ee364087da351fe1b32234a34724f87547a85af4bdb365b24d309",
+    "captured_sha256": "22103dc5df6ee364087da351fe1b32234a34724f87547a85af4bdb365b24d309"
+  },
+  "scripts/run_shadow_with_pico_service.py": {
+    "repository": "internal",
+    "path": "deployment/vita_s100_onboard/scripts/run_shadow_with_pico_service.py",
+    "imported_sha256": "d4d2379ce0e1b7985837e897d54571f5b3f06506e4f07823ad56400aa8b0bf13",
+    "captured_sha256": "d4d2379ce0e1b7985837e897d54571f5b3f06506e4f07823ad56400aa8b0bf13"
+  },
+  "scripts/send_fake_pico_via_robot_ssh.py": {
+    "repository": "internal",
+    "path": "deployment/vita_s100_onboard/scripts/send_fake_pico_via_robot_ssh.py",
+    "imported_sha256": "0775890d5b48b3093f9641a7166cb6fe79a0452500615d74ba959d93fe475dfc",
+    "captured_sha256": "0775890d5b48b3093f9641a7166cb6fe79a0452500615d74ba959d93fe475dfc"
+  },
+  "scripts/model_cut_utils.py": {
+    "repository": "internal",
+    "path": "deployment/vita_s100_onboard/scripts/model_cut_utils.py",
+    "imported_sha256": "98b4e24734bf6b54d69da3ad8a855e688c7942d3b4ec9d612f373285798d5ef3",
+    "captured_sha256": "98b4e24734bf6b54d69da3ad8a855e688c7942d3b4ec9d612f373285798d5ef3"
+  },
+  "scripts/vita_wifi.sh": {
+    "repository": "internal",
+    "path": "deployment/vita_s100_onboard/scripts/vita_wifi.sh",
+    "imported_sha256": "9aff6f8515ed25fc2a7908ad038b7d2da63ebfa01b8db54e493bdf10815480d6",
+    "captured_sha256": "9aff6f8515ed25fc2a7908ad038b7d2da63ebfa01b8db54e493bdf10815480d6"
+  },
+  "scripts/analyze_latest_live_logs.py": {
+    "repository": "internal",
+    "path": "deployment/vita_s100_onboard/scripts/analyze_latest_live_logs.py",
+    "imported_sha256": "2bf0047bdb829fc559c70fb7fec3c008f42f916b2ab719cae5cf330959dec545",
+    "captured_sha256": "2bf0047bdb829fc559c70fb7fec3c008f42f916b2ab719cae5cf330959dec545"
+  },
+  "scripts/model_build_velocity.py": {
+    "repository": "internal",
+    "path": "deployment/vita_s100_onboard/scripts/model_build_velocity.py",
+    "imported_sha256": "1d3085ac28fb1a18f13b09f6d4825937f013ca2a6b0ce4d822bfca4e092f5492",
+    "captured_sha256": "1d3085ac28fb1a18f13b09f6d4825937f013ca2a6b0ce4d822bfca4e092f5492"
+  },
+  "scripts/flow_make_fixture.py": {
+    "repository": "internal",
+    "path": "deployment/vita_s100_onboard/scripts/flow_make_fixture.py",
+    "imported_sha256": "0ea620dad6b2c0b561ef1799fc7701921ce090319046c600e2afcded6bb846fa",
+    "captured_sha256": "0ea620dad6b2c0b561ef1799fc7701921ce090319046c600e2afcded6bb846fa"
+  },
+  "scripts/oracle_final_output.py": {
+    "repository": "internal",
+    "path": "deployment/vita_s100_onboard/scripts/oracle_final_output.py",
+    "imported_sha256": "a8342ad2296e5bbcd928f078a9f950d07ea5861b36a4fe65bb1843687af5a44f",
+    "captured_sha256": "a8342ad2296e5bbcd928f078a9f950d07ea5861b36a4fe65bb1843687af5a44f"
+  },
+  "scripts/operator_service.py": {
+    "repository": "internal",
+    "path": "deployment/vita_s100_onboard/scripts/operator_service.py",
+    "imported_sha256": "925537378a240dcc53e4ed1b48a0d732a2841781e733964599171a657170741c",
+    "captured_sha256": "925537378a240dcc53e4ed1b48a0d732a2841781e733964599171a657170741c"
+  },
+  "scripts/network_reference_inspect.py": {
+    "repository": "internal",
+    "path": "deployment/vita_s100_onboard/scripts/network_reference_inspect.py",
+    "imported_sha256": "8283ece60a4d5f08e87a9ed89602fb5c104c00282c4782c246a87ac188325576",
+    "captured_sha256": "8283ece60a4d5f08e87a9ed89602fb5c104c00282c4782c246a87ac188325576"
+  },
+  "scripts/run_onboard_shadow.py": {
+    "repository": "internal",
+    "path": "deployment/vita_s100_onboard/scripts/run_onboard_shadow.py",
+    "imported_sha256": "e30753dc64665f23fc500048c46a305c226299c7b2ff1e0ff6547963bc942dfe",
+    "captured_sha256": "e30753dc64665f23fc500048c46a305c226299c7b2ff1e0ff6547963bc942dfe"
+  },
+  "scripts/live_sdk_readonly_probe.py": {
+    "repository": "internal",
+    "path": "deployment/vita_s100_onboard/scripts/live_sdk_readonly_probe.py",
+    "imported_sha256": "54c897db7940ca16d2055c862a96e4993c19e758422951f23e7ef48cd91a90c1",
+    "captured_sha256": "54c897db7940ca16d2055c862a96e4993c19e758422951f23e7ef48cd91a90c1"
+  },
+  "scripts/pico_onboard_probe.py": {
+    "repository": "internal",
+    "path": "deployment/vita_s100_onboard/scripts/pico_onboard_probe.py",
+    "imported_sha256": "fc6f9e01e6f345cfff7c8cb868f81f34f7083fad38673b81f2dfe04fb6d15026",
+    "captured_sha256": "fc6f9e01e6f345cfff7c8cb868f81f34f7083fad38673b81f2dfe04fb6d15026"
+  },
+  "scripts/state_test_pico_snapshot.py": {
+    "repository": "internal",
+    "path": "deployment/vita_s100_onboard/scripts/state_test_pico_snapshot.py",
+    "imported_sha256": "437e48597528a51ddd93cc9ee0b1b8f4f49386b611a32ffeb89fbce2bdadf6e5",
+    "captured_sha256": "437e48597528a51ddd93cc9ee0b1b8f4f49386b611a32ffeb89fbce2bdadf6e5"
+  },
+  "scripts/native_runtime_smoke.py": {
+    "repository": "internal",
+    "path": "deployment/vita_s100_onboard/scripts/native_runtime_smoke.py",
+    "imported_sha256": "e28188304ad6ee47b1f307f708b5cd5422d0ed6d9a31681393adae6599a8865c",
+    "captured_sha256": "e28188304ad6ee47b1f307f708b5cd5422d0ed6d9a31681393adae6599a8865c"
+  },
+  "scripts/board_policy_replay.py": {
+    "repository": "internal",
+    "path": "deployment/vita_s100_onboard/scripts/board_policy_replay.py",
+    "imported_sha256": "3bf52ec52f1877de44efdf6b754869853fbb00b6dd1f859f829369de730e7464",
+    "captured_sha256": "3bf52ec52f1877de44efdf6b754869853fbb00b6dd1f859f829369de730e7464"
+  },
+  "scripts/model_build_fp32_moe.py": {
+    "repository": "internal",
+    "path": "deployment/vita_s100_onboard/scripts/model_build_fp32_moe.py",
+    "imported_sha256": "606ebad4f809875a104209c5e278b95c1285737a170fd53640ea122aa07ef8de",
+    "captured_sha256": "606ebad4f809875a104209c5e278b95c1285737a170fd53640ea122aa07ef8de"
+  },
+  "scripts/start_onboard_vita.sh": {
+    "repository": "internal",
+    "path": "deployment/vita_s100_onboard/scripts/start_onboard_vita.sh",
+    "imported_sha256": "8468af7bbbae4ed56ac8f2cbd8d341969d0ba7f6d48a637368fd6cc661b5b5a2",
+    "captured_sha256": "8468af7bbbae4ed56ac8f2cbd8d341969d0ba7f6d48a637368fd6cc661b5b5a2",
+    "round2_change": "Latency candidate 20261009; see C_LATENCY_ROUND2_20261009.md",
+    "round2_source_sha256": "0b04eaae76e8a623e4896cac6b2be35f767b2f788cdb519cfb4714a773257770"
+  },
+  "scripts/live_state_readonly_probe.py": {
+    "repository": "internal",
+    "path": "deployment/vita_s100_onboard/scripts/live_state_readonly_probe.py",
+    "imported_sha256": "cb3b2323db1ed242ea91dca96026ebd5674d582a04abe8ec20a0f6778d3afe74",
+    "captured_sha256": "cb3b2323db1ed242ea91dca96026ebd5674d582a04abe8ec20a0f6778d3afe74"
+  },
+  "scripts/xbox_bluetooth.sh": {
+    "repository": "internal",
+    "path": "deployment/vita_s100_onboard/scripts/xbox_bluetooth.sh",
+    "imported_sha256": "963ad4ee914e8223b6edf7e9b0db4a05e64420c27cde141131a992d68b384599",
+    "captured_sha256": "963ad4ee914e8223b6edf7e9b0db4a05e64420c27cde141131a992d68b384599"
+  },
+  "scripts/bluetooth_monitor_readonly_check.py": {
+    "repository": "internal",
+    "path": "deployment/vita_s100_onboard/scripts/bluetooth_monitor_readonly_check.py",
+    "imported_sha256": "60512f5cfe69ee2d1d22ce1428de44916dcafaecd589399b352a56726add1db0",
+    "captured_sha256": "60512f5cfe69ee2d1d22ce1428de44916dcafaecd589399b352a56726add1db0"
+  },
+  "scripts/preprocess_capture_gpu_stages.py": {
+    "repository": "internal",
+    "path": "deployment/vita_s100_onboard/scripts/preprocess_capture_gpu_stages.py",
+    "imported_sha256": "ed72463eb214e7d6015cb9b4f19e552f1e271fe2934036fe360a049c3fe21922",
+    "captured_sha256": "ed72463eb214e7d6015cb9b4f19e552f1e271fe2934036fe360a049c3fe21922"
+  },
+  "scripts/model_extract_motion.py": {
+    "repository": "internal",
+    "path": "deployment/vita_s100_onboard/scripts/model_extract_motion.py",
+    "imported_sha256": "a1ddc8a500044b720b780fecc4cbc9ba4ca6b26e3dd425e5dcf97ec4474bbaee",
+    "captured_sha256": "a1ddc8a500044b720b780fecc4cbc9ba4ca6b26e3dd425e5dcf97ec4474bbaee"
+  },
+  "scripts/flow_replay_live.py": {
+    "repository": "internal",
+    "path": "deployment/vita_s100_onboard/scripts/flow_replay_live.py",
+    "imported_sha256": "df0e032f382f46aeeab1e48e5e68531bffae4802628705c734e9d2fa0d6e4166",
+    "captured_sha256": "df0e032f382f46aeeab1e48e5e68531bffae4802628705c734e9d2fa0d6e4166"
+  },
+  "scripts/state_validate_native_guards.py": {
+    "repository": "internal",
+    "path": "deployment/vita_s100_onboard/scripts/state_validate_native_guards.py",
+    "imported_sha256": "dc3efdc052a5ab0e1bf5e5ffd5def7fb149033ec93e35be065abf3541e75e955",
+    "captured_sha256": "dc3efdc052a5ab0e1bf5e5ffd5def7fb149033ec93e35be065abf3541e75e955"
+  },
+  "scripts/send_xbox_wifi.sh": {
+    "repository": "internal",
+    "path": "deployment/vita_s100_onboard/scripts/send_xbox_wifi.sh",
+    "imported_sha256": "0ec9487031d305cadaebae1485edbe911deacfb8a47e6028c868f7fa2cea0d02",
+    "captured_sha256": "0ec9487031d305cadaebae1485edbe911deacfb8a47e6028c868f7fa2cea0d02"
+  },
+  "src/tests/test_onboard_live_control.py": {
+    "repository": "internal",
+    "path": "deployment/vita_s100_onboard/src/tests/test_onboard_live_control.py",
+    "imported_sha256": "fe780a7fd86c312c29bccb26653f74ca90a74aea93a219e3e493658218989407",
+    "captured_sha256": "fe780a7fd86c312c29bccb26653f74ca90a74aea93a219e3e493658218989407"
+  },
+  "src/tests/test_operator_input_check.py": {
+    "repository": "internal",
+    "path": "deployment/vita_s100_onboard/src/tests/test_operator_input_check.py",
+    "imported_sha256": "c4d75821f1532cc767a46f0cf94622822ebe804a449c2c8cc460b9191f01338a",
+    "captured_sha256": "c4d75821f1532cc767a46f0cf94622822ebe804a449c2c8cc460b9191f01338a"
+  },
+  "src/tests/test_operator_service.py": {
+    "repository": "internal",
+    "path": "deployment/vita_s100_onboard/src/tests/test_operator_service.py",
+    "imported_sha256": "7330b2200247d2c549929133988e9b5ede172e3ee51076fbc86c12ffc3fa633a",
+    "captured_sha256": "7330b2200247d2c549929133988e9b5ede172e3ee51076fbc86c12ffc3fa633a"
+  },
+  "src/tests/test_xbox_bluetooth_setup.py": {
+    "repository": "internal",
+    "path": "deployment/vita_s100_onboard/src/tests/test_xbox_bluetooth_setup.py",
+    "imported_sha256": "738aa875ccba719268a8604bb3b6dc826aa38ff95c66137da9b1e34b361b1870",
+    "captured_sha256": "738aa875ccba719268a8604bb3b6dc826aa38ff95c66137da9b1e34b361b1870"
+  },
+  "src/tests/test_native_runtime_compat.py": {
+    "repository": "internal",
+    "path": "deployment/vita_s100_onboard/src/tests/test_native_runtime_compat.py",
+    "imported_sha256": "22d3df57d96c77740d44e7bc3a142f12e1d6d479232444c68aaf114c5352c163",
+    "captured_sha256": "22d3df57d96c77740d44e7bc3a142f12e1d6d479232444c68aaf114c5352c163"
+  },
+  "src/tests/test_bluetooth_input_probe.py": {
+    "repository": "internal",
+    "path": "deployment/vita_s100_onboard/src/tests/test_bluetooth_input_probe.py",
+    "imported_sha256": "ff3f69676a1197fc387879e24bba465852e7214d7e7bdb9bce2e9ae536d2dfae",
+    "captured_sha256": "ff3f69676a1197fc387879e24bba465852e7214d7e7bdb9bce2e9ae536d2dfae"
+  },
+  "src/tests/test_vita_s100_state_adapter.py": {
+    "repository": "internal",
+    "path": "deployment/vita_s100_onboard/src/tests/test_vita_s100_state_adapter.py",
+    "imported_sha256": "a553bbee5d7e9ddbe008e6e8ff8a29fd5bbf0ba6cfe056d629dce28e1cb6c662",
+    "captured_sha256": "a553bbee5d7e9ddbe008e6e8ff8a29fd5bbf0ba6cfe056d629dce28e1cb6c662"
+  },
+  "src/tests/test_onboard_live_io.py": {
+    "repository": "internal",
+    "path": "deployment/vita_s100_onboard/src/tests/test_onboard_live_io.py",
+    "imported_sha256": "54032c97fb43f9f99c2c98673492a978a3f1da911440cdf1d8f666f681122a48",
+    "captured_sha256": "54032c97fb43f9f99c2c98673492a978a3f1da911440cdf1d8f666f681122a48"
+  },
+  "src/tests/test_pico_atomic_reader.py": {
+    "repository": "internal",
+    "path": "deployment/vita_s100_onboard/src/tests/test_pico_atomic_reader.py",
+    "imported_sha256": "453f3867ade50477c2a542894ee4d9d07b66ed6c00f3a0144d2c4776c977a7bc",
+    "captured_sha256": "453f3867ade50477c2a542894ee4d9d07b66ed6c00f3a0144d2c4776c977a7bc"
+  },
+  "src/tests/test_onboard_failure_cleanup.py": {
+    "repository": "internal",
+    "path": "deployment/vita_s100_onboard/src/tests/test_onboard_failure_cleanup.py",
+    "imported_sha256": "278163eb43d8b51350fbab4701b6aecfb01e58768227861f968783f5b26a9af0",
+    "captured_sha256": "278163eb43d8b51350fbab4701b6aecfb01e58768227861f968783f5b26a9af0"
+  },
+  "tests/live_session_offline.py": {
+    "repository": "internal",
+    "path": "deployment/vita_s100_onboard/tests/live_session_offline.py",
+    "imported_sha256": "c22b54f23c102663fa2a66de868fd263a80d3dc1a3f07bfbfd1b36e78aed4479",
+    "captured_sha256": "c22b54f23c102663fa2a66de868fd263a80d3dc1a3f07bfbfd1b36e78aed4479"
+  },
+  "tests/live_protocol_offline.py": {
+    "repository": "internal",
+    "path": "deployment/vita_s100_onboard/tests/live_protocol_offline.py",
+    "imported_sha256": "c509e134bf5c4aaf5f12e5411e81e3534f958260dcda118f0f5f37dfc9753b0f",
+    "captured_sha256": "c509e134bf5c4aaf5f12e5411e81e3534f958260dcda118f0f5f37dfc9753b0f"
+  },
+  "tests/wifi_offline_test.py": {
+    "repository": "internal",
+    "path": "deployment/vita_s100_onboard/tests/wifi_offline_test.py",
+    "imported_sha256": "cfd02f4b3ee2ed2ca8fdcdcf0bef8437dfcbbda1dcd11a4e9573eca7f13886e7",
+    "captured_sha256": "f57a355adcf424cb16a9a3e98e16ac32b4f46bcd9a57d22336aec53cb7403f83",
+    "import_difference": "test updates from colleague or repository layout"
+  },
+  "tests/output_conditioning_test.py": {
+    "repository": "internal",
+    "path": "deployment/vita_s100_onboard/tests/output_conditioning_test.py",
+    "imported_sha256": "a8f2518f51d219b9dfe3730a2dbe7fe9e48b9a4c7e30a609d0ec9a3acee1366b",
+    "captured_sha256": "a8f2518f51d219b9dfe3730a2dbe7fe9e48b9a4c7e30a609d0ec9a3acee1366b"
+  },
+  "config/motion_groups.json": {
+    "repository": "internal",
+    "path": "deployment/vita_s100_onboard/config/motion_groups.json",
+    "added": "2026-10-08: A-E deployment; not part of captured September baseline"
+  },
+  "src/deployment/vita_s100_aorta_30dof/motion_groups.py": {
+    "repository": "internal",
+    "path": "deployment/vita_s100_onboard/src/deployment/vita_s100_aorta_30dof/motion_groups.py",
+    "added": "2026-10-08: A-E deployment; not part of captured September baseline"
+  },
+  "src/tests/test_motion_groups.py": {
+    "repository": "internal",
+    "path": "deployment/vita_s100_onboard/src/tests/test_motion_groups.py",
+    "added": "2026-10-08: A-E deployment; not part of captured September baseline"
+  },
+  "scripts/group_flow_replay.py": {
+    "repository": "internal",
+    "path": "deployment/vita_s100_onboard/scripts/group_flow_replay.py",
+    "added": "2026-10-08: A-E deployment; not part of captured September baseline"
+  },
+  "scripts/model_package_manifest.py": {
+    "repository": "internal",
+    "path": "deployment/vita_s100_onboard/scripts/model_package_manifest.py",
+    "added": "2026-10-08: A-E deployment; not part of captured September baseline"
+  },
+  "scripts/model_record_oracle.py": {
+    "repository": "internal",
+    "path": "deployment/vita_s100_onboard/scripts/model_record_oracle.py",
+    "added": "2026-10-08: A-E deployment; not part of captured September baseline"
+  },
+  "src/deployment/vita_s100_aorta_30dof/async_recording.py": {
+    "repository": "public",
+    "path": "deployment/vita_s100_aorta_30dof/async_recording.py",
+    "imported_sha256": "8cab42f33ee9a1f0eb1f2280fb6a06044cf48c22238b6bf1c9a8876c6cb0cdc8",
+    "captured_sha256": null,
+    "import_difference": "New latency optimization source; absent from historical robot snapshot"
+  },
+  "src/tests/test_vita_async_recording.py": {
+    "repository": "public",
+    "path": "tests/test_vita_async_recording.py",
+    "imported_sha256": "21752bb38f1b60e6654e76ee61f9ee7c109faffb9d6aa0f5e0cd8c83530f63a5",
+    "captured_sha256": null,
+    "import_difference": "New latency optimization source; absent from historical robot snapshot"
+  },
+  "scripts/profile_recording.py": {
+    "repository": "internal",
+    "path": "deployment/vita_s100_onboard/scripts/profile_recording.py",
+    "imported_sha256": "5aeae413b09fa877b76bb9a76be93c18e9696a441cfc4b4986e86185f3b7cbdc",
+    "captured_sha256": null,
+    "import_difference": "New latency optimization source; absent from historical robot snapshot"
+  },
+  "scripts/profile_deployment_replay.py": {
+    "repository": "internal",
+    "path": "deployment/vita_s100_onboard/scripts/profile_deployment_replay.py",
+    "imported_sha256": "697822c4410bbea89c939ef7e00979e7f050230c5049ead6006d39fe02bd5b2c",
+    "captured_sha256": null,
+    "import_difference": "New latency optimization source; absent from historical robot snapshot"
+  },
+  "src/deployment/vita_s100_aorta_30dof/onboard_command_encoding.py": {
+    "repository": "internal",
+    "path": "deployment/vita_s100_onboard/src/deployment/vita_s100_aorta_30dof/onboard_command_encoding.py",
+    "imported_sha256": "3f3ef04fa315a5051f4fd08a2b23b48cc7297cc97e5548334a6ca754b58654dc",
+    "captured_sha256": null,
+    "import_difference": "New latency optimization source; absent from historical robot snapshot"
+  },
+  "src/deployment/vita_s100_aorta_30dof/onboard_publish_profile.py": {
+    "repository": "internal",
+    "path": "deployment/vita_s100_onboard/src/deployment/vita_s100_aorta_30dof/onboard_publish_profile.py",
+    "imported_sha256": "e4e7cdbe8963a52376b1a522762722410af2aaf46efc3fac52c98880a8601c9d",
+    "captured_sha256": null,
+    "import_difference": "New latency optimization source; absent from historical robot snapshot"
+  },
+  "tests/command_encoding_offline.py": {
+    "repository": "internal",
+    "path": "deployment/vita_s100_onboard/tests/command_encoding_offline.py",
+    "imported_sha256": "5210d77ccaa06e28d38283d257f2c1b78166f34ad4d0a14bb8c37a63856c2886",
+    "captured_sha256": null,
+    "import_difference": "New latency optimization source; absent from historical robot snapshot"
+  },
+  "tests/publish_profile_offline.py": {
+    "repository": "internal",
+    "path": "deployment/vita_s100_onboard/tests/publish_profile_offline.py",
+    "imported_sha256": "b6743f85f6735b111ef6175b1137360effdfe02943d2b086a1169534339643d6",
+    "captured_sha256": null,
+    "import_difference": "New latency optimization source; absent from historical robot snapshot"
+  },
+  "scripts/audit_command_delivery.py": {
+    "repository": "internal",
+    "path": "deployment/vita_s100_onboard/scripts/audit_command_delivery.py",
+    "imported_sha256": "531fbac5e278784f4a87f5b4396d52fc332a76df4ed7486e9ecf7f888cccf9ad",
+    "captured_sha256": null,
+    "note": "New offline acceptance tool; absent from historical captured snapshot",
+    "round2_source_sha256": "aa363e6b2ce77786ad840b56ead8b09d0787d8a22934453ec3884ccb311661b1",
+    "round2_change": "Require mean <17 ms together with complete trace <20 ms; retain old trace gate separately"
+  },
+  "tests/command_delivery_audit_offline.py": {
+    "repository": "internal",
+    "path": "deployment/vita_s100_onboard/tests/command_delivery_audit_offline.py",
+    "imported_sha256": "1c0bf71ef5f30db75026835124b15e56f4b923e0c1febc7baed1da4985b41eaa",
+    "captured_sha256": null,
+    "note": "New offline acceptance tool; absent from historical captured snapshot",
+    "round2_source_sha256": "a47c3b001ea5662d5b70152f1b774da308da6d3783923134a1ea87576862d77a",
+    "round2_change": "Require mean <17 ms together with complete trace <20 ms; retain old trace gate separately"
+  },
+  "scripts/prepare_zenoh_session.py": {
+    "repository": "internal",
+    "path": "deployment/vita_s100_onboard/scripts/prepare_zenoh_session.py",
+    "imported_sha256": "c1d25cf3d8dee9a979a37325954dda8814807cb12c671755a228b771de8b82fa",
+    "captured_sha256": null,
+    "reason": "Private process session config; outgoing auto-SHM only, vendor file unchanged"
+  }
+}

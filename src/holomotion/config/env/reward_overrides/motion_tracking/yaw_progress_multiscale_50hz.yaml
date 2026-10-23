@@ -1,0 +1,20 @@
+# @package _global_
+
+# Opt-in overlay for 50 Hz GMR-free Motion training.  Compose this after the
+# embodiment's normal reward group.  It preserves the existing total yaw-
+# progress weight while replacing the one-second-only term with reset-safe
+# 1 s / 4 s / 8 s and episode-anchored signed progress.
+rewards:
+  skeleton_si_windowed_yaw_progress_tracking_exp:
+    weight: 0.0
+    params:
+      std: 1.5
+      window_steps: 50
+
+  skeleton_si_multiscale_yaw_progress_tracking_exp:
+    weight: 0.5
+    params:
+      std: 1.5
+      window_steps: [50, 200, 400]
+      window_weights: [0.2, 0.3, 0.5]
+      episode_weight: 0.25

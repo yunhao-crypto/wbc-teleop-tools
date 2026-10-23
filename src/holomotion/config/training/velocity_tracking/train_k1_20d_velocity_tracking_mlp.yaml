@@ -1,0 +1,94 @@
+# @package _global_
+
+defaults:
+  - /training: train_base
+  - /algo: ppo
+  - /robot: booster/K1/k1_training_isaaclab
+  - /env: velocity_tracking
+  - /env/terminations: termination_velocity_tracking
+  - /env/observations: velocity_tracking/obs_velocity_tracking_k1_20d
+  - /env/rewards: velocity_tracking/rew_velocity_tracking_k1
+  - /env/domain_randomization: domain_rand_medium_k1
+  - /env/terrain: isaaclab_rough
+  - /modules: velocity_tracking/velocity_tracking_mlp
+  - _self_
+
+project_name: GMRFreeHoloMotionK1Velocity
+experiment_name: gmr_free_k1_velocity_from_scratch
+checkpoint: null
+base_seed: 20260814
+
+# The shared robot schema contains an inactive motion-data section.  Keep its
+# interpolation well-defined without opening any motion dataset.
+train_hdf5_roots: []
+
+env:
+  config:
+    seed: ${sum:[${base_seed},${process_id}]}
+    actions:
+      dof_pos:
+        type: joint_position
+        params:
+          asset_name: robot
+          joint_names: ${robot.velocity_policy_dof_names}
+          preserve_order: true
+          use_default_offset: true
+          scale: ${robot.actuators.velocity_policy_action_scale}
+
+robot:
+  # PPO output is 20D.  IsaacLab writes those commands to the named body
+  # joints; the two omitted head actuators retain their default PD targets.
+  actions_dim: 20
+  init_state:
+    pos: [0.0, 0.0, 0.57]
+    default_joint_angles:
+      AAHead_yaw: 0.0
+      Head_pitch: 0.0
+      ALeft_Shoulder_Pitch: 0.2
+      Left_Shoulder_Roll: -1.25
+      Left_Elbow_Pitch: 0.0
+      Left_Elbow_Yaw: -0.5
+      ARight_Shoulder_Pitch: 0.2
+      Right_Shoulder_Roll: 1.25
+      Right_Elbow_Pitch: 0.0
+      Right_Elbow_Yaw: 0.5
+      Left_Hip_Pitch: -0.15
+      Left_Hip_Roll: 0.0
+      Left_Hip_Yaw: 0.0
+      Left_Knee_Pitch: 0.3
+      Left_Ankle_Pitch: -0.15
+      Left_Ankle_Roll: 0.0
+      Right_Hip_Pitch: -0.15
+      Right_Hip_Roll: 0.0
+      Right_Hip_Yaw: 0.0
+      Right_Knee_Pitch: 0.3
+      Right_Ankle_Pitch: -0.15
+      Right_Ankle_Roll: 0.0
+
+algo:
+  config:
+    num_learning_iterations: 20000
+    save_interval: 1000
+    export_policy: true
+    # The generic symmetry setup assumes robot.dof_names and action_dim have
+    # equal length.  K1 locomotion intentionally has 22 state joints but only
+    # 20 actions, so symmetry remains disabled until a 20D named contract is
+    # implemented and independently verified.
+    symmetry_loss:
+      enabled: false
+
+velocity_policy_contract:
+  policy_action_dim: 20
+  controller_target_dim: 22
+  policy_joint_names: ${robot.velocity_policy_dof_names}
+  controller_joint_names: ${robot.dof_names}
+  omitted_head_joint_names: ${robot.head_dof_names}
+  omitted_head_target_source: asset_default
+
+holomotion_training_contract:
+  required: true
+  profile: holomotion_unified_200hz_v1
+  task: velocity_tracking
+  embodiment: booster_k1_22dof
+  policy_action_dim: 20
+  controller_target_dim: 22

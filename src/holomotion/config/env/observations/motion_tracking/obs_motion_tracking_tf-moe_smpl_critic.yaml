@@ -1,0 +1,243 @@
+# @package _global_
+
+# Critic-only SMPL migration:
+# - Actor observations are identical to obs_motion_tracking_tf-moe_smpl.
+# - Critic target observations reuse the Actor's SMPL P+A+R command.
+# - Legacy retargeted robot-reference target terms are not instantiated.
+# - Privileged actual robot state remains unchanged.
+obs:
+  context_length: 1
+  n_fut_frames: 10
+  target_fps: 50
+  # Null preserves the historical G1 simulator order exactly.  K1 sets this
+  # to its explicit 22-DoF policy contract so training/export/deployment use
+  # the same order even when IsaacLab discovers joints in a different order.
+  robot_dof_names: null
+  # Null preserves the historical G1 runtime order.  New embodiments set an
+  # explicit full-body order so the fresh Critic and normalizer have a stable,
+  # auditable schema independent of USD discovery order.
+  robot_body_names: null
+
+  obs_groups:
+    unified:
+      atomic_obs_list:
+        - actor_smpl_gravity_projection_cur:
+            func: smpl_gravity_projection_cur
+            history_length: ${obs.context_length}
+            flatten_history_dim: false
+            noise:
+              type: AdditiveUniformNoiseCfg
+              params:
+                n_min: ${domain_rand.obs_noise.actor_ref_gravity_projection_cur.n_min}
+                n_max: ${domain_rand.obs_noise.actor_ref_gravity_projection_cur.n_max}
+
+        - actor_smpl_gravity_projection_fut:
+            func: smpl_gravity_projection_fut
+            params:
+              num_frames: ${obs.n_fut_frames}
+            noise:
+              type: AdditiveUniformNoiseCfg
+              params:
+                n_min: ${domain_rand.obs_noise.actor_ref_gravity_projection_fut.n_min}
+                n_max: ${domain_rand.obs_noise.actor_ref_gravity_projection_fut.n_max}
+
+        - actor_smpl_base_linvel_cur:
+            func: smpl_base_linvel_cur
+            history_length: ${obs.context_length}
+            flatten_history_dim: false
+            noise:
+              type: AdditiveUniformNoiseCfg
+              params:
+                n_min: ${domain_rand.obs_noise.actor_ref_base_linvel_cur.n_min}
+                n_max: ${domain_rand.obs_noise.actor_ref_base_linvel_cur.n_max}
+                n_min_z: ${domain_rand.obs_noise.actor_ref_base_linvel_cur.n_min_z}
+                n_max_z: ${domain_rand.obs_noise.actor_ref_base_linvel_cur.n_max_z}
+
+        - actor_smpl_base_linvel_fut:
+            func: smpl_base_linvel_fut
+            params:
+              num_frames: ${obs.n_fut_frames}
+            noise:
+              type: AdditiveUniformNoiseCfg
+              params:
+                n_min: ${domain_rand.obs_noise.actor_ref_base_linvel_fut.n_min}
+                n_max: ${domain_rand.obs_noise.actor_ref_base_linvel_fut.n_max}
+                n_min_z: ${domain_rand.obs_noise.actor_ref_base_linvel_fut.n_min_z}
+                n_max_z: ${domain_rand.obs_noise.actor_ref_base_linvel_fut.n_max_z}
+
+        - actor_smpl_base_angvel_cur:
+            func: smpl_base_angvel_cur
+            history_length: ${obs.context_length}
+            flatten_history_dim: false
+            noise:
+              type: AdditiveUniformNoiseCfg
+              params:
+                n_min: ${domain_rand.obs_noise.actor_ref_base_angvel_cur.n_min}
+                n_max: ${domain_rand.obs_noise.actor_ref_base_angvel_cur.n_max}
+                n_min_z: ${domain_rand.obs_noise.actor_ref_base_angvel_cur.n_min_z}
+                n_max_z: ${domain_rand.obs_noise.actor_ref_base_angvel_cur.n_max_z}
+
+        - actor_smpl_base_angvel_fut:
+            func: smpl_base_angvel_fut
+            params:
+              num_frames: ${obs.n_fut_frames}
+            noise:
+              type: AdditiveUniformNoiseCfg
+              params:
+                n_min: ${domain_rand.obs_noise.actor_ref_base_angvel_fut.n_min}
+                n_max: ${domain_rand.obs_noise.actor_ref_base_angvel_fut.n_max}
+                n_min_z: ${domain_rand.obs_noise.actor_ref_base_angvel_fut.n_min_z}
+                n_max_z: ${domain_rand.obs_noise.actor_ref_base_angvel_fut.n_max_z}
+
+        - actor_smpl_body_command_cur:
+            func: smpl_body_command_cur
+            history_length: ${obs.context_length}
+            flatten_history_dim: false
+            noise:
+              type: AdditiveUniformNoiseCfg
+              params:
+                n_min: ${domain_rand.obs_noise.actor_ref_dof_pos_cur.n_min}
+                n_max: ${domain_rand.obs_noise.actor_ref_dof_pos_cur.n_max}
+
+        - actor_smpl_body_command_fut:
+            func: smpl_body_command_fut
+            params:
+              num_frames: ${obs.n_fut_frames}
+            noise:
+              type: AdditiveUniformNoiseCfg
+              params:
+                n_min: ${domain_rand.obs_noise.actor_ref_dof_pos_fut.n_min}
+                n_max: ${domain_rand.obs_noise.actor_ref_dof_pos_fut.n_max}
+
+        - actor_smpl_root_height_cur:
+            func: smpl_root_height_cur
+            history_length: ${obs.context_length}
+            flatten_history_dim: false
+            noise:
+              type: AdditiveUniformNoiseCfg
+              params:
+                n_min: ${domain_rand.obs_noise.actor_ref_root_height_cur.n_min}
+                n_max: ${domain_rand.obs_noise.actor_ref_root_height_cur.n_max}
+
+        - actor_smpl_root_height_fut:
+            func: smpl_root_height_fut
+            params:
+              num_frames: ${obs.n_fut_frames}
+            noise:
+              type: AdditiveUniformNoiseCfg
+              params:
+                n_min: ${domain_rand.obs_noise.actor_ref_root_height_fut.n_min}
+                n_max: ${domain_rand.obs_noise.actor_ref_root_height_fut.n_max}
+
+        - actor_projected_gravity:
+            func: projected_gravity_direct
+            history_length: ${obs.context_length}
+            flatten_history_dim: false
+            noise:
+              type: AdditiveUniformNoiseCfg
+              params:
+                n_min: ${domain_rand.obs_noise.actor_projected_gravity.n_min}
+                n_max: ${domain_rand.obs_noise.actor_projected_gravity.n_max}
+
+        - actor_rel_robot_root_ang_vel:
+            func: rel_robot_root_ang_vel_direct
+            history_length: ${obs.context_length}
+            flatten_history_dim: false
+            noise:
+              type: AdditiveUniformNoiseCfg
+              params:
+                n_min: ${domain_rand.obs_noise.actor_rel_robot_root_ang_vel.n_min}
+                n_max: ${domain_rand.obs_noise.actor_rel_robot_root_ang_vel.n_max}
+
+        - actor_dof_pos:
+            func: dof_pos_direct
+            params:
+              joint_names: ${obs.robot_dof_names}
+            history_length: ${obs.context_length}
+            flatten_history_dim: false
+            noise:
+              type: AdditiveUniformNoiseCfg
+              params:
+                n_min: ${domain_rand.obs_noise.actor_dof_pos.n_min}
+                n_max: ${domain_rand.obs_noise.actor_dof_pos.n_max}
+
+        - actor_dof_vel:
+            func: dof_vel_direct
+            params:
+              joint_names: ${obs.robot_dof_names}
+            history_length: ${obs.context_length}
+            flatten_history_dim: false
+            noise:
+              type: AdditiveUniformNoiseCfg
+              params:
+                n_min: ${domain_rand.obs_noise.actor_dof_vel.n_min}
+                n_max: ${domain_rand.obs_noise.actor_dof_vel.n_max}
+
+        - actor_last_action:
+            func: last_action_direct
+            history_length: ${obs.context_length}
+            flatten_history_dim: false
+
+        - critic_smpl_robot_pelvis_residual_cur:
+            func: smpl_robot_pelvis_residual_cur
+
+        - critic_rel_robot_root_lin_vel:
+            func: rel_robot_root_lin_vel
+
+        - critic_rel_robot_root_ang_vel:
+            # Actual robot state only.  The legacy shared Actor helper also
+            # returns this value, but constructing it unconditionally reads
+            # Robot-reference q_ref29 from the cache.
+            func: rel_robot_root_ang_vel_direct
+
+        - critic_global_robot_bodylink_lin_vel_flat:
+            func: global_robot_bodylink_lin_vel_flat
+            params:
+              keybody_names: ${obs.robot_body_names}
+
+        - critic_global_robot_bodylink_ang_vel_flat:
+            func: global_robot_bodylink_ang_vel_flat
+            params:
+              keybody_names: ${obs.robot_body_names}
+
+        - critic_root_rel_robot_bodylink_pos_flat:
+            func: root_rel_robot_bodylink_pos_flat
+            params:
+              keybody_names: ${obs.robot_body_names}
+
+        - critic_root_rel_robot_bodylink_rot_mat_flat:
+            func: root_rel_robot_bodylink_rot_mat_flat
+            params:
+              keybody_names: ${obs.robot_body_names}
+
+        - critic_dof_pos:
+            func: dof_pos
+            params:
+              joint_names: ${obs.robot_dof_names}
+
+        - critic_dof_vel:
+            func: dof_vel
+            params:
+              joint_names: ${obs.robot_dof_names}
+
+        - critic_last_action:
+            func: last_action
+
+      additional_atomic_obs_list:
+        - actor_smpl_robot_yaw_error_sin_cos:
+            func: smpl_robot_yaw_error_sin_cos
+            history_length: ${obs.context_length}
+            flatten_history_dim: false
+
+        - actor_smpl_future_yaw_delta_sin_cos:
+            func: smpl_future_yaw_delta_sin_cos
+            params:
+              num_frames: ${obs.n_fut_frames}
+
+        - actor_smpl_future_root_ori_robot_frame_6d:
+            func: smpl_future_root_ori_robot_frame_6d
+            params:
+              num_frames: ${obs.n_fut_frames}
+
+      enable_corruption: true
+      concatenate_terms: false

@@ -1,0 +1,42 @@
+# @package _global_
+
+defaults:
+  - /modules/motion_tracking/motion_tracking_tf-moe_smpl
+  - _self_
+
+# Actor architecture and schema remain exactly P1-23 + A1-21 + R1-21.
+# The Critic reuses those SMPL command terms, adds one current pelvis residual,
+# and preserves the existing privileged actual-robot observations.
+modules:
+  critic:
+    obs_schema:
+      flattened_obs:
+        seq_len: 1
+        terms:
+          - unified/actor_smpl_gravity_projection_cur
+          - unified/actor_smpl_base_linvel_cur
+          - unified/actor_smpl_base_angvel_cur
+          - unified/actor_smpl_body_command_cur
+          - unified/actor_smpl_root_height_cur
+          - unified/actor_smpl_robot_yaw_error_sin_cos
+          - unified/critic_smpl_robot_pelvis_residual_cur
+          - unified/critic_rel_robot_root_lin_vel
+          - unified/critic_rel_robot_root_ang_vel
+          - unified/critic_global_robot_bodylink_lin_vel_flat
+          - unified/critic_global_robot_bodylink_ang_vel_flat
+          - unified/critic_root_rel_robot_bodylink_pos_flat
+          - unified/critic_root_rel_robot_bodylink_rot_mat_flat
+          - unified/critic_dof_pos
+          - unified/critic_dof_vel
+          - unified/critic_last_action
+      flattened_obs_fut:
+        seq_len: ${obs.n_fut_frames}
+        terms:
+          - unified/actor_smpl_body_command_fut
+          - unified/actor_smpl_root_height_fut
+          - unified/actor_smpl_gravity_projection_fut
+          - unified/actor_smpl_base_linvel_fut
+          - unified/actor_smpl_base_angvel_fut
+          - unified/actor_smpl_future_yaw_delta_sin_cos
+          - unified/actor_smpl_future_root_ori_robot_frame_6d
+

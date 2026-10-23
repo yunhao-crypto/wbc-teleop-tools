@@ -1,0 +1,72 @@
+# @package _global_
+defaults:
+  - /training: train_base
+  - /algo: ppo
+  - /robot: agibot/X1/x1_29dof_training_isaaclab
+  - /env: velocity_tracking
+  - /env/terminations: termination_velocity_tracking
+  - /env/observations: velocity_tracking/obs_velocity_tracking_headless_subset
+  - /env/rewards: velocity_tracking/rew_velocity_tracking_x1
+  - /env/domain_randomization: domain_rand_medium_unitree_unknown_actuator
+  - /env/terrain: isaaclab_rough
+  - /modules: velocity_tracking/velocity_tracking_mlp
+  - _self_
+
+project_name: GMRFreeHoloMotionX1Velocity
+experiment_name: gmr_free_x1_velocity_from_scratch
+checkpoint: null
+base_seed: 20260818
+train_hdf5_roots: []
+
+env:
+  config:
+    seed: ${sum:[${base_seed},${process_id}]}
+    # Inherit the shared HoloMotion clock: 200 Hz physics, decimation 4 and a
+    # 50 Hz policy.  The public 1 kHz X1 task remains a diagnostic physics
+    # oracle; it does not define the cross-embodiment training algorithm.
+    actions:
+      dof_pos:
+        type: joint_position
+        params:
+          asset_name: robot
+          joint_names: ${robot.velocity_policy_dof_names}
+          preserve_order: true
+          use_default_offset: true
+          scale: ${robot.actuators.velocity_policy_action_scale}
+
+robot:
+  actions_dim: 29
+  # The full-body X1 Velocity policy keeps the public locomotion controller's
+  # leg PD gains while holding lumbar/arm joints with the published stand PD.
+  # This is a documented 29D HoloMotion extension of the official 12D policy.
+  actuators:
+    all_joints:
+      stiffness: ${robot.actuators.velocity_policy_stiffness}
+      damping: ${robot.actuators.velocity_policy_damping}
+
+algo:
+  config:
+    # Velocity tasks do not own a ref_motion command term, so AlgoBase cannot
+    # inherit the environment seed automatically.  Pin the policy/optimizer
+    # seed explicitly to keep preflight and distributed restarts reproducible.
+    seed: ${sum:[${base_seed},${process_id}]}
+    num_learning_iterations: 10000
+    save_interval: 1000
+    export_policy: true
+    symmetry_loss: {enabled: false}
+
+velocity_policy_contract:
+  policy_action_dim: 29
+  controller_target_dim: 29
+  policy_joint_names: ${robot.velocity_policy_dof_names}
+  controller_joint_names: ${robot.dof_names}
+  omitted_head_joint_names: []
+  omitted_head_target_source: none
+
+holomotion_training_contract:
+  required: true
+  profile: holomotion_unified_200hz_v1
+  task: velocity_tracking
+  embodiment: agibot_x1_29dof
+  policy_action_dim: 29
+  controller_target_dim: 29

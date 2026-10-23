@@ -1,0 +1,551 @@
+# @package _global_
+#
+# K1 机器人配置对齐说明：
+# - 原 G1/HoloMotion 基线：
+#   29dof_training_isaaclab.yaml 使用 Unitree G1 的 body/joint 名、
+#   unitree_erfi actuator、G1 初始姿态、G1 action scale，以及
+#   assets/robots/unitree/G1/29dof 下的 G1 资产。
+# - 官方 booster_train K1：
+#   BOOSTER_K1_CFG 使用 Trunk 作为 root，加载 K1_22dof.urdf，
+#   初始高度 z=0.57，Left_Shoulder_Roll=-1.3，
+#   Right_Shoulder_Roll=1.3，使用 K1 官方电机限幅/刚度/阻尼，
+#   soft_joint_pos_limit_factor=0.9，
+#   replace_cylinders_with_capsules=False。
+#   官方还使用带 delay 和 torque-speed clipping 的
+#   BoosterDelayedPDActuatorCfg。
+# - 当前 K1/HoloMotion 配置：
+#   使用 HoloMotion 内 assets/robots/booster/K1 下的 K1 资产、
+#   K1 body/joint 名、官方初始姿态、官方 K1 电机参数，并启用
+#   booster_delayed_pd actuator，对齐官方 BoosterDelayedPDActuatorCfg
+#   的 2-8 step delay 和 torque-speed clipping；同时补齐 K1
+#   action scale 和 dof mirror sign。
+
+robot:
+  humanoid_type: booster/K1
+  root_name: "Trunk"
+
+  dof_obs_size: 22
+  actions_dim: 22
+  num_bodies: 23
+  num_extend_bodies: 0
+  undesired_contacts_regrex: "^(?!left_foot_link$)(?!right_foot_link$)(?!left_hand_link$)(?!right_hand_link$).+$"
+  torso_name: "Trunk"
+  anchor_body: "Trunk"
+  feet_body_names:
+    left:
+      - "left_foot_link"
+    right:
+      - "right_foot_link"
+  feet_geom_names:
+    left: []
+    right: []
+
+  key_bodies:
+    - "Trunk"
+    - "Left_Hip_Roll"
+    - "Left_Shank"
+    - "left_foot_link"
+    - "Right_Hip_Roll"
+    - "Right_Shank"
+    - "right_foot_link"
+    - "Head_2"
+    - "Left_Arm_2"
+    - "Left_Arm_3"
+    - "left_hand_link"
+    - "Right_Arm_2"
+    - "Right_Arm_3"
+    - "right_hand_link"
+
+  key_dofs:
+    - "Left_Knee_Pitch"
+    - "Right_Knee_Pitch"
+    - "Left_Elbow_Pitch"
+    - "Right_Elbow_Pitch"
+
+  dof_names:
+    - "AAHead_yaw"
+    - "Head_pitch"
+    - "ALeft_Shoulder_Pitch"
+    - "Left_Shoulder_Roll"
+    - "Left_Elbow_Pitch"
+    - "Left_Elbow_Yaw"
+    - "ARight_Shoulder_Pitch"
+    - "Right_Shoulder_Roll"
+    - "Right_Elbow_Pitch"
+    - "Right_Elbow_Yaw"
+    - "Left_Hip_Pitch"
+    - "Left_Hip_Roll"
+    - "Left_Hip_Yaw"
+    - "Left_Knee_Pitch"
+    - "Left_Ankle_Pitch"
+    - "Left_Ankle_Roll"
+    - "Right_Hip_Pitch"
+    - "Right_Hip_Roll"
+    - "Right_Hip_Yaw"
+    - "Right_Knee_Pitch"
+    - "Right_Ankle_Pitch"
+    - "Right_Ankle_Roll"
+
+  # Official K1 locomotion policy contract.  The two head joints are omitted
+  # from the policy and remain at their default PD targets.  Deployment
+  # scatters these 20 outputs into the full 22-DoF controller target.
+  velocity_policy_dof_names:
+    - "ALeft_Shoulder_Pitch"
+    - "ARight_Shoulder_Pitch"
+    - "Left_Hip_Pitch"
+    - "Right_Hip_Pitch"
+    - "Left_Shoulder_Roll"
+    - "Right_Shoulder_Roll"
+    - "Left_Hip_Roll"
+    - "Right_Hip_Roll"
+    - "Left_Elbow_Pitch"
+    - "Right_Elbow_Pitch"
+    - "Left_Hip_Yaw"
+    - "Right_Hip_Yaw"
+    - "Left_Elbow_Yaw"
+    - "Right_Elbow_Yaw"
+    - "Left_Knee_Pitch"
+    - "Right_Knee_Pitch"
+    - "Left_Ankle_Pitch"
+    - "Right_Ankle_Pitch"
+    - "Left_Ankle_Roll"
+    - "Right_Ankle_Roll"
+
+  arm_dof_names:
+    - "ALeft_Shoulder_Pitch"
+    - "Left_Shoulder_Roll"
+    - "Left_Elbow_Pitch"
+    - "Left_Elbow_Yaw"
+    - "ARight_Shoulder_Pitch"
+    - "Right_Shoulder_Roll"
+    - "Right_Elbow_Pitch"
+    - "Right_Elbow_Yaw"
+
+  head_dof_names:
+    - "AAHead_yaw"
+    - "Head_pitch"
+
+  waist_dof_names: []
+
+  leg_dof_names:
+    - "Left_Hip_Pitch"
+    - "Left_Hip_Roll"
+    - "Left_Hip_Yaw"
+    - "Left_Knee_Pitch"
+    - "Left_Ankle_Pitch"
+    - "Left_Ankle_Roll"
+    - "Right_Hip_Pitch"
+    - "Right_Hip_Roll"
+    - "Right_Hip_Yaw"
+    - "Right_Knee_Pitch"
+    - "Right_Ankle_Pitch"
+    - "Right_Ankle_Roll"
+
+  left_arm_dof_names:
+    - "ALeft_Shoulder_Pitch"
+    - "Left_Shoulder_Roll"
+    - "Left_Elbow_Pitch"
+    - "Left_Elbow_Yaw"
+
+  right_arm_dof_names:
+    - "ARight_Shoulder_Pitch"
+    - "Right_Shoulder_Roll"
+    - "Right_Elbow_Pitch"
+    - "Right_Elbow_Yaw"
+
+  left_leg_dof_names:
+    - "Left_Hip_Pitch"
+    - "Left_Hip_Roll"
+    - "Left_Hip_Yaw"
+    - "Left_Knee_Pitch"
+    - "Left_Ankle_Pitch"
+    - "Left_Ankle_Roll"
+
+  right_leg_dof_names:
+    - "Right_Hip_Pitch"
+    - "Right_Hip_Roll"
+    - "Right_Hip_Yaw"
+    - "Right_Knee_Pitch"
+    - "Right_Ankle_Pitch"
+    - "Right_Ankle_Roll"
+
+  upper_body_dof_names:
+    - "AAHead_yaw"
+    - "Head_pitch"
+    - "ALeft_Shoulder_Pitch"
+    - "Left_Shoulder_Roll"
+    - "Left_Elbow_Pitch"
+    - "Left_Elbow_Yaw"
+    - "ARight_Shoulder_Pitch"
+    - "Right_Shoulder_Roll"
+    - "Right_Elbow_Pitch"
+    - "Right_Elbow_Yaw"
+
+  lower_body_dof_names: ${robot.leg_dof_names}
+
+  arm_body_names:
+    - "Left_Arm_1"
+    - "Left_Arm_2"
+    - "Left_Arm_3"
+    - "left_hand_link"
+    - "Right_Arm_1"
+    - "Right_Arm_2"
+    - "Right_Arm_3"
+    - "right_hand_link"
+
+  head_hand_bodies:
+    - "Head_2"
+    - "left_hand_link"
+    - "right_hand_link"
+
+  torso_body_names:
+    - "Trunk"
+    - "Head_1"
+    - "Head_2"
+
+  leg_body_names:
+    - "Left_Hip_Pitch"
+    - "Left_Hip_Roll"
+    - "Left_Hip_Yaw"
+    - "Left_Shank"
+    - "Left_Ankle_Cross"
+    - "left_foot_link"
+    - "Right_Hip_Pitch"
+    - "Right_Hip_Roll"
+    - "Right_Hip_Yaw"
+    - "Right_Shank"
+    - "Right_Ankle_Cross"
+    - "right_foot_link"
+
+  left_arm_body_names:
+    - "Left_Arm_1"
+    - "Left_Arm_2"
+    - "Left_Arm_3"
+    - "left_hand_link"
+
+  right_arm_body_names:
+    - "Right_Arm_1"
+    - "Right_Arm_2"
+    - "Right_Arm_3"
+    - "right_hand_link"
+
+  left_leg_body_names:
+    - "Left_Hip_Pitch"
+    - "Left_Hip_Roll"
+    - "Left_Hip_Yaw"
+    - "Left_Shank"
+    - "Left_Ankle_Cross"
+    - "left_foot_link"
+
+  right_leg_body_names:
+    - "Right_Hip_Pitch"
+    - "Right_Hip_Roll"
+    - "Right_Hip_Yaw"
+    - "Right_Shank"
+    - "Right_Ankle_Cross"
+    - "right_foot_link"
+
+  body_names:
+    - "Trunk"
+    - "Head_1"
+    - "Head_2"
+    - "Left_Arm_1"
+    - "Left_Arm_2"
+    - "Left_Arm_3"
+    - "left_hand_link"
+    - "Right_Arm_1"
+    - "Right_Arm_2"
+    - "Right_Arm_3"
+    - "right_hand_link"
+    - "Left_Hip_Pitch"
+    - "Left_Hip_Roll"
+    - "Left_Hip_Yaw"
+    - "Left_Shank"
+    - "Left_Ankle_Cross"
+    - "left_foot_link"
+    - "Right_Hip_Pitch"
+    - "Right_Hip_Roll"
+    - "Right_Hip_Yaw"
+    - "Right_Shank"
+    - "Right_Ankle_Cross"
+    - "right_foot_link"
+
+  init_state:
+    pos: [0.0, 0.0, 0.57]
+    rot: [0.0, 0.0, 0.0, 1.0]
+    lin_vel: [0.0, 0.0, 0.0]
+    ang_vel: [0.0, 0.0, 0.0]
+    default_joint_angles:
+      AAHead_yaw: 0.0
+      Head_pitch: 0.0
+      ALeft_Shoulder_Pitch: 0.0
+      Left_Shoulder_Roll: -1.3
+      Left_Elbow_Pitch: 0.0
+      Left_Elbow_Yaw: 0.0
+      ARight_Shoulder_Pitch: 0.0
+      Right_Shoulder_Roll: 1.3
+      Right_Elbow_Pitch: 0.0
+      Right_Elbow_Yaw: 0.0
+      Left_Hip_Pitch: 0.0
+      Left_Hip_Roll: 0.0
+      Left_Hip_Yaw: 0.0
+      Left_Knee_Pitch: 0.0
+      Left_Ankle_Pitch: 0.0
+      Left_Ankle_Roll: 0.0
+      Right_Hip_Pitch: 0.0
+      Right_Hip_Roll: 0.0
+      Right_Hip_Yaw: 0.0
+      Right_Knee_Pitch: 0.0
+      Right_Ankle_Pitch: 0.0
+      Right_Ankle_Roll: 0.0
+
+  actuators:
+    # 对齐官方 booster_train 的 BoosterDelayedPDActuatorCfg：
+    # - 每次 reset 随机 2-8 个 physics step 的动作延迟；
+    # - 使用 knee_point_velocity 做速度相关 torque-speed clipping；
+    # - action_scale 仍按官方 K1_ACTION_SCALE = 0.25 * effort / stiffness。
+    actuator_type: booster_delayed_pd
+    ema_filter_enabled: false
+    ema_filter_alpha: 1.0
+    legs:
+      joint_names_expr:
+        - ".*_Hip_Pitch"
+        - ".*_Hip_Roll"
+        - ".*_Hip_Yaw"
+        - ".*_Knee_Pitch"
+      min_delay: 2
+      max_delay: 8
+
+      effort_limit_sim:
+        ".*_Hip_Pitch": 68.0
+        ".*_Hip_Roll": 76.0
+        ".*_Hip_Yaw": 38.3
+        ".*_Knee_Pitch": 112.0
+
+      velocity_limit_sim:
+        ".*_Hip_Pitch": 14.66
+        ".*_Hip_Roll": 12.57
+        ".*_Hip_Yaw": 17.59
+        ".*_Knee_Pitch": 12.57
+
+      knee_point_velocity:
+        ".*_Hip_Pitch": 1.88
+        ".*_Hip_Roll": 2.62
+        ".*_Hip_Yaw": 7.85
+        ".*_Knee_Pitch": 2.09
+
+      stiffness:
+        ".*_Hip_Pitch": 30.200989
+        ".*_Hip_Roll": 21.447961
+        ".*_Hip_Yaw": 17.846013
+        ".*_Knee_Pitch": 60.401979
+
+      damping:
+        ".*_Hip_Pitch": 3.604978
+        ".*_Hip_Roll": 2.560162
+        ".*_Hip_Yaw": 2.130211
+        ".*_Knee_Pitch": 4.806637
+
+      armature:
+        ".*_Hip_Pitch": 0.0478125
+        ".*_Hip_Roll": 0.0339552
+        ".*_Hip_Yaw": 0.0282528
+        ".*_Knee_Pitch": 0.095625
+
+    feet:
+      joint_names_expr:
+        - ".*_Ankle_Pitch"
+        - ".*_Ankle_Roll"
+      min_delay: 2
+      max_delay: 8
+      effort_limit_sim:
+        ".*_Ankle_Pitch": 38.3
+        ".*_Ankle_Roll": 38.3
+      velocity_limit_sim:
+        ".*_Ankle_Pitch": 17.59
+        ".*_Ankle_Roll": 17.59
+      knee_point_velocity:
+        ".*_Ankle_Pitch": 7.85
+        ".*_Ankle_Roll": 7.85
+      stiffness:
+        ".*_Ankle_Pitch": 35.692027
+        ".*_Ankle_Roll": 35.692027
+      damping:
+        ".*_Ankle_Pitch": 4.260422
+        ".*_Ankle_Roll": 4.260422
+      armature:
+        ".*_Ankle_Pitch": 0.0565
+        ".*_Ankle_Roll": 0.0565
+
+    arms:
+      joint_names_expr:
+        - ".*_Shoulder_Pitch"
+        - ".*_Shoulder_Roll"
+        - ".*_Elbow_Pitch"
+        - ".*_Elbow_Yaw"
+      min_delay: 2
+      max_delay: 8
+      effort_limit_sim: 14.0
+      velocity_limit_sim: 33.51
+      knee_point_velocity: 5.24
+      stiffness: 3.947842
+      damping: 0.251327
+      armature: 0.001
+
+    head:
+      joint_names_expr:
+        - ".*Head.*"
+      min_delay: 2
+      max_delay: 8
+      effort_limit_sim: 6.0
+      velocity_limit_sim: 7.85
+      knee_point_velocity: 10.47
+      stiffness: 3.947842
+      damping: 0.251327
+      armature: 0.001
+
+    action_scale:
+      AAHead_yaw: 0.379954
+      Head_pitch: 0.379954
+      ALeft_Shoulder_Pitch: 0.886560
+      Left_Shoulder_Roll: 0.886560
+      Left_Elbow_Pitch: 0.886560
+      Left_Elbow_Yaw: 0.886560
+      ARight_Shoulder_Pitch: 0.886560
+      Right_Shoulder_Roll: 0.886560
+      Right_Elbow_Pitch: 0.886560
+      Right_Elbow_Yaw: 0.886560
+      Left_Hip_Pitch: 0.562895
+      Left_Hip_Roll: 0.885865
+      Left_Hip_Yaw: 0.536534
+      Left_Knee_Pitch: 0.463561
+      Left_Ankle_Pitch: 0.268267
+      Left_Ankle_Roll: 0.268267
+      Right_Hip_Pitch: 0.562895
+      Right_Hip_Roll: 0.885865
+      Right_Hip_Yaw: 0.536534
+      Right_Knee_Pitch: 0.463561
+      Right_Ankle_Pitch: 0.268267
+      Right_Ankle_Roll: 0.268267
+
+    # Exact 20D action-scale contract for the official-compatible velocity
+    # policy.  Head keys are intentionally absent: the velocity policy does
+    # not command them, so they remain at the asset-default PD targets.
+    velocity_policy_action_scale:
+      ALeft_Shoulder_Pitch: 0.886560
+      ARight_Shoulder_Pitch: 0.886560
+      Left_Hip_Pitch: 0.562895
+      Right_Hip_Pitch: 0.562895
+      Left_Shoulder_Roll: 0.886560
+      Right_Shoulder_Roll: 0.886560
+      Left_Hip_Roll: 0.885865
+      Right_Hip_Roll: 0.885865
+      Left_Elbow_Pitch: 0.886560
+      Right_Elbow_Pitch: 0.886560
+      Left_Hip_Yaw: 0.536534
+      Right_Hip_Yaw: 0.536534
+      Left_Elbow_Yaw: 0.886560
+      Right_Elbow_Yaw: 0.886560
+      Left_Knee_Pitch: 0.463561
+      Right_Knee_Pitch: 0.463561
+      Left_Ankle_Pitch: 0.268267
+      Right_Ankle_Pitch: 0.268267
+      Left_Ankle_Roll: 0.268267
+      Right_Ankle_Roll: 0.268267
+
+  dof_sign_by_name:
+    AAHead_yaw: -1.0
+    Head_pitch: 1.0
+    ALeft_Shoulder_Pitch: 1.0
+    Left_Shoulder_Roll: -1.0
+    Left_Elbow_Pitch: 1.0
+    Left_Elbow_Yaw: -1.0
+    ARight_Shoulder_Pitch: 1.0
+    Right_Shoulder_Roll: -1.0
+    Right_Elbow_Pitch: 1.0
+    Right_Elbow_Yaw: -1.0
+    Left_Hip_Pitch: 1.0
+    Left_Hip_Roll: -1.0
+    Left_Hip_Yaw: -1.0
+    Left_Knee_Pitch: 1.0
+    Left_Ankle_Pitch: 1.0
+    Left_Ankle_Roll: -1.0
+    Right_Hip_Pitch: 1.0
+    Right_Hip_Roll: -1.0
+    Right_Hip_Yaw: -1.0
+    Right_Knee_Pitch: 1.0
+    Right_Ankle_Pitch: 1.0
+    Right_Ankle_Roll: -1.0
+
+  asset:
+    collapse_fixed_joints: True
+    # 官方 Booster K1 训练使用 replace_cylinders_with_capsules=False。
+    # Scene builder 会读取并记录该字段；Booster 配置缺失此字段时直接
+    # fail closed，避免回退到 G1 历史默认值 True。
+    replace_cylinders_with_capsules: false
+    flip_visual_attachments: False
+    max_angular_velocity: 1000.
+    max_linear_velocity: 1000.
+    density: 0.001
+    angular_damping: 0.
+    linear_damping: 0.
+
+    asset_root: "./"
+    urdf_file: "assets/robots/${robot.humanoid_type}/K1_22dof.urdf"
+    assetFileName: "assets/robots/${robot.humanoid_type}/K1_22dof.xml"
+    fix_base_link: false
+    force_usd_conversion: true
+
+  extend_config: []
+
+  motion:
+    asset:
+      assetRoot: "./"
+      assetFileName: "assets/robots/${robot.humanoid_type}/K1_22dof.xml"
+
+    sampling_strategy: ${algo.config.sampling_strategy}
+    weighted_bin: ${algo.config.weighted_bin}
+    curriculum: ${algo.config.curriculum}
+    dump_sampled_motion_keys: false
+    dump_sampled_motion_keys_interval: 1
+    dump_sampled_motion_keys_dir: "sampled_motion_cache_keys"
+
+    max_frame_length: 300
+    min_frame_length: 50
+    handpicked_motion_names: null
+    excluded_motion_names: null
+
+    world_frame_normalization: true
+
+    backend: "hdf5_v2"
+    train_hdf5_roots: ${train_hdf5_roots}
+    val_hdf5_roots: ${train_hdf5_roots}
+
+    dof_names: ${robot.dof_names}
+    body_names: ${robot.body_names}
+    key_bodies: ${robot.key_bodies}
+    extend_config: ${robot.extend_config}
+
+    dataloader:
+      num_workers: 2
+      prefetch_factor: 1
+      pin_memory: true
+      persistent_workers: false
+      timeout: 600
+
+    fk_robot_file_path: ${robot.asset.urdf_file}
+    fk_vel_smoothing_sigma: 2.0
+
+    online_filter:
+      enabled: false
+      butter_order: 4
+      butter_cutoff_hz_pool: []
+
+    cache:
+      batch_progress_bar: false
+      max_num_clips: ${num_envs}
+      device: "cuda"
+      swap_interval_steps: ${robot.motion.max_frame_length}
+      allowed_prefixes:
+        - "ref_"
+        - "ft_ref_"

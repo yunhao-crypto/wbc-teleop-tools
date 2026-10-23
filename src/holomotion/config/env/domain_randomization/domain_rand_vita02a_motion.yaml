@@ -1,0 +1,11 @@
+# @package _global_
+
+defaults:
+  - domain_rand_vita02a_reference_repro
+  - _self_
+
+# Motion follows the shared G1/K1/R1-Motion cadence while retaining VBot's
+# embodiment-specific push amplitudes from the reviewed control baseline.
+domain_rand:
+  push_by_setting_velocity:
+    interval_range_s: [1.0, 3.0]

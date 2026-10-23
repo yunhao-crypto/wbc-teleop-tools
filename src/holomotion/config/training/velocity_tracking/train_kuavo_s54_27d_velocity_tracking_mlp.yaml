@@ -1,0 +1,62 @@
+# @package _global_
+
+defaults:
+  - /training: train_base
+  - /algo: ppo
+  - /robot: leju/Kuavo5/kuavo_s54_29dof_training_isaaclab
+  - /env: velocity_tracking
+  - /env/terminations: termination_velocity_tracking
+  - /env/observations: velocity_tracking/obs_velocity_tracking_headless_subset
+  - /env/rewards: velocity_tracking/rew_velocity_tracking_kuavo_s54
+  - /env/domain_randomization: domain_rand_medium_leju_kuavo_s54
+  - /env/terrain: isaaclab_rough
+  - /modules: velocity_tracking/velocity_tracking_mlp
+  - _self_
+
+project_name: GMRFreeHoloMotionKuavoS54Velocity
+experiment_name: gmr_free_kuavo_s54_velocity_from_scratch_10000
+checkpoint: null
+base_seed: 20260819
+train_hdf5_roots: []
+
+env:
+  config:
+    seed: ${sum:[${base_seed},${process_id}]}
+    # Inherit the shared HoloMotion clock: 200 Hz physics, decimation 4 and a
+    # 50 Hz policy.  Kuavo's identified actuator delay remains in the robot
+    # physical profile rather than changing the policy algorithm.
+    actions:
+      dof_pos:
+        type: joint_position
+        params:
+          asset_name: robot
+          joint_names: ${robot.velocity_policy_dof_names}
+          preserve_order: true
+          use_default_offset: true
+          scale: ${robot.actuators.velocity_policy_action_scale}
+
+robot: {actions_dim: 27}
+
+algo:
+  config:
+    seed: ${sum:[${base_seed},${process_id}]}
+    num_learning_iterations: 10000
+    save_interval: 1000
+    export_policy: true
+    symmetry_loss: {enabled: false}
+
+velocity_policy_contract:
+  policy_action_dim: 27
+  controller_target_dim: 29
+  policy_joint_names: ${robot.velocity_policy_dof_names}
+  controller_joint_names: ${robot.dof_names}
+  omitted_head_joint_names: ${robot.head_dof_names}
+  omitted_head_target_source: asset_default
+
+holomotion_training_contract:
+  required: true
+  profile: holomotion_unified_200hz_v1
+  task: velocity_tracking
+  embodiment: leju_kuavo5_s54_29dof
+  policy_action_dim: 27
+  controller_target_dim: 29

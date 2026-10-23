@@ -1,0 +1,27 @@
+# @package _global_
+
+defaults:
+  - motion_tracking_v1_4_0
+  - override /env/observations: motion_tracking/obs_motion_tracking_tf-moe_smpl
+  - override /modules: motion_tracking/motion_tracking_tf-moe_smpl
+  - _self_
+
+smpl_body_mode: ???
+
+# GMR-free default.  The outer experiment supplies formal SMPL roots and may
+# override the Critic/Reward/Reset profiles, but this base must never open a
+# robot-reference H5 or stage a ref_* cache tensor.
+robot:
+  motion:
+    backend: formal_smpl_hdf5
+    smpl_body_mode: ${smpl_body_mode}
+    target_fps: ${obs.target_fps}
+    smpl_ground_history_frames: 50
+    task_target_source: smpl_skeleton
+    cache:
+      allowed_prefixes:
+        - "smpl_"
+        - "frame_flag"
+        - "motion_fps"
+
+# Evaluation is configured separately and must also consume formal SMPL only.

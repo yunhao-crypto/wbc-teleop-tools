@@ -1,0 +1,210 @@
+"""Numerical/reference regressions; no robot, network or control handles."""
+from dataclasses import replace
+import json
+from pathlib import Path
+import sys
+import unittest
+from unittest.mock import patch
+
+import numpy as np
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT/'src'))
+from deployment.vita_s100_aorta_30dof.actor_pico_runtime import (
+    ActorPicoRuntime, load_actor_config, sdk_math,
+)
+from deployment.vita_s100_aorta_30dof.actor_pico_reference import (
+    CausalActorReference, PicoOrientationRetargeter, matrix_quaternion, rotation_vector,
+)
+
+
+class ActorPicoTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.runtime = ActorPicoRuntime(ROOT, backend='ort')
+        cls.math = cls.runtime.math
+        cls.c = cls.runtime.model.contract
+        cls.config = cls.runtime.config
+
+    def setUp(self):
+        self.policy = self.math.WbcTrackingPolicy(self.c, self.config['body_profile'])
+
+    def retarget(self):
+        return PicoOrientationRetargeter(
+            urdf=ROOT/self.config['artifacts']['urdf']['path'], contract=self.c,
+            mapping=self.config['segments'], math_api=self.math, iterations=30)
+
+    def body(self):
+        b = np.zeros((24, 7), np.float32)
+        b[:, 6] = 1
+        return b
+
+    def test_cpp_two_tick_observation_golden(self):
+        # Independently generated C++ oracle; only its 20 ms stride differs.
+        self.policy.contract = replace(self.c, future_dt=.02)
+        data = json.loads((ROOT/'tests/fixtures/actor_pico/groot_observation_golden.json').read_text())
+        motion = self.math.Motion(np.reshape(data['joint_pos'], (-1, 28)),
+                                  np.reshape(data['base_pos'], (-1, 3)),
+                                  np.reshape(data['base_quat'], (-1, 4)))
+        for tick in data['ticks']:
+            self.policy.last_action = np.array(tick['last_action'], np.float32)
+            obs = self.policy.observe(motion, tick['ref_t'], tick['q'], tick['qd'],
+                                      tick['robot_quat'], tick['base_ang_vel_body'],
+                                      tick['yaw_offset_rad'])
+            np.testing.assert_allclose(obs, tick['obs'], rtol=0, atol=1e-7)
+
+    def test_body31_mapping_preserves_ankle_compensation(self):
+        action = np.linspace(-30, 30, 28)
+        command, decoded = self.policy.decode(action)
+        clipped = np.clip(action, -20, 20).astype(np.float32)
+        raw = self.c.default+self.c.scale*clipped.astype(np.float64)
+        safe = np.clip(raw, self.policy.lower, self.policy.upper)
+        self.assertEqual(len(command.joints), 31)
+        for i, name in enumerate(self.c.names):
+            j = command.joints[self.policy.order.index(name)]
+            self.assertEqual(j.q, float(np.float32(safe[i])))
+            self.assertEqual(j.kp, float(np.float32(self.c.kp[i])))
+            tau = self.c.kp[i]*(raw[i]-safe[i]) if 'ankle_' in name else 0.
+            self.assertEqual(j.tau, float(np.float32(tau)))
+        self.assertTrue(any(decoded['tau_ff']))
+        for name in ['neck_pitch_joint', 'neck_yaw_joint']:
+            j = command.joints[self.policy.order.index(name)]
+            self.assertEqual((j.q, j.kp, j.kd), (0., 20., 1.))
+        hole = command.joints[self.policy.order.index('waist_roll_joint')]
+        self.assertEqual((hole.q, hole.kp, hole.kd, hole.tau), (0., 0., 0., 0.))
+
+    def test_causal_window_has_real_future_and_forward_velocities(self):
+        ref = CausalActorReference(self.c, self.math)
+        for i in range(46):
+            ref.append(1_000_000_000+i*20_000_000, np.full(28, i*.02), [1, 0, 0, 0],
+                       received_monotonic=i*.02)
+        self.assertFalse(ref.ready())
+        ref.append(1_920_000_000, np.full(28, .92), [1, 0, 0, 0], received_monotonic=.92)
+        self.assertTrue(ref.ready())
+        motion = ref.motion()
+        obs = self.policy.observe(motion, 0., self.c.default, np.zeros(28), [1, 0, 0, 0], np.zeros(3))
+        np.testing.assert_allclose(obs[:280].reshape(10, 28)[:, 0], np.arange(10)*.1, atol=1e-7)
+        np.testing.assert_allclose(obs[280:560], 1., atol=1e-7)
+        self.assertAlmostEqual(ref.delay, .92)
+
+    def test_reference_rejects_duplicate_regression_gap_and_nan(self):
+        ref = CausalActorReference(self.c, self.math)
+        ref.append(1_000_000_000, self.c.default, [1, 0, 0, 0], received_monotonic=0.)
+        for stamp in [1_000_000_000, 999_000_000, 1_200_000_000]:
+            with self.assertRaises(ValueError):
+                ref.append(stamp, self.c.default, [1, 0, 0, 0], received_monotonic=.02)
+        with self.assertRaises(ValueError):
+            ref.append(1_020_000_000, np.full(28, np.nan), [1, 0, 0, 0], received_monotonic=.02)
+        self.assertEqual(len(ref.samples), 1)
+
+    def test_irregular_timestamps_are_interpolated_without_extrapolation(self):
+        ref = CausalActorReference(self.c, self.math)
+        for i in range(71):
+            t = i*.015
+            ref.append(1_000_000_000+i*15_000_000, np.full(28, 2*t),
+                       self.math.yaw_quaternion(.2*t), received_monotonic=t)
+        m = ref.motion()
+        np.testing.assert_allclose(m.q[:, 0], 2*(1.05-.92+np.arange(47)*.02), atol=1e-12)
+        self.assertAlmostEqual(self.math.yaw(m.quat[-1]), .21, places=8)
+
+    def test_neutral_calibration_and_repeated_frame(self):
+        rt = self.retarget()
+        for _ in range(3):
+            q, root, error = rt.solve(self.body(), robot_root=self.math.yaw_quaternion(.3))
+            np.testing.assert_allclose(q, self.c.default, atol=1e-9)
+            np.testing.assert_allclose(root, self.math.yaw_quaternion(.3), atol=1e-7)
+            self.assertLess(error, 1e-6)
+
+    def test_rotation_ik_recovers_known_robot_pose(self):
+        rt = self.retarget()
+        body = self.body()
+        human, root = rt.human_rotations(body)
+        rt.solve(body)
+        baseline, _ = rt.kinematics.forward(self.c.default)
+        target = self.c.default + .035*np.sin(np.arange(28))
+        rotations, _ = rt.kinematics.forward(target)
+        # Invert the production Pico coordinate convention to synthesize segment
+        # observations from an independently chosen URDF joint configuration.
+        x = np.array([2**-.5, 2**-.5, 0., 0.])
+        y = np.array([0., 0., 1., 0.])
+        for link, i in rt.mapping:
+            desired = rotations[link] @ baseline[link].T @ human[i]
+            canon = self.math.rotation(root) @ desired
+            raw = self.math.multiply(self.math.multiply(self.math.conjugate(x),
+                                                        matrix_quaternion(canon)), self.math.conjugate(y))
+            body[i, 3:7] = raw[[1, 2, 3, 0]]
+        actual, _, error = rt.solve(body)
+        self.assertLess(error, 5e-5)
+        np.testing.assert_allclose(actual, target, atol=2e-4)
+
+    def test_urdf_spatial_jacobian_matches_finite_difference(self):
+        rt = self.retarget()
+        q = self.c.default+.02*np.sin(np.arange(28))
+        base, jac = rt.kinematics.forward(q)
+        for j in range(28):
+            other = q.copy(); other[j] += 1e-6
+            rotations, _ = rt.kinematics.forward(other)
+            for link, _ in rt.mapping:
+                measured = rotation_vector(rotations[link] @ base[link].T)/1e-6
+                np.testing.assert_allclose(measured, jac[link][:, j], atol=2e-8)
+
+    def test_invalid_pico_quaternion_and_nan_are_rejected(self):
+        for body in [np.zeros((24, 7)), np.full((24, 7), np.nan), np.zeros((23, 7))]:
+            with self.assertRaises(ValueError):
+                self.retarget().solve(body)
+
+    def test_excess_residual_does_not_commit_a_reference_pose(self):
+        rt = self.retarget()
+        body = self.body()
+        rt.solve(body)
+        before = rt.q.copy()
+        # Rotate only the elbow segment about the captured longitudinal axis
+        # while keeping its wrist/upper-arm targets unchanged: an inconsistent
+        # hinge chain must not silently become a successful reference sample.
+        body[18, 3:7] = [np.sin(.7), 0., 0., np.cos(.7)]
+        with self.assertRaisesRegex(ValueError, 'residual'):
+            rt.solve(body)
+        np.testing.assert_array_equal(rt.q, before)
+
+    def test_incompatible_model_metadata_is_rejected(self):
+        with self.assertRaises(ValueError):
+            self.math.Contract.from_metadata({})
+
+    def test_real_actor_inference_produces_finite_body31(self):
+        r = self.runtime
+        r.policy.reset()
+        obs, row = r.infer_motion(self.math.Motion.hold(self.c.default), q=self.c.default,
+                                  dq=np.zeros(28), root=[1, 0, 0, 0], gyro=np.zeros(3))
+        self.assertEqual(obs.shape, (1520,))
+        self.assertEqual(len(row['raw_action']), 28)
+        self.assertEqual(len(row['body_targets']), 31)
+        self.assertEqual(row['actions_sent'], 0)
+        self.assertTrue(np.isfinite(row['raw_action']).all())
+        r.policy.reset()
+
+    def test_stale_source_cannot_infer(self):
+        with self.assertRaises(TimeoutError):
+            self.runtime.infer(q=self.c.default, dq=np.zeros(28), root=[1, 0, 0, 0],
+                               gyro=np.zeros(3), now_monotonic=100.)
+
+    def test_entire_pico_to_actor_path_without_transport(self):
+        import aorta
+        import locomotion_aorta
+        with (patch.object(aorta.Node, '__init__', side_effect=AssertionError('Node forbidden')),
+              patch.object(locomotion_aorta.PullController, '__init__', side_effect=AssertionError('Control forbidden'))):
+            runtime = ActorPicoRuntime(ROOT, backend='ort')
+            for i in range(48):
+                runtime.push_pico(self.body(), 1_000_000_000+i*20_000_000,
+                                  received_monotonic=i*.02, robot_root=[1, 0, 0, 0])
+            obs, row = runtime.infer(q=self.c.default, dq=np.zeros(28),
+                                     root=[1, 0, 0, 0], gyro=np.zeros(3), now_monotonic=47*.02)
+            self.assertEqual(obs.shape, (1520,))
+            self.assertEqual(row['actions_sent'], 0)
+            self.assertEqual(len(row['body_targets']), 31)
+            with self.assertRaises(TimeoutError):
+                runtime.infer(q=self.c.default, dq=np.zeros(28), root=[1, 0, 0, 0],
+                              gyro=np.zeros(3), now_monotonic=1.55)
+
+
+if __name__ == '__main__':
+    unittest.main()

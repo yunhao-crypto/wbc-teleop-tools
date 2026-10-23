@@ -1,0 +1,9 @@
+# @package _global_
+
+# Standalone core opt-in profile.  Embodiment configs with their own reward
+# group should instead compose the same reward_overrides entry *after* their
+# `/env/rewards` override so no head/wrist/body-specific term is replaced.
+defaults:
+  - motion_tracking_v1_4_0_smpl
+  - /env/reward_overrides/motion_tracking: yaw_progress_multiscale_50hz
+  - _self_

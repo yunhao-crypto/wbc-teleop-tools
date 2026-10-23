@@ -1,0 +1,231 @@
+# @package _global_
+
+# Booster T1 Standard 23-DoF contract. Motion controls all 23 joints; Velocity
+# controls the same body joints and leaves only head yaw/pitch at default.
+robot:
+  humanoid_type: booster/T1
+  root_name: Trunk
+  torso_name: Trunk
+  anchor_body: Trunk
+  dof_obs_size: 23
+  actions_dim: 23
+  num_bodies: 24
+  num_extend_bodies: 0
+  undesired_contacts_regrex: "^(?!left_foot_link$)(?!right_foot_link$)(?!left_hand_link$)(?!right_hand_link$).+$"
+  feet_body_names: {left: [left_foot_link], right: [right_foot_link]}
+  feet_geom_names: {left: [], right: []}
+
+  dof_names: &all_dofs
+    [AAHead_yaw, Head_pitch,
+     Left_Shoulder_Pitch, Left_Shoulder_Roll, Left_Elbow_Pitch, Left_Elbow_Yaw,
+     Right_Shoulder_Pitch, Right_Shoulder_Roll, Right_Elbow_Pitch, Right_Elbow_Yaw,
+     Waist,
+     Left_Hip_Pitch, Left_Hip_Roll, Left_Hip_Yaw, Left_Knee_Pitch, Left_Ankle_Pitch, Left_Ankle_Roll,
+     Right_Hip_Pitch, Right_Hip_Roll, Right_Hip_Yaw, Right_Knee_Pitch, Right_Ankle_Pitch, Right_Ankle_Roll]
+  velocity_policy_dof_names: &velocity_dofs
+    [Left_Shoulder_Pitch, Left_Shoulder_Roll, Left_Elbow_Pitch, Left_Elbow_Yaw,
+     Right_Shoulder_Pitch, Right_Shoulder_Roll, Right_Elbow_Pitch, Right_Elbow_Yaw,
+     Waist,
+     Left_Hip_Pitch, Left_Hip_Roll, Left_Hip_Yaw, Left_Knee_Pitch, Left_Ankle_Pitch, Left_Ankle_Roll,
+     Right_Hip_Pitch, Right_Hip_Roll, Right_Hip_Yaw, Right_Knee_Pitch, Right_Ankle_Pitch, Right_Ankle_Roll]
+  head_dof_names: [AAHead_yaw, Head_pitch]
+  waist_dof_names: [Waist]
+  left_leg_dof_names: &left_leg_dofs [Left_Hip_Pitch, Left_Hip_Roll, Left_Hip_Yaw, Left_Knee_Pitch, Left_Ankle_Pitch, Left_Ankle_Roll]
+  right_leg_dof_names: &right_leg_dofs [Right_Hip_Pitch, Right_Hip_Roll, Right_Hip_Yaw, Right_Knee_Pitch, Right_Ankle_Pitch, Right_Ankle_Roll]
+  leg_dof_names: [Left_Hip_Pitch, Left_Hip_Roll, Left_Hip_Yaw, Left_Knee_Pitch, Left_Ankle_Pitch, Left_Ankle_Roll, Right_Hip_Pitch, Right_Hip_Roll, Right_Hip_Yaw, Right_Knee_Pitch, Right_Ankle_Pitch, Right_Ankle_Roll]
+  left_arm_dof_names: &left_arm_dofs [Left_Shoulder_Pitch, Left_Shoulder_Roll, Left_Elbow_Pitch, Left_Elbow_Yaw]
+  right_arm_dof_names: &right_arm_dofs [Right_Shoulder_Pitch, Right_Shoulder_Roll, Right_Elbow_Pitch, Right_Elbow_Yaw]
+  arm_dof_names: [Left_Shoulder_Pitch, Left_Shoulder_Roll, Left_Elbow_Pitch, Left_Elbow_Yaw, Right_Shoulder_Pitch, Right_Shoulder_Roll, Right_Elbow_Pitch, Right_Elbow_Yaw]
+  upper_body_dof_names: [AAHead_yaw, Head_pitch, Waist, Left_Shoulder_Pitch, Left_Shoulder_Roll, Left_Elbow_Pitch, Left_Elbow_Yaw, Right_Shoulder_Pitch, Right_Shoulder_Roll, Right_Elbow_Pitch, Right_Elbow_Yaw]
+  lower_body_dof_names: ${robot.leg_dof_names}
+
+  body_names: &all_bodies
+    [Trunk, H1, H2, AL1, AL2, AL3, left_hand_link, AR1, AR2, AR3, right_hand_link,
+     Waist, Hip_Pitch_Left, Hip_Roll_Left, Hip_Yaw_Left, Shank_Left, Ankle_Cross_Left, left_foot_link,
+     Hip_Pitch_Right, Hip_Roll_Right, Hip_Yaw_Right, Shank_Right, Ankle_Cross_Right, right_foot_link]
+  left_leg_body_names: &left_leg_bodies [Hip_Pitch_Left, Hip_Roll_Left, Hip_Yaw_Left, Shank_Left, Ankle_Cross_Left, left_foot_link]
+  right_leg_body_names: &right_leg_bodies [Hip_Pitch_Right, Hip_Roll_Right, Hip_Yaw_Right, Shank_Right, Ankle_Cross_Right, right_foot_link]
+  leg_body_names: [Hip_Pitch_Left, Hip_Roll_Left, Hip_Yaw_Left, Shank_Left, Ankle_Cross_Left, left_foot_link, Hip_Pitch_Right, Hip_Roll_Right, Hip_Yaw_Right, Shank_Right, Ankle_Cross_Right, right_foot_link]
+  left_arm_body_names: &left_arm_bodies [AL1, AL2, AL3, left_hand_link]
+  right_arm_body_names: &right_arm_bodies [AR1, AR2, AR3, right_hand_link]
+  arm_body_names: [AL1, AL2, AL3, left_hand_link, AR1, AR2, AR3, right_hand_link]
+  torso_body_names: [Trunk, Waist, H1, H2]
+  head_hand_bodies: [H2, left_hand_link, right_hand_link]
+  key_bodies: [Waist, Hip_Roll_Left, Shank_Left, left_foot_link, Hip_Roll_Right, Shank_Right, right_foot_link, Trunk, AL1, AL3, left_hand_link, AR1, AR3, right_hand_link]
+  key_dofs: [Left_Knee_Pitch, Right_Knee_Pitch, Left_Elbow_Pitch, Right_Elbow_Pitch]
+
+  init_state:
+    pos: [0.0, 0.0, 0.70]
+    rot: [0.0, 0.0, 0.0, 1.0]
+    lin_vel: [0.0, 0.0, 0.0]
+    ang_vel: [0.0, 0.0, 0.0]
+    default_joint_angles:
+      AAHead_yaw: 0.0
+      Head_pitch: 0.0
+      Left_Shoulder_Pitch: 0.2
+      Left_Shoulder_Roll: -1.3
+      Left_Elbow_Pitch: 0.0
+      Left_Elbow_Yaw: -0.5
+      Right_Shoulder_Pitch: 0.2
+      Right_Shoulder_Roll: 1.3
+      Right_Elbow_Pitch: 0.0
+      Right_Elbow_Yaw: 0.5
+      Waist: 0.0
+      Left_Hip_Pitch: -0.2
+      Left_Hip_Roll: 0.0
+      Left_Hip_Yaw: 0.0
+      Left_Knee_Pitch: 0.4
+      Left_Ankle_Pitch: -0.2
+      Left_Ankle_Roll: 0.0
+      Right_Hip_Pitch: -0.2
+      Right_Hip_Roll: 0.0
+      Right_Hip_Yaw: 0.0
+      Right_Knee_Pitch: 0.4
+      Right_Ankle_Pitch: -0.2
+      Right_Ankle_Roll: 0.0
+
+  actuators:
+    actuator_type: booster_delayed_pd
+    ema_filter_enabled: false
+    ema_filter_alpha: 1.0
+    arms:
+      joint_names_expr: [".*_Shoulder_.*", ".*_Elbow_.*"]
+      min_delay: 2
+      max_delay: 8
+      effort_limit_sim: 38.3
+      velocity_limit_sim: 17.59
+      knee_point_velocity: 7.85
+      stiffness: 111.537584
+      damping: 7.100703
+      armature: 0.0282528
+    waist:
+      joint_names_expr: [Waist]
+      min_delay: 2
+      max_delay: 8
+      effort_limit_sim: 68.0
+      velocity_limit_sim: 14.66
+      knee_point_velocity: 1.88
+      stiffness: 188.756184
+      damping: 12.016592
+      armature: 0.0478125
+    legs:
+      joint_names_expr: [".*_Hip_Pitch", ".*_Hip_Roll", ".*_Hip_Yaw", ".*_Knee_Pitch"]
+      min_delay: 2
+      max_delay: 8
+      effort_limit_sim: {".*_Hip_Pitch": 96.0, ".*_Hip_Roll": 68.0, ".*_Hip_Yaw": 68.0, ".*_Knee_Pitch": 130.0}
+      velocity_limit_sim: {".*_Hip_Pitch": 16.76, ".*_Hip_Roll": 14.66, ".*_Hip_Yaw": 14.66, ".*_Knee_Pitch": 14.66}
+      knee_point_velocity: {".*_Hip_Pitch": 7.54, ".*_Hip_Roll": 1.88, ".*_Hip_Yaw": 1.88, ".*_Knee_Pitch": 6.28}
+      stiffness: {".*_Hip_Pitch": 206.830588, ".*_Hip_Roll": 188.756184, ".*_Hip_Yaw": 188.756184, ".*_Knee_Pitch": 251.087473}
+      damping: {".*_Hip_Pitch": 13.167244, ".*_Hip_Roll": 12.016592, ".*_Hip_Yaw": 12.016592, ".*_Knee_Pitch": 15.984725}
+      armature: {".*_Hip_Pitch": 0.0523908, ".*_Hip_Roll": 0.0478125, ".*_Hip_Yaw": 0.0478125, ".*_Knee_Pitch": 0.0636012}
+    feet:
+      joint_names_expr: [".*_Ankle_Pitch", ".*_Ankle_Roll"]
+      min_delay: 2
+      max_delay: 8
+      effort_limit_sim: 76.0
+      velocity_limit_sim: 12.57
+      knee_point_velocity: 2.62
+      stiffness: 268.099513
+      damping: 17.067745
+      armature: 0.0679104
+    head:
+      joint_names_expr: [".*Head.*"]
+      min_delay: 2
+      max_delay: 8
+      effort_limit_sim: 7.0
+      velocity_limit_sim: 12.57
+      knee_point_velocity: 41.89
+      stiffness: 7.106115
+      damping: 0.452389
+      armature: 0.0018
+    action_scale: &action_scale
+      AAHead_yaw: 0.246267
+      Head_pitch: 0.246267
+      Left_Shoulder_Pitch: 0.085846
+      Left_Shoulder_Roll: 0.085846
+      Left_Elbow_Pitch: 0.085846
+      Left_Elbow_Yaw: 0.085846
+      Right_Shoulder_Pitch: 0.085846
+      Right_Shoulder_Roll: 0.085846
+      Right_Elbow_Pitch: 0.085846
+      Right_Elbow_Yaw: 0.085846
+      Waist: 0.090063
+      Left_Hip_Pitch: 0.116037
+      Left_Hip_Roll: 0.090063
+      Left_Hip_Yaw: 0.090063
+      Left_Knee_Pitch: 0.129437
+      Left_Ankle_Pitch: 0.070869
+      Left_Ankle_Roll: 0.070869
+      Right_Hip_Pitch: 0.116037
+      Right_Hip_Roll: 0.090063
+      Right_Hip_Yaw: 0.090063
+      Right_Knee_Pitch: 0.129437
+      Right_Ankle_Pitch: 0.070869
+      Right_Ankle_Roll: 0.070869
+    velocity_policy_action_scale:
+      Left_Shoulder_Pitch: 0.085846
+      Left_Shoulder_Roll: 0.085846
+      Left_Elbow_Pitch: 0.085846
+      Left_Elbow_Yaw: 0.085846
+      Right_Shoulder_Pitch: 0.085846
+      Right_Shoulder_Roll: 0.085846
+      Right_Elbow_Pitch: 0.085846
+      Right_Elbow_Yaw: 0.085846
+      Waist: 0.090063
+      Left_Hip_Pitch: 0.116037
+      Left_Hip_Roll: 0.090063
+      Left_Hip_Yaw: 0.090063
+      Left_Knee_Pitch: 0.129437
+      Left_Ankle_Pitch: 0.070869
+      Left_Ankle_Roll: 0.070869
+      Right_Hip_Pitch: 0.116037
+      Right_Hip_Roll: 0.090063
+      Right_Hip_Yaw: 0.090063
+      Right_Knee_Pitch: 0.129437
+      Right_Ankle_Pitch: 0.070869
+      Right_Ankle_Roll: 0.070869
+
+  dof_sign_by_name: {}
+  asset:
+    collapse_fixed_joints: true
+    require_explicit_replace_cylinders_with_capsules: true
+    replace_cylinders_with_capsules: false
+    flip_visual_attachments: false
+    asset_root: ./
+    urdf_file: assets/robots/${robot.humanoid_type}/T1_23dof.urdf
+    assetFileName: assets/robots/${robot.humanoid_type}/T1_23dof.xml
+    fix_base_link: false
+    force_usd_conversion: true
+  extend_config: []
+  motion:
+    asset:
+      assetRoot: ./
+      assetFileName: assets/robots/${robot.humanoid_type}/T1_23dof.xml
+    sampling_strategy: ${algo.config.sampling_strategy}
+    weighted_bin: ${algo.config.weighted_bin}
+    curriculum: ${algo.config.curriculum}
+    dump_sampled_motion_keys: false
+    dump_sampled_motion_keys_interval: 1
+    dump_sampled_motion_keys_dir: sampled_motion_cache_keys
+    max_frame_length: 300
+    min_frame_length: 50
+    handpicked_motion_names: null
+    excluded_motion_names: null
+    world_frame_normalization: true
+    backend: hdf5_v2
+    train_hdf5_roots: ${train_hdf5_roots}
+    val_hdf5_roots: ${train_hdf5_roots}
+    dof_names: *all_dofs
+    body_names: *all_bodies
+    key_bodies: ${robot.key_bodies}
+    extend_config: ${robot.extend_config}
+    dataloader: {num_workers: 2, prefetch_factor: 1, pin_memory: true, persistent_workers: false, timeout: 600}
+    fk_robot_file_path: ${robot.asset.urdf_file}
+    fk_vel_smoothing_sigma: 2.0
+    online_filter: {enabled: false, butter_order: 4, butter_cutoff_hz_pool: []}
+    cache:
+      batch_progress_bar: false
+      max_num_clips: ${num_envs}
+      device: cuda
+      swap_interval_steps: ${robot.motion.max_frame_length}
+      allowed_prefixes: [ref_, ft_ref_]

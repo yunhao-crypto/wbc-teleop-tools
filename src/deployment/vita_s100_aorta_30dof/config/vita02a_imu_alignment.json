@@ -1,0 +1,30 @@
+{
+  "schema": "vita02a.imu_alignment.v1",
+  "scope": "robot-readonly-reviewed",
+  "robot_serial": "00000000026ID100001",
+  "source": "S100 HIP measurement already transformed into the configured runtime body frame",
+  "imu_location": "HIP",
+  "imu_quaternion_semantics": "world_from_imu",
+  "gyroscope_frame": "imu",
+  "runtime_body_axes": "X forward, Y left, Z up",
+  "policy_base_link_axes": "X forward, Y left, Z up",
+  "base_from_imu_quaternion_wxyz": [1.0, 0.0, 0.0, 0.0],
+  "evidence": [
+    "vita-document/公开 topic 与消息字段.pdf: HIP values are transformed into the configured runtime body frame",
+    "holomotion/assets/robots/vbot/Vita02A/official_meshcoll_v3/urdf/vita02a_meshcoll.urdf: base_link kinematic frame",
+    "holomotion/assets/robots/vbot/Vita02A/official_meshcoll_v3/vita02a_meshcoll.xml: free root body is base_link with no extra frame rotation",
+    "receipts/dpx_lowstate_trace_audit_20260914_171934.json: quaternion/RPY and gravity projection consistency"
+  ],
+  "approval": {
+    "offline_recorded_trace_shadow": true,
+    "live_readonly_shadow": true,
+    "suspended_active_validation": true,
+    "active_control": false
+  },
+  "limitations": [
+    "This is a local engineering conclusion, not a vendor-signed calibration artifact",
+    "A single static pose cannot independently identify a residual yaw-axis installation error",
+    "Ground approval covers read-only inference only; fixture action is restricted to the explicit suspended-validation entry",
+    "Vendor confirmation or a controlled multi-orientation calibration remains required before active control"
+  ]
+}

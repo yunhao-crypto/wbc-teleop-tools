@@ -1,0 +1,154 @@
+# @package _global_
+
+# Kuavo 5 S54 empty-hand contract: official 27 body joints plus head yaw/pitch.
+robot:
+  humanoid_type: leju/Kuavo5/S54
+  root_name: base_link
+  torso_name: waist_yaw_link
+  anchor_body: waist_yaw_link
+  dof_obs_size: 29
+  actions_dim: 29
+  num_bodies: 30
+  num_extend_bodies: 0
+  undesired_contacts_regrex: "^(?!leg_l6_link$)(?!leg_r6_link$)(?!zarm_l7_link$)(?!zarm_r7_link$).+$"
+  feet_body_names: {left: [leg_l6_link], right: [leg_r6_link]}
+  feet_geom_names: {left: [], right: []}
+
+  dof_names: &all_dofs
+    [leg_l1_joint, leg_l2_joint, leg_l3_joint, leg_l4_joint, leg_l5_joint, leg_l6_joint,
+     leg_r1_joint, leg_r2_joint, leg_r3_joint, leg_r4_joint, leg_r5_joint, leg_r6_joint,
+     waist_yaw_joint,
+     zarm_l1_joint, zarm_l2_joint, zarm_l3_joint, zarm_l4_joint, zarm_l5_joint, zarm_l6_joint, zarm_l7_joint,
+     zarm_r1_joint, zarm_r2_joint, zarm_r3_joint, zarm_r4_joint, zarm_r5_joint, zarm_r6_joint, zarm_r7_joint,
+     zhead_1_joint, zhead_2_joint]
+  velocity_policy_dof_names:
+    [leg_l1_joint, leg_l2_joint, leg_l3_joint, leg_l4_joint, leg_l5_joint, leg_l6_joint,
+     leg_r1_joint, leg_r2_joint, leg_r3_joint, leg_r4_joint, leg_r5_joint, leg_r6_joint,
+     waist_yaw_joint,
+     zarm_l1_joint, zarm_l2_joint, zarm_l3_joint, zarm_l4_joint, zarm_l5_joint, zarm_l6_joint, zarm_l7_joint,
+     zarm_r1_joint, zarm_r2_joint, zarm_r3_joint, zarm_r4_joint, zarm_r5_joint, zarm_r6_joint, zarm_r7_joint]
+  head_dof_names: [zhead_1_joint, zhead_2_joint]
+  waist_dof_names: [waist_yaw_joint]
+  left_leg_dof_names: [leg_l1_joint, leg_l2_joint, leg_l3_joint, leg_l4_joint, leg_l5_joint, leg_l6_joint]
+  right_leg_dof_names: [leg_r1_joint, leg_r2_joint, leg_r3_joint, leg_r4_joint, leg_r5_joint, leg_r6_joint]
+  leg_dof_names: [leg_l1_joint, leg_l2_joint, leg_l3_joint, leg_l4_joint, leg_l5_joint, leg_l6_joint, leg_r1_joint, leg_r2_joint, leg_r3_joint, leg_r4_joint, leg_r5_joint, leg_r6_joint]
+  left_arm_dof_names: [zarm_l1_joint, zarm_l2_joint, zarm_l3_joint, zarm_l4_joint, zarm_l5_joint, zarm_l6_joint, zarm_l7_joint]
+  right_arm_dof_names: [zarm_r1_joint, zarm_r2_joint, zarm_r3_joint, zarm_r4_joint, zarm_r5_joint, zarm_r6_joint, zarm_r7_joint]
+  arm_dof_names: [zarm_l1_joint, zarm_l2_joint, zarm_l3_joint, zarm_l4_joint, zarm_l5_joint, zarm_l6_joint, zarm_l7_joint, zarm_r1_joint, zarm_r2_joint, zarm_r3_joint, zarm_r4_joint, zarm_r5_joint, zarm_r6_joint, zarm_r7_joint]
+  upper_body_dof_names: [waist_yaw_joint, zarm_l1_joint, zarm_l2_joint, zarm_l3_joint, zarm_l4_joint, zarm_l5_joint, zarm_l6_joint, zarm_l7_joint, zarm_r1_joint, zarm_r2_joint, zarm_r3_joint, zarm_r4_joint, zarm_r5_joint, zarm_r6_joint, zarm_r7_joint, zhead_1_joint, zhead_2_joint]
+  lower_body_dof_names: ${robot.leg_dof_names}
+
+  body_names: &all_bodies
+    [base_link,
+     leg_l1_link, leg_l2_link, leg_l3_link, leg_l4_link, leg_l5_link, leg_l6_link,
+     leg_r1_link, leg_r2_link, leg_r3_link, leg_r4_link, leg_r5_link, leg_r6_link,
+     waist_yaw_link,
+     zarm_l1_link, zarm_l2_link, zarm_l3_link, zarm_l4_link, zarm_l5_link, zarm_l6_link, zarm_l7_link,
+     zarm_r1_link, zarm_r2_link, zarm_r3_link, zarm_r4_link, zarm_r5_link, zarm_r6_link, zarm_r7_link,
+     zhead_1_link, zhead_2_link]
+  left_leg_body_names: [leg_l1_link, leg_l2_link, leg_l3_link, leg_l4_link, leg_l5_link, leg_l6_link]
+  right_leg_body_names: [leg_r1_link, leg_r2_link, leg_r3_link, leg_r4_link, leg_r5_link, leg_r6_link]
+  leg_body_names: [leg_l1_link, leg_l2_link, leg_l3_link, leg_l4_link, leg_l5_link, leg_l6_link, leg_r1_link, leg_r2_link, leg_r3_link, leg_r4_link, leg_r5_link, leg_r6_link]
+  left_arm_body_names: [zarm_l1_link, zarm_l2_link, zarm_l3_link, zarm_l4_link, zarm_l5_link, zarm_l6_link, zarm_l7_link]
+  right_arm_body_names: [zarm_r1_link, zarm_r2_link, zarm_r3_link, zarm_r4_link, zarm_r5_link, zarm_r6_link, zarm_r7_link]
+  arm_body_names: [zarm_l1_link, zarm_l2_link, zarm_l3_link, zarm_l4_link, zarm_l5_link, zarm_l6_link, zarm_l7_link, zarm_r1_link, zarm_r2_link, zarm_r3_link, zarm_r4_link, zarm_r5_link, zarm_r6_link, zarm_r7_link]
+  torso_body_names: [base_link, waist_yaw_link, zhead_1_link, zhead_2_link]
+  head_hand_bodies: [zhead_2_link, zarm_l7_link, zarm_r7_link]
+  key_bodies: [base_link, leg_l2_link, leg_l4_link, leg_l6_link, leg_r2_link, leg_r4_link, leg_r6_link, waist_yaw_link, zarm_l1_link, zarm_l4_link, zarm_l7_link, zarm_r1_link, zarm_r4_link, zarm_r7_link]
+  key_dofs: [leg_l4_joint, leg_r4_joint, zarm_l4_joint, zarm_r4_joint]
+
+  init_state:
+    pos: [0.0, 0.0, 0.925]
+    rot: [0.0, 0.0, 0.0, 1.0]
+    lin_vel: [0.0, 0.0, 0.0]
+    ang_vel: [0.0, 0.0, 0.0]
+    default_joint_angles:
+      "leg_[lr]1_joint": 0.0
+      "leg_[lr]2_joint": 0.0
+      "leg_[lr]3_joint": -0.4
+      "leg_[lr]4_joint": 0.69
+      "leg_[lr]5_joint": -0.33
+      "leg_[lr]6_joint": 0.0
+      waist_yaw_joint: 0.0
+      "zarm_.*_joint": 0.0
+      "zhead_.*_joint": 0.0
+
+  actuators:
+    actuator_type: leju_delayed_pd
+    body:
+      joint_names_expr: ["waist_.*", "leg_.*", "zarm_.*"]
+      effort_limit_sim: {"leg_[lr]1_joint": 101.6, "leg_[lr]2_joint": 56.8, "leg_[lr]3_joint": 105.6, "leg_[lr]4_joint": 224.0, "leg_[lr]5_joint": 91.6, "leg_[lr]6_joint": 57.0, waist_yaw_joint: 81.6, "zarm_[lr]1_joint": 52.8, "zarm_[lr]2_joint": 60.0, "zarm_[lr]3_joint": 45.6, "zarm_[lr]4_joint": 60.0, "zarm_[lr][567]_joint": 11.0}
+      velocity_limit_sim: {"leg_[lr]1_joint": 10.4, "leg_[lr]2_joint": 8.7, "leg_[lr]3_joint": 12.7, "leg_[lr]4_joint": 10.4, "leg_[lr][56]_joint": 17.8, waist_yaw_joint: 8.7, "zarm_[lr]1_joint": 18.8, "zarm_[lr]2_joint": 8.0, "zarm_[lr]3_joint": 7.5, "zarm_[lr]4_joint": 8.0, "zarm_[lr][567]_joint": 17.5}
+      effort_weaken_velocity_limit: {"leg_[lr]1_joint": 2.08, "leg_[lr]2_joint": 1.74, "leg_[lr]3_joint": 2.54, "leg_[lr]4_joint": 2.08, "leg_[lr][56]_joint": 3.56, waist_yaw_joint: 1.74, "zarm_[lr]1_joint": 3.76, "zarm_[lr]2_joint": 1.6, "zarm_[lr]3_joint": 1.5, "zarm_[lr]4_joint": 1.6, "zarm_[lr][567]_joint": 3.5}
+      stiffness: {"leg_[lr][12]_joint": 60.0, "leg_[lr]3_joint": 80.0, "leg_[lr]4_joint": 95.0, "leg_[lr][56]_joint": 55.0, waist_yaw_joint: 40.0, "zarm_[lr][1234]_joint": 20.0, "zarm_[lr][567]_joint": 15.0}
+      damping: {"leg_[lr][1234]_joint": 6.0, "leg_[lr][56]_joint": 7.5, waist_yaw_joint: 4.0, "zarm_.*_joint": 3.0}
+      armature: {"leg_[lr]1_joint": 0.05, "leg_[lr][23]_joint": 0.025, "leg_[lr][456]_joint": 0.05, waist_yaw_joint: 0.025, "zarm_[lr]1_joint": 0.025, "zarm_[lr][234]_joint": 0.02, "zarm_[lr][567]_joint": 0.01}
+      friction: 0.0
+      min_delay: 0
+      max_delay: 4
+      friction_static: {"leg_[lr]1_joint": 1.0, "leg_[lr][23]_joint": 0.5, "leg_[lr]4_joint": 1.0, "leg_[lr][56]_joint": 0.2, waist_yaw_joint: 0.2, "zarm_[lr]1_joint": 0.5, "zarm_[lr][24]_joint": 0.3, "zarm_[lr]3_joint": 0.2, "zarm_[lr][567]_joint": 0.1}
+      friction_activation_vel: 0.1
+      friction_dynamic: {"leg_.*_joint": 0.2, waist_yaw_joint: 0.2, "zarm_.*_joint": 0.1}
+    # The public S54 asset provides head axes, limits, speed, effort and
+    # damping, but no policy PD gains. These conservative gains are explicitly
+    # provisional and must be checked against the target S54 CSP firmware.
+    head:
+      joint_names_expr: ["zhead_.*_joint"]
+      effort_limit_sim: {zhead_1_joint: 1.5, zhead_2_joint: 12.0}
+      velocity_limit_sim: {"zhead_.*_joint": 5.23}
+      effort_weaken_velocity_limit: {"zhead_.*_joint": 1.046}
+      stiffness: {zhead_1_joint: 5.0, zhead_2_joint: 20.0}
+      damping: {"zhead_.*_joint": 0.2}
+      armature: {"zhead_.*_joint": 0.003}
+      friction: 0.0
+      min_delay: 0
+      max_delay: 4
+      friction_static: 0.0
+      friction_activation_vel: 0.1
+      friction_dynamic: 0.0
+    action_scale: &action_scale {"leg_[lr]1_joint": 0.211667, "leg_[lr]2_joint": 0.118333, "leg_[lr]3_joint": 0.165, "leg_[lr]4_joint": 0.294737, "leg_[lr]5_joint": 0.208182, "leg_[lr]6_joint": 0.129545, waist_yaw_joint: 0.255, "zarm_[lr]1_joint": 0.33, "zarm_[lr]2_joint": 0.375, "zarm_[lr]3_joint": 0.285, "zarm_[lr]4_joint": 0.375, "zarm_[lr][567]_joint": 0.091667, zhead_1_joint: 0.0375, zhead_2_joint: 0.075}
+    velocity_policy_action_scale: {"leg_[lr]1_joint": 0.211667, "leg_[lr]2_joint": 0.118333, "leg_[lr]3_joint": 0.165, "leg_[lr]4_joint": 0.294737, "leg_[lr]5_joint": 0.208182, "leg_[lr]6_joint": 0.129545, waist_yaw_joint: 0.255, "zarm_[lr]1_joint": 0.33, "zarm_[lr]2_joint": 0.375, "zarm_[lr]3_joint": 0.285, "zarm_[lr]4_joint": 0.375, "zarm_[lr][567]_joint": 0.091667}
+
+  dof_sign_by_name: {}
+  asset:
+    source_format: urdf
+    urdf_file: assets/robots/leju/Kuavo5/S54/urdf/kuavoS54_29dof_mini_col.urdf
+    asset_root: ./
+    assetFileName: assets/robots/leju/Kuavo5/S54/xml/scene.xml
+    require_explicit_replace_cylinders_with_capsules: true
+    replace_cylinders_with_capsules: true
+    force_usd_conversion: true
+    fix_base_link: false
+  extend_config: []
+  motion:
+    asset:
+      assetRoot: ./
+      assetFileName: assets/robots/leju/Kuavo5/S54/xml/scene.xml
+    sampling_strategy: ${algo.config.sampling_strategy}
+    weighted_bin: ${algo.config.weighted_bin}
+    curriculum: ${algo.config.curriculum}
+    dump_sampled_motion_keys: false
+    dump_sampled_motion_keys_interval: 1
+    dump_sampled_motion_keys_dir: sampled_motion_cache_keys
+    max_frame_length: 300
+    min_frame_length: 50
+    handpicked_motion_names: null
+    excluded_motion_names: null
+    world_frame_normalization: true
+    backend: hdf5_v2
+    train_hdf5_roots: ${train_hdf5_roots}
+    val_hdf5_roots: ${train_hdf5_roots}
+    dof_names: *all_dofs
+    body_names: *all_bodies
+    key_bodies: ${robot.key_bodies}
+    extend_config: ${robot.extend_config}
+    dataloader: {num_workers: 2, prefetch_factor: 1, pin_memory: true, persistent_workers: false, timeout: 600}
+    fk_robot_file_path: ${robot.asset.urdf_file}
+    fk_vel_smoothing_sigma: 2.0
+    online_filter: {enabled: false, butter_order: 4, butter_cutoff_hz_pool: []}
+    cache:
+      batch_progress_bar: false
+      max_num_clips: ${num_envs}
+      device: cuda
+      swap_interval_steps: ${robot.motion.max_frame_length}
+      allowed_prefixes: [ref_, ft_ref_]

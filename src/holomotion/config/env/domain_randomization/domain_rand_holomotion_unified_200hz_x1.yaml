@@ -1,0 +1,11 @@
+# @package _global_
+
+defaults:
+  - domain_rand_holomotion_unified_200hz
+  - _self_
+
+# The shared Unitree-actuator builder transports the X1's 0--10 ms identified
+# command latency through this field.  At 200 Hz physics this is 0--2 physics
+# steps.  All non-physical training randomization remains identical to K1.
+domain_rand:
+  action_delay: {enabled: true, min_delay: 0, max_delay: 2}

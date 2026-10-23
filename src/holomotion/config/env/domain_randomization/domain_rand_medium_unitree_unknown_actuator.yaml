@@ -1,0 +1,34 @@
+# @package _global_
+
+defaults:
+  - domain_rand_medium
+  - _self_
+
+# R1/H2 actuator transport delay and torque-speed curves are not identified.
+# Use a conservative 0-2 policy-step latency prior and static effort limits;
+# do not inherit G1's motor curve.
+domain_rand:
+  action_delay:
+    enabled: true
+    min_delay: 0
+    max_delay: 2
+
+  # The shared medium preset is authored for G1 body names.  Rebind the two
+  # embodiment-dependent terms through the robot contract so R1 and H2 do not
+  # inherit G1's pelvis/torso strings.
+  rigid_body_com:
+    mode: startup
+    params:
+      body_names: ${robot.torso_name}
+      com_range:
+        x: [-0.075, 0.075]
+        y: [-0.1, 0.1]
+        z: [-0.1, 0.1]
+
+  randomize_mass:
+    mode: startup
+    params:
+      body_names:
+        - ${robot.root_name}
+        - ${robot.torso_name}
+      mass_range: [-1.0, 2.0]

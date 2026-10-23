@@ -1,0 +1,22 @@
+# @package _global_
+
+defaults:
+  - train_x1_29d_velocity_tracking_mlp
+  - override /env/domain_randomization: domain_rand_holomotion_unified_200hz_x1
+  - _self_
+
+# X1 keeps its embodiment-specific assets, PD gains, action scale and the
+# identified 0--10 ms transport delay.  All non-physical randomization follows
+# the successful K1 HoloMotion positive control.
+project_name: GMRFreeHoloMotionX1VelocityUnifiedDR
+experiment_name: gmr_free_x1_velocity_holomotion_unified_dr_from_scratch_10000
+
+terrain:
+  generator:
+    color_scheme: none
+
+algo:
+  config:
+    num_learning_iterations: 10000
+    save_interval: 1000
+    export_policy: true

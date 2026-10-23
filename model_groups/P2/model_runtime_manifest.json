@@ -1,0 +1,53 @@
+{
+  "schema": "vita_onboard_native_bundle_v1",
+  "experiment": {
+    "group": "P2",
+    "iteration": 8000
+  },
+  "source_hashes": {
+    "velocity": "f78fd39eb3f420675af63782d12ce2e6434f62e3159e1fd5b17b65b4fd6d7126",
+    "motion": "76e7637d0ed5f5b29c29378bc510515d4a3f31269377248f7a4acf06db98aebb"
+  },
+  "model_contract": {
+    "motion_obs": 3126,
+    "motion_actions": 30,
+    "velocity_obs": 990,
+    "velocity_actions": 28,
+    "policy_hz": 50,
+    "rope_reset_step": 8128
+  },
+  "artifacts": {
+    "front": {
+      "path": "cuts/frontend.onnx",
+      "sha256": "a2381b41b83340dd58d5415e69c69aee1aa640014a15da1ff92d6de23f418083"
+    },
+    "back": {
+      "path": "cuts/backend_after_moe.onnx",
+      "sha256": "0fb23baf9f0c50bc7693fdf32b9882606009e0fa23e7a9556f88f9569f8ed137"
+    },
+    "router_onnx": {
+      "path": "cuts/router.onnx",
+      "sha256": "63df941929ea6f3345144986d2826cbde559d67b983e75d9a7a76677691c7175"
+    },
+    "router": {
+      "path": "cuts/router_parameters.bin",
+      "sha256": "e9382f115118ac48adcb786820f9876f4dc2c00354e5fa21d093a14bbfeb06dc"
+    },
+    "pool0": {
+      "path": "pools_nk/expert_pool_0_nk.f32",
+      "sha256": "9b9aa127872d75ab445b3e25b3b95837560f09f1279f8b2fd6acf7e13cc55292"
+    },
+    "pool1": {
+      "path": "pools_nk/expert_pool_1_nk.f32",
+      "sha256": "6960381f9fa94f8d4f80e7e98e0b11cd725e73e58e4efa0cc520e99cdde70466"
+    },
+    "moe": {
+      "path": "moe/fp32_moe.hbm",
+      "sha256": "10ab486ba052599f7088be81e2df5c21862159a7e04a35ec3b2ccc647ede262e"
+    },
+    "velocity": {
+      "path": "../../artifacts/model_velocity/original.onnx",
+      "sha256": "f78fd39eb3f420675af63782d12ce2e6434f62e3159e1fd5b17b65b4fd6d7126"
+    }
+  }
+}

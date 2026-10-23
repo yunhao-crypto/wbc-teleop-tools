@@ -1,0 +1,231 @@
+{
+  "schema_version": 1,
+  "status": "documented-2026-09-14-readonly-validated-active-pending",
+  "external_limits_refresh": {
+    "date": "2026-09-22",
+    "source": "S100 /app/locomotion/config/locomotion.yaml EXTERNAL params, read over SSH",
+    "scope": "external jump_guard and command_limits only; configuration evidence, not a firmware enforcement test",
+    "client_slew_clipping": false,
+    "client_gain_clipping": false
+  },
+  "runtime_validation": {
+    "robot_serial": "00000000026ID100001",
+    "captured_at": "2026-09-14T17:19:35+08:00",
+    "aorta_group": "default",
+    "state_frames": 10499,
+    "state_slots": 44,
+    "active_slot_roles": [0, 41],
+    "reserved_slot_roles": [42, 43],
+    "motor_lost_frames": 0,
+    "hip_imu_status": 1,
+    "trace_sha256": "dc55a83f036a304a9b5f63a286e6ba2c555c4772fcc166538bf09bc42139e416",
+    "receipt": "receipts/dpx_lowstate_readonly_trace_30s_20260914_171934.json",
+    "limitations": [
+      "LowState slot roles do not prove whether an active slot is backed by a physical device or a MOCK implementation",
+      "stationary telemetry does not prove the mechanical-lock state",
+      "the runtime body frame still requires explicit correspondence to the policy base_link before real-data policy evaluation"
+    ]
+  },
+  "robot_profile": "A-sample full",
+  "sources": [
+    {
+      "path": "vita-document/PC 网络与 Zenoh 配置.pdf",
+      "sha256": "c52191f0a0f8f37dff168a076bb53c30440bef6e3ae3c3fb5ac4e49708f336cd"
+    },
+    {
+      "path": "vita-document/公开 topic 与消息字段.pdf",
+      "sha256": "6f58d8a7b0e61bbf56a14ba6ab541eae079717351842e34ff3690b4850631bd2"
+    },
+    {
+      "path": "vita-document/EXTERNAL 配置.pdf",
+      "sha256": "1207dbf9dba93e531dad227c44e7d45dd0b721b50cb8dc311633e5fd246d449e"
+    },
+    {
+      "path": "vita-document/SDK 快速开始.pdf",
+      "sha256": "92ba0ba90ce67d07eb70f9a184aeeaa41dfed1a4f12a366edd628a98894afb1e"
+    }
+  ],
+  "sdk": {
+    "release": "v0.1.0-rc.2",
+    "repository_head": "54e0b3fc0de010982cbf44d0a4ee36a022dbdb14",
+    "aorta_version": "2026.9.10+humanoid.7100871",
+    "external_version": 1,
+    "archive": "vendor/github-release-v0.1.0-rc.2/humanoid-sdk-0.1.0-rc.2.tar.gz",
+    "archive_sha256": "e79dc149f7a6adf8abc4db604879ae0eac6b051d26cb0c5fdf811b66b650acd1",
+    "manifest": "vendor/humanoid-sdk-0.1.0-rc.2/MANIFEST.json",
+    "manifest_sha256": "78b700167ad6f8f42d0960b45316c0d1c6a470b18ef44f4dac6e46251c6d792c",
+    "pc_profile_template": "vendor/humanoid-sdk-0.1.0-rc.2/config/pc_session_peer.json5",
+    "pc_profile_template_sha256": "6dd69bf3d45529a5e6444f2303001f18062e2d22f95d4760a431fcbc47ee5711"
+  },
+  "network": {
+    "session_mode": "peer",
+    "router_endpoint": "tcp/192.168.125.2:7447",
+    "pc_listener": "tcp/192.168.125.4:0",
+    "multicast_enabled": false,
+    "gossip_enabled": true,
+    "group_candidate": "default",
+    "group_evidence": "runtime LowState reception required",
+    "region_name_policy": "preserve template; absent means do not add router values",
+    "gateway_policy": "preserve template; absent means do not add router values"
+  },
+  "lowstate": {
+    "topic": "/sdk/foot_humanoid/lowstate",
+    "state_slots": 44,
+    "active_slots": [0, 41],
+    "reserved_slots": [42, 43],
+    "state_id": {
+      "type": "uint16",
+      "initial": 0,
+      "modulus": 65536,
+      "wrap_example": [65535, 0],
+      "reset_or_reorder_detection": "requires receive timing and publisher/session context"
+    },
+    "rate": {
+      "control_loop_target_hz": 500,
+      "left_leg_can_tx_hz": 350,
+      "right_leg_can_tx_hz": 350,
+      "pc_receive_minimum_hz": null,
+      "acceptance": "measure arrival percentiles, maximum gap, modular sequence gaps and per-device freshness"
+    },
+    "timestamps": {
+      "ts_state_real": "latest host receive time among triggering joints, microseconds",
+      "ts_consumed_us": "locomotion state assembly time, microseconds",
+      "ts_state_pub": "asynchronous publish preparation time, microseconds",
+      "cross_host_latency": "not derivable until the S100 and PC clock sources and synchronization error are verified"
+    },
+    "imu": {
+      "hip_location": 0,
+      "trunk_location": 1,
+      "required_for_current_robot": "HIP",
+      "trunk_hardware": "reserved/not installed on current delivery",
+      "valid_status": 1,
+      "status_codes": {
+        "0": "UNKNOWN",
+        "1": "OK",
+        "2": "NO_SNAPSHOT",
+        "3": "STALE",
+        "4": "FILTER_NOT_READY",
+        "5": "BAD_QUATERNION",
+        "6": "INIT_FAILED",
+        "7": "UNCONFIGURED"
+      },
+      "quaternion_order": "wxyz",
+      "rpy_unit": "degree",
+      "gyro_unit": "rad/s",
+      "acceleration_unit": "m/s^2",
+      "runtime_axes": "X forward, Y left, Z up",
+      "base_link_alignment": "not yet validated against the motion policy base_link"
+    }
+  },
+  "external": {
+    "command_topic": "/locomotion/external_command",
+    "command_slots": 42,
+    "recommended_input_hz": 50,
+    "allowed_modes": [10],
+    "command_timeout_ms": 1000,
+    "recover_valid_frames": 1,
+    "interpolation_period_ms": [2, 100],
+    "jump_guard": {
+      "default_max_input_velocity_rad_s": 10.0,
+      "default_margin_rad": 0.02,
+      "neck_and_finger_max_input_velocity_rad_s": 10.0,
+      "neck_and_finger_margin_rad": 0.01
+    },
+    "limits": {
+      "max_abs_dq_rad_s": 25.0,
+      "max_abs_tau_nm": null,
+      "max_kp": 500.0,
+      "max_kd": 50.0
+    },
+    "safe_hold": {
+      "required": true,
+      "slot_count": 42,
+      "source": "deployed A-sample FIXED_STAND gain vector",
+      "numeric_vector_published": false,
+      "device_configuration_verification_required": true
+    }
+  },
+  "parallel_ankle": {
+    "sdk_coordinate_space": "virtual pitch/roll",
+    "right_roll_sign_applied_by_server": -1,
+    "user_applies_inverse_kinematics": false,
+    "geometry_m": {
+      "ly": 0.02175,
+      "lx": 0.05,
+      "z_top": 0.31,
+      "z_bot": 0.235
+    },
+    "virtual_limits_rad": {
+      "pitch": [-0.751, 0.414],
+      "roll": [-0.43625, 0.43625]
+    },
+    "adapter_motor_limits_rad": [-0.95975, 0.61075],
+    "motor_pd": {
+      "strategy": "position_motor_gains",
+      "kp_motor": 20.0,
+      "kd_motor": 1.0
+    }
+  },
+  "slots": [
+    {"slot": 0, "joint": "left_hip_pitch_joint", "q_rad": [-2.879793, 1.745329], "rotation_direction": 1, "joint_calib_angle_rad": -2.879793, "capability": "pd"},
+    {"slot": 1, "joint": "left_hip_roll_joint", "q_rad": [-0.436332, 2.181662], "rotation_direction": -1, "joint_calib_angle_rad": 2.181662, "capability": "pd"},
+    {"slot": 2, "joint": "left_hip_yaw_joint", "q_rad": [-1.570796, 1.570796], "rotation_direction": -1, "joint_calib_angle_rad": 1.570796, "capability": "pd"},
+    {"slot": 3, "joint": "left_knee_joint", "q_rad": [0.0, 2.181662], "rotation_direction": -1, "joint_calib_angle_rad": 0.0, "capability": "pd"},
+    {"slot": 4, "joint": "left_ankle_pitch_joint", "q_rad": [-0.751, 0.414], "coordinate": "virtual_pitch", "capability": "parallel_ankle_pd"},
+    {"slot": 5, "joint": "left_ankle_roll_joint", "q_rad": [-0.43625, 0.43625], "coordinate": "virtual_roll", "capability": "parallel_ankle_pd"},
+    {"slot": 6, "joint": "right_hip_pitch_joint", "q_rad": [-2.879793, 1.745329], "rotation_direction": -1, "joint_calib_angle_rad": -2.879793, "capability": "pd"},
+    {"slot": 7, "joint": "right_hip_roll_joint", "q_rad": [-2.181662, 0.436332], "rotation_direction": -1, "joint_calib_angle_rad": -2.181662, "capability": "pd"},
+    {"slot": 8, "joint": "right_hip_yaw_joint", "q_rad": [-1.570796, 1.570796], "rotation_direction": -1, "joint_calib_angle_rad": -1.570796, "capability": "pd"},
+    {"slot": 9, "joint": "right_knee_joint", "q_rad": [0.0, 2.181662], "rotation_direction": 1, "joint_calib_angle_rad": 0.0, "capability": "pd"},
+    {"slot": 10, "joint": "right_ankle_pitch_joint", "q_rad": [-0.751, 0.414], "coordinate": "virtual_pitch", "capability": "parallel_ankle_pd"},
+    {"slot": 11, "joint": "right_ankle_roll_joint", "q_rad": [-0.43625, 0.43625], "coordinate": "virtual_roll", "capability": "parallel_ankle_pd"},
+    {"slot": 12, "joint": "waist_yaw_joint", "q_rad": [-1.570796, 1.570796], "rotation_direction": -1, "joint_calib_angle_rad": 1.570796, "capability": "pd"},
+    {"slot": 13, "joint": "waist_pitch_joint", "q_rad": [-0.523599, 0.523599], "rotation_direction": -1, "joint_calib_angle_rad": 0.523599, "capability": "pd"},
+    {"slot": 14, "joint": "left_shoulder_pitch_joint", "q_rad": [-2.565634, 2.565634], "rotation_direction": 1, "joint_calib_angle_rad": 2.565634, "capability": "pd"},
+    {"slot": 15, "joint": "left_shoulder_roll_joint", "q_rad": [-0.235619, 2.277655], "rotation_direction": 1, "joint_calib_angle_rad": 2.277655, "capability": "pd"},
+    {"slot": 16, "joint": "left_shoulder_yaw_joint", "q_rad": [-2.45829625, 2.4281675], "rotation_direction": -1, "joint_calib_angle_rad": -2.45829625, "capability": "pd"},
+    {"slot": 17, "joint": "left_elbow_joint", "q_rad": [-0.667414, 2.421819], "rotation_direction": 1, "joint_calib_angle_rad": -0.667414, "capability": "pd"},
+    {"slot": 18, "joint": "right_shoulder_pitch_joint", "q_rad": [-2.565634, 2.565634], "rotation_direction": -1, "joint_calib_angle_rad": 2.565634, "capability": "pd"},
+    {"slot": 19, "joint": "right_shoulder_roll_joint", "q_rad": [-2.277655, 0.235619], "rotation_direction": 1, "joint_calib_angle_rad": -2.277655, "capability": "pd"},
+    {"slot": 20, "joint": "right_shoulder_yaw_joint", "q_rad": [-2.4281675, 2.45829625], "rotation_direction": -1, "joint_calib_angle_rad": 2.45829625, "capability": "pd"},
+    {"slot": 21, "joint": "right_elbow_joint", "q_rad": [-0.667414, 2.421819], "rotation_direction": -1, "joint_calib_angle_rad": -0.667414, "capability": "pd"},
+    {"slot": 22, "joint": "left_wrist_roll_joint", "q_rad": [-2.321288, 2.321288], "rotation_direction": 1, "joint_calib_angle_rad": -2.321288, "capability": "pd"},
+    {"slot": 23, "joint": "left_wrist_yaw_joint", "q_rad": [-0.912807, 1.70519], "rotation_direction": -1, "joint_calib_angle_rad": 1.70519, "capability": "pd"},
+    {"slot": 24, "joint": "left_wrist_pitch_joint", "q_rad": [-1.87099, 1.96873], "rotation_direction": 1, "joint_calib_angle_rad": -1.87099, "capability": "pd"},
+    {"slot": 25, "joint": "left_thumb_pitch_joint", "q_rad": [0.0, 0.58], "rotation_direction": 1, "joint_calib_angle_rad": 0.0, "capability": "position_only_or_mock"},
+    {"slot": 26, "joint": "left_thumb_roll_joint", "q_rad": [0.0, 1.3], "rotation_direction": 1, "joint_calib_angle_rad": 0.0, "capability": "position_only_or_mock"},
+    {"slot": 27, "joint": "left_index_finger_pitch_joint", "q_rad": [0.0, 1.6], "rotation_direction": 1, "joint_calib_angle_rad": 0.0, "capability": "position_only_or_mock"},
+    {"slot": 28, "joint": "left_middle_finger_pitch_joint", "q_rad": [0.0, 1.6], "rotation_direction": 1, "joint_calib_angle_rad": 0.0, "capability": "position_only_or_mock"},
+    {"slot": 29, "joint": "left_ring_finger_pitch_joint", "q_rad": [0.0, 1.6], "rotation_direction": 1, "joint_calib_angle_rad": 0.0, "capability": "position_only_or_mock"},
+    {"slot": 30, "joint": "left_little_finger_pitch_joint", "q_rad": [0.0, 1.6], "rotation_direction": 1, "joint_calib_angle_rad": 0.0, "capability": "position_only_or_mock"},
+    {"slot": 31, "joint": "right_wrist_roll_joint", "q_rad": [-2.32129, 2.32129], "rotation_direction": 1, "joint_calib_angle_rad": 2.32129, "capability": "pd"},
+    {"slot": 32, "joint": "right_wrist_yaw_joint", "q_rad": [-1.70519, 0.912807], "rotation_direction": -1, "joint_calib_angle_rad": -1.70519, "capability": "pd"},
+    {"slot": 33, "joint": "right_wrist_pitch_joint", "q_rad": [-1.87099, 1.96873], "rotation_direction": -1, "joint_calib_angle_rad": -1.87099, "capability": "pd"},
+    {"slot": 34, "joint": "right_thumb_pitch_joint", "q_rad": [0.0, 0.58], "rotation_direction": 1, "joint_calib_angle_rad": 0.0, "capability": "position_only_or_mock"},
+    {"slot": 35, "joint": "right_thumb_roll_joint", "q_rad": [0.0, 1.3], "rotation_direction": 1, "joint_calib_angle_rad": 0.0, "capability": "position_only_or_mock"},
+    {"slot": 36, "joint": "right_index_finger_pitch_joint", "q_rad": [0.0, 1.6], "rotation_direction": 1, "joint_calib_angle_rad": 0.0, "capability": "position_only_or_mock"},
+    {"slot": 37, "joint": "right_middle_finger_pitch_joint", "q_rad": [0.0, 1.6], "rotation_direction": 1, "joint_calib_angle_rad": 0.0, "capability": "position_only_or_mock"},
+    {"slot": 38, "joint": "right_ring_finger_pitch_joint", "q_rad": [0.0, 1.6], "rotation_direction": 1, "joint_calib_angle_rad": 0.0, "capability": "position_only_or_mock"},
+    {"slot": 39, "joint": "right_little_finger_pitch_joint", "q_rad": [0.0, 1.6], "rotation_direction": 1, "joint_calib_angle_rad": 0.0, "capability": "position_only_or_mock"},
+    {"slot": 40, "joint": "neck_pitch_joint", "q_rad": [-0.785398, 0.523599], "rotation_direction": -1, "joint_calib_angle_rad": -0.785398, "capability": "pd_mechanical_lock_possible"},
+    {"slot": 41, "joint": "neck_yaw_joint", "q_rad": [-1.396263, 1.396263], "rotation_direction": 1, "joint_calib_angle_rad": 1.396263, "capability": "pd"}
+  ],
+  "internal_ankle_motors": {
+    "left": [
+      {"slot": 4, "link": "theta1_upper", "rotation_direction": -1, "joint_calib_angle_rad": -0.959931},
+      {"slot": 5, "link": "theta2_lower", "rotation_direction": 1, "joint_calib_angle_rad": -0.959931}
+    ],
+    "right": [
+      {"slot": 10, "link": "theta1_upper", "rotation_direction": 1, "joint_calib_angle_rad": -0.959931},
+      {"slot": 11, "link": "theta2_lower", "rotation_direction": -1, "joint_calib_angle_rad": -0.959931}
+    ]
+  },
+  "unresolved": [
+    "device_roster_and_mock_slots",
+    "device_safe_hold_42_vector",
+    "mechanical_lock_state",
+    "neck_pitch_limit_tolerance",
+    "policy_base_link_to_hip_imu_alignment",
+    "active_test_gain_approval"
+  ]
+}

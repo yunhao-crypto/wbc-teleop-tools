@@ -1,0 +1,95 @@
+{
+  "schema": "vita_actor_pico_change_manifest_v1",
+  "base_deploy_payload": "packages/W1019-139-deploy/final-readback.json",
+  "validation": "outputs/actor_pico_validation.json",
+  "scope": "inference_only",
+  "files": [
+    {
+      "path": "README_ACTOR_PICO.md",
+      "sha256": "81cd14e2cd56ef08d6520849d205d8b4bedbafe4a82cd319e90fb22d86945ef6",
+      "bytes": 8986,
+      "mode": "0o644"
+    },
+    {
+      "path": "config/actor_pico.json",
+      "sha256": "9f339c047248e60f9b2c2192bb1446b2760a73df9a03b18590292159d3208b88",
+      "bytes": 6081,
+      "mode": "0o644"
+    },
+    {
+      "path": "scripts/actor_pico.py",
+      "sha256": "52a70baf26df7b07506f6d353ef90b7414316d152fc4b55ff514d088931a2d31",
+      "bytes": 11453,
+      "mode": "0o755"
+    },
+    {
+      "path": "scripts/make_actor_pico_replay.py",
+      "sha256": "3799bcd4a58e6aec10989094508aa35cae6d32c4f74bf26a0b394ef6189034f6",
+      "bytes": 816,
+      "mode": "0o755"
+    },
+    {
+      "path": "scripts/start_actor_pico.sh",
+      "sha256": "b5009394a3ed1f65698fb5a36dcc3290aeb973e093fe2c1d191c910bcbbe104f",
+      "bytes": 1763,
+      "mode": "0o755"
+    },
+    {
+      "path": "src/deployment/vita_s100_aorta_30dof/actor_pico_reference.py",
+      "sha256": "b6e0ea64c192730ea435bf259d64e631ef1ffb5b2e3539932c5cf404b5179ee9",
+      "bytes": 12187,
+      "mode": "0o644"
+    },
+    {
+      "path": "src/deployment/vita_s100_aorta_30dof/actor_pico_runtime.py",
+      "sha256": "7b2e4df9af48da6ae22eaef131d313b0a5934f4a66221b0ad4d3a7dc0e84947c",
+      "bytes": 7655,
+      "mode": "0o644"
+    },
+    {
+      "path": "tests/fixtures/actor_pico/actor_g1_contract.json",
+      "sha256": "944add9a65208170bcc69cf89290ed6ed20e47255eb48ee97063d60cbd953152",
+      "bytes": 7620,
+      "mode": "0o644"
+    },
+    {
+      "path": "tests/fixtures/actor_pico/groot_observation_golden.json",
+      "sha256": "2eb43738773acc86272769b0c978cb225140637911d148698ffce769dc964c86",
+      "bytes": 67650,
+      "mode": "0o644"
+    },
+    {
+      "path": "tests/fixtures/actor_pico/tracking_fixture_provenance.json",
+      "sha256": "1d0c34d5fae04f3b6bee7b59e8c541b8a9f4a8526bc6e164b20ac5fbd1979c2b",
+      "bytes": 746,
+      "mode": "0o644"
+    },
+    {
+      "path": "tests/test_actor_pico.py",
+      "sha256": "b0a14e92134b521bf6da89d533b6cb3d2e44920f17d38ea872340fa9667c1120",
+      "bytes": 10389,
+      "mode": "0o644"
+    }
+  ],
+  "permissions_restored": [
+    {
+      "path": "venv/bin/python",
+      "mode": "0o755",
+      "sha256": "0e96ce985b3361a913b8c06106c5e34190028736e8ad0e47ad12d242b4c99eac"
+    },
+    {
+      "path": "vendor_packages/xrobotoolkit-arm64/opt/apps/roboticsservice/RoboticsServiceProcess",
+      "mode": "0o755",
+      "sha256": "e563b8bfec175b4817ea891fe11bac478238e8b5acdbe6fa6139af55c5e0525f"
+    }
+  ],
+  "validation_sha256": "0f7cf126c0e5f404a4e4987f5b420a552fe7081c2e519625100a03f09244eb46",
+  "external_resources": [
+    {
+      "path": "artifacts/actor_g1/actor_g1.onnx",
+      "sha256": "f0dfa04684b4f8967623ddbcf8ede8ef3d862d0b403e9e3659e2a519eade6fae",
+      "bytes": 57754800,
+      "provision": "Supply separately using bootstrap_actor_s100.py --model"
+    }
+  ]
+}

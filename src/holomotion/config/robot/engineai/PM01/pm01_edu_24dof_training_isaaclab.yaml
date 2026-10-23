@@ -1,0 +1,133 @@
+# @package _global_
+
+# EngineAI PM01 EDU, pinned official 24-DoF USD/MJCF/URDF contract.
+robot:
+  humanoid_type: engineai/PM01/24dof
+  root_name: LINK_BASE
+  torso_name: LINK_TORSO_YAW
+  anchor_body: LINK_TORSO_YAW
+  dof_obs_size: 24
+  actions_dim: 24
+  num_bodies: 29
+  num_extend_bodies: 0
+  undesired_contacts_regrex: "^(?!LINK_FOOT_L$)(?!LINK_FOOT_R$)(?!LINK_ELBOW_END_L$)(?!LINK_ELBOW_END_R$).+$"
+  feet_body_names: {left: [LINK_FOOT_L], right: [LINK_FOOT_R]}
+  feet_geom_names: {left: [], right: []}
+
+  dof_names: &all_dofs
+    [J00_HIP_PITCH_L, J01_HIP_ROLL_L, J02_HIP_YAW_L, J03_KNEE_PITCH_L, J04_ANKLE_PITCH_L, J05_ANKLE_ROLL_L,
+     J06_HIP_PITCH_R, J07_HIP_ROLL_R, J08_HIP_YAW_R, J09_KNEE_PITCH_R, J10_ANKLE_PITCH_R, J11_ANKLE_ROLL_R,
+     J12_WAIST_YAW,
+     J13_SHOULDER_PITCH_L, J14_SHOULDER_ROLL_L, J15_SHOULDER_YAW_L, J16_ELBOW_PITCH_L, J17_ELBOW_YAW_L,
+     J18_SHOULDER_PITCH_R, J19_SHOULDER_ROLL_R, J20_SHOULDER_YAW_R, J21_ELBOW_PITCH_R, J22_ELBOW_YAW_R,
+     J23_HEAD_YAW]
+  velocity_policy_dof_names:
+    [J00_HIP_PITCH_L, J01_HIP_ROLL_L, J02_HIP_YAW_L, J03_KNEE_PITCH_L, J04_ANKLE_PITCH_L, J05_ANKLE_ROLL_L,
+     J06_HIP_PITCH_R, J07_HIP_ROLL_R, J08_HIP_YAW_R, J09_KNEE_PITCH_R, J10_ANKLE_PITCH_R, J11_ANKLE_ROLL_R,
+     J12_WAIST_YAW,
+     J13_SHOULDER_PITCH_L, J14_SHOULDER_ROLL_L, J15_SHOULDER_YAW_L, J16_ELBOW_PITCH_L, J17_ELBOW_YAW_L,
+     J18_SHOULDER_PITCH_R, J19_SHOULDER_ROLL_R, J20_SHOULDER_YAW_R, J21_ELBOW_PITCH_R, J22_ELBOW_YAW_R]
+  head_dof_names: [J23_HEAD_YAW]
+  waist_dof_names: [J12_WAIST_YAW]
+  left_leg_dof_names: [J00_HIP_PITCH_L, J01_HIP_ROLL_L, J02_HIP_YAW_L, J03_KNEE_PITCH_L, J04_ANKLE_PITCH_L, J05_ANKLE_ROLL_L]
+  right_leg_dof_names: [J06_HIP_PITCH_R, J07_HIP_ROLL_R, J08_HIP_YAW_R, J09_KNEE_PITCH_R, J10_ANKLE_PITCH_R, J11_ANKLE_ROLL_R]
+  leg_dof_names: [J00_HIP_PITCH_L, J01_HIP_ROLL_L, J02_HIP_YAW_L, J03_KNEE_PITCH_L, J04_ANKLE_PITCH_L, J05_ANKLE_ROLL_L, J06_HIP_PITCH_R, J07_HIP_ROLL_R, J08_HIP_YAW_R, J09_KNEE_PITCH_R, J10_ANKLE_PITCH_R, J11_ANKLE_ROLL_R]
+  left_arm_dof_names: [J13_SHOULDER_PITCH_L, J14_SHOULDER_ROLL_L, J15_SHOULDER_YAW_L, J16_ELBOW_PITCH_L, J17_ELBOW_YAW_L]
+  right_arm_dof_names: [J18_SHOULDER_PITCH_R, J19_SHOULDER_ROLL_R, J20_SHOULDER_YAW_R, J21_ELBOW_PITCH_R, J22_ELBOW_YAW_R]
+  arm_dof_names: [J13_SHOULDER_PITCH_L, J14_SHOULDER_ROLL_L, J15_SHOULDER_YAW_L, J16_ELBOW_PITCH_L, J17_ELBOW_YAW_L, J18_SHOULDER_PITCH_R, J19_SHOULDER_ROLL_R, J20_SHOULDER_YAW_R, J21_ELBOW_PITCH_R, J22_ELBOW_YAW_R]
+  upper_body_dof_names: [J12_WAIST_YAW, J13_SHOULDER_PITCH_L, J14_SHOULDER_ROLL_L, J15_SHOULDER_YAW_L, J16_ELBOW_PITCH_L, J17_ELBOW_YAW_L, J18_SHOULDER_PITCH_R, J19_SHOULDER_ROLL_R, J20_SHOULDER_YAW_R, J21_ELBOW_PITCH_R, J22_ELBOW_YAW_R, J23_HEAD_YAW]
+  lower_body_dof_names: ${robot.leg_dof_names}
+
+  body_names: &all_bodies
+    [LINK_BASE,
+     LINK_HIP_PITCH_L, LINK_HIP_ROLL_L, LINK_HIP_YAW_L, LINK_KNEE_PITCH_L, LINK_ANKLE_PITCH_L, LINK_ANKLE_ROLL_L, LINK_FOOT_L,
+     LINK_HIP_PITCH_R, LINK_HIP_ROLL_R, LINK_HIP_YAW_R, LINK_KNEE_PITCH_R, LINK_ANKLE_PITCH_R, LINK_ANKLE_ROLL_R, LINK_FOOT_R,
+     LINK_TORSO_YAW,
+     LINK_SHOULDER_PITCH_L, LINK_SHOULDER_ROLL_L, LINK_SHOULDER_YAW_L, LINK_ELBOW_PITCH_L, LINK_ELBOW_YAW_L, LINK_ELBOW_END_L,
+     LINK_SHOULDER_PITCH_R, LINK_SHOULDER_ROLL_R, LINK_SHOULDER_YAW_R, LINK_ELBOW_PITCH_R, LINK_ELBOW_YAW_R, LINK_ELBOW_END_R,
+     LINK_HEAD_YAW]
+  left_leg_body_names: [LINK_HIP_PITCH_L, LINK_HIP_ROLL_L, LINK_HIP_YAW_L, LINK_KNEE_PITCH_L, LINK_ANKLE_PITCH_L, LINK_ANKLE_ROLL_L, LINK_FOOT_L]
+  right_leg_body_names: [LINK_HIP_PITCH_R, LINK_HIP_ROLL_R, LINK_HIP_YAW_R, LINK_KNEE_PITCH_R, LINK_ANKLE_PITCH_R, LINK_ANKLE_ROLL_R, LINK_FOOT_R]
+  leg_body_names: [LINK_HIP_PITCH_L, LINK_HIP_ROLL_L, LINK_HIP_YAW_L, LINK_KNEE_PITCH_L, LINK_ANKLE_PITCH_L, LINK_ANKLE_ROLL_L, LINK_FOOT_L, LINK_HIP_PITCH_R, LINK_HIP_ROLL_R, LINK_HIP_YAW_R, LINK_KNEE_PITCH_R, LINK_ANKLE_PITCH_R, LINK_ANKLE_ROLL_R, LINK_FOOT_R]
+  left_arm_body_names: [LINK_SHOULDER_PITCH_L, LINK_SHOULDER_ROLL_L, LINK_SHOULDER_YAW_L, LINK_ELBOW_PITCH_L, LINK_ELBOW_YAW_L, LINK_ELBOW_END_L]
+  right_arm_body_names: [LINK_SHOULDER_PITCH_R, LINK_SHOULDER_ROLL_R, LINK_SHOULDER_YAW_R, LINK_ELBOW_PITCH_R, LINK_ELBOW_YAW_R, LINK_ELBOW_END_R]
+  arm_body_names: [LINK_SHOULDER_PITCH_L, LINK_SHOULDER_ROLL_L, LINK_SHOULDER_YAW_L, LINK_ELBOW_PITCH_L, LINK_ELBOW_YAW_L, LINK_ELBOW_END_L, LINK_SHOULDER_PITCH_R, LINK_SHOULDER_ROLL_R, LINK_SHOULDER_YAW_R, LINK_ELBOW_PITCH_R, LINK_ELBOW_YAW_R, LINK_ELBOW_END_R]
+  torso_body_names: [LINK_BASE, LINK_TORSO_YAW, LINK_HEAD_YAW]
+  head_hand_bodies: [LINK_HEAD_YAW, LINK_ELBOW_END_L, LINK_ELBOW_END_R]
+  key_bodies: [LINK_BASE, LINK_HIP_ROLL_L, LINK_KNEE_PITCH_L, LINK_FOOT_L, LINK_HIP_ROLL_R, LINK_KNEE_PITCH_R, LINK_FOOT_R, LINK_TORSO_YAW, LINK_SHOULDER_PITCH_L, LINK_ELBOW_PITCH_L, LINK_ELBOW_END_L, LINK_SHOULDER_PITCH_R, LINK_ELBOW_PITCH_R, LINK_ELBOW_END_R]
+  key_dofs: [J03_KNEE_PITCH_L, J09_KNEE_PITCH_R, J16_ELBOW_PITCH_L, J21_ELBOW_PITCH_R]
+
+  init_state:
+    pos: [0.0, 0.0, 0.9]
+    rot: [0.0, 0.0, 0.0, 1.0]
+    lin_vel: [0.0, 0.0, 0.0]
+    ang_vel: [0.0, 0.0, 0.0]
+    default_joint_angles:
+      ".*HIP_PITCH.*": -0.06
+      ".*KNEE_PITCH.*": 0.12
+      ".*ANKLE_PITCH.*": -0.06
+      ".*ELBOW_PITCH.*": -0.25
+      J14_SHOULDER_ROLL_L: 0.15
+      J19_SHOULDER_ROLL_R: -0.15
+      J23_HEAD_YAW: 0.0
+
+  actuators:
+    actuator_type: implicit
+    legs:
+      joint_names_expr: [".*HIP.*", ".*KNEE.*"]
+      effort_limit_sim: {".*HIP_PITCH.*": 164.0, ".*HIP_ROLL.*": 164.0, ".*HIP_YAW.*": 52.0, ".*KNEE_PITCH.*": 164.0}
+      velocity_limit_sim: {".*HIP_PITCH.*": 26.3, ".*HIP_ROLL.*": 26.3, ".*HIP_YAW.*": 35.2, ".*KNEE_PITCH.*": 26.3}
+      stiffness: {".*HIP_PITCH.*": 178.5, ".*HIP_ROLL.*": 178.5, ".*HIP_YAW.*": 26.4, ".*KNEE_PITCH.*": 178.5}
+      damping: {".*HIP_PITCH.*": 11.4, ".*HIP_ROLL.*": 11.4, ".*HIP_YAW.*": 1.69, ".*KNEE_PITCH.*": 11.4}
+      armature: {".*HIP_PITCH.*": 0.0453, ".*HIP_ROLL.*": 0.0453, ".*HIP_YAW.*": 0.0067, ".*KNEE_PITCH.*": 0.0453}
+    feet: {joint_names_expr: [".*ANKLE.*"], effort_limit_sim: 52.0, velocity_limit_sim: 35.2, stiffness: 26.4, damping: 0.5, armature: 0.0067}
+    waist: {joint_names_expr: [J12_WAIST_YAW], effort_limit_sim: 52.0, velocity_limit_sim: 35.2, stiffness: 26.4, damping: 1.69, armature: 0.0067}
+    arms: {joint_names_expr: [".*SHOULDER.*", ".*ELBOW.*"], effort_limit_sim: 52.0, velocity_limit_sim: 35.2, stiffness: 26.4, damping: 1.69, armature: 0.0067}
+    head: {joint_names_expr: [J23_HEAD_YAW], effort_limit_sim: 52.0, velocity_limit_sim: 35.2, stiffness: 26.4, damping: 1.69, armature: 0.0067}
+    action_scale: &action_scale {".*HIP_PITCH.*": 0.229692, ".*HIP_ROLL.*": 0.229692, ".*HIP_YAW.*": 0.492424, ".*KNEE_PITCH.*": 0.229692, ".*ANKLE.*": 0.492424, J12_WAIST_YAW: 0.492424, ".*SHOULDER.*": 0.492424, ".*ELBOW.*": 0.492424, J23_HEAD_YAW: 0.492424}
+    velocity_policy_action_scale: {".*HIP_PITCH.*": 0.229692, ".*HIP_ROLL.*": 0.229692, ".*HIP_YAW.*": 0.492424, ".*KNEE_PITCH.*": 0.229692, ".*ANKLE.*": 0.492424, J12_WAIST_YAW: 0.492424, ".*SHOULDER.*": 0.492424, ".*ELBOW.*": 0.492424}
+
+  dof_sign_by_name: {}
+  asset:
+    source_format: usd
+    usd_file: assets/robots/engineai/PM01/24dof/usd/serial_pm01_edu.usd
+    urdf_file: assets/robots/engineai/PM01/24dof/urdf/serial_pm01_edu.urdf
+    asset_root: ./
+    assetFileName: assets/robots/engineai/PM01/24dof/mjcf/pm01_24dof.xml
+    require_explicit_replace_cylinders_with_capsules: true
+    replace_cylinders_with_capsules: false
+    force_usd_conversion: false
+    fix_base_link: false
+  extend_config: []
+  motion:
+    asset:
+      assetRoot: ./
+      assetFileName: assets/robots/engineai/PM01/24dof/mjcf/pm01_24dof.xml
+    sampling_strategy: ${algo.config.sampling_strategy}
+    weighted_bin: ${algo.config.weighted_bin}
+    curriculum: ${algo.config.curriculum}
+    dump_sampled_motion_keys: false
+    dump_sampled_motion_keys_interval: 1
+    dump_sampled_motion_keys_dir: sampled_motion_cache_keys
+    max_frame_length: 300
+    min_frame_length: 50
+    handpicked_motion_names: null
+    excluded_motion_names: null
+    world_frame_normalization: true
+    backend: hdf5_v2
+    train_hdf5_roots: ${train_hdf5_roots}
+    val_hdf5_roots: ${train_hdf5_roots}
+    dof_names: *all_dofs
+    body_names: *all_bodies
+    key_bodies: ${robot.key_bodies}
+    extend_config: ${robot.extend_config}
+    dataloader: {num_workers: 2, prefetch_factor: 1, pin_memory: true, persistent_workers: false, timeout: 600}
+    fk_robot_file_path: ${robot.asset.urdf_file}
+    fk_vel_smoothing_sigma: 2.0
+    online_filter: {enabled: false, butter_order: 4, butter_cutoff_hz_pool: []}
+    cache:
+      batch_progress_bar: false
+      max_num_clips: ${num_envs}
+      device: cuda
+      swap_interval_steps: ${robot.motion.max_frame_length}
+      allowed_prefixes: [ref_, ft_ref_]

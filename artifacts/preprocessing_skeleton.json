@@ -1,0 +1,26 @@
+{
+  "schema": "vita_cpu_smpl_skeleton_v1",
+  "source_model_basename": "smpl_neutral.pkl",
+  "source_pickle_sha256": "4924f235e63f7c5d5b690acedf736419c2edb846a2d69fc0956169615fa75688",
+  "skeleton_hash": "5ae25e5da2a4f6534a5b279e06b19c6c649e663aaa2fcf8c44138f193881b280",
+  "artifact_sha256": "cecc97e7e6d2bd4f9925ec1f39b9f71727c84defa7fc516b747695d3ec08c6b4",
+  "parents_shape": [
+    24
+  ],
+  "offsets_shape": [
+    24,
+    3
+  ],
+  "offsets_dtype": "float32",
+  "rest_shape": "neutral zero-beta model",
+  "source_loader": "holomotion.src.motion_tracking.smpl_reference.load_neutral_smpl_skeleton",
+  "source_loader_sha256": "e2de59fe3e3965b56fdd4c437677261e5ed983369b435e59746771739a59dea9",
+  "license_notice": "Derived from licensed SMPL asset. Original SMPL terms and access restrictions still apply. Internal deployment only; no redistribution permission granted.",
+  "license_files": [
+    {
+      "file": "preprocessing_smpl_notice_LICENSE.txt",
+      "sha256": "24811563705dd4a95af474c0a6df842d0d15bc931749079a054b029f0d5cc284"
+    }
+  ],
+  "full_mesh_exported": false
+}

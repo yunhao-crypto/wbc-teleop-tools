@@ -1,0 +1,154 @@
+# @package _global_
+
+env:
+  _target_: holomotion.src.env.velocity_tracking.VelocityTrackingEnv
+  _recursive_: False
+  config:
+    experiment_name: ${experiment_name}
+    num_envs: ${num_envs}
+    env_spacing: 2.5
+    replicate_physics: true
+    headless: ${headless}
+    num_processes: ${num_processes}
+    main_process: ${main_process}
+    process_id: ${process_id}
+    ckpt_dir: null
+    disable_ref_viz: false
+    eval_log_dir: null
+    save_rendering_dir: null
+
+    robot: ${robot}
+    domain_rand: ${domain_rand}
+    rewards: ${rewards}
+    terrain: ${terrain}
+    obs: ${obs}
+    terminations: ${terminations}
+
+    simulation:
+      episode_length_s: 20
+      sim_freq: 200
+      control_decimation: 4
+      physx:
+        bounce_threshold_velocity: 0.5
+        gpu_max_rigid_patch_count: 327680
+
+    scene:
+      terrain: ${terrain}
+      lighting:
+        distant_light_intensity: 3000.0
+        dome_light_intensity: 1000.0
+      contact_sensor:
+        history_length: 3
+        force_threshold: 10.0
+        track_air_time: true
+        debug_vis: false
+
+    actions:
+      dof_pos:
+        type: joint_position
+        params:
+          asset_name: robot
+          joint_names:
+            - ".*"
+          use_default_offset: true
+          scale: ${robot.actuators.action_scale}
+
+    commands:
+      base_velocity:
+        type: HoloMotionUniformVelocityCommandCfg
+        params:
+          asset_name: robot
+          resampling_time_range: [3, 10.0]
+          rel_standing_envs: 0.20
+          rel_yaw_envs: 0.30  # actual prob for sampled yaw-only is 0.3 * (1-0.2) = 0.24
+          rel_heading_envs: 1.0
+          heading_command: false
+          heading_control_stiffness: 0.5
+          debug_vis: true
+          ranges:
+            lin_vel_x: [-0.6, 1.0]
+            lin_vel_y: [-0.5, 0.5]
+            ang_vel_z: [-1.0, 1.0]
+            heading: [-3.14, 3.14]
+          # limit_ranges:
+          #   lin_vel_x: [-0.5, 1.0]
+          #   lin_vel_y: [-0.3, 0.3]
+          #   ang_vel_z: [-0.2, 0.2]
+          #   heading: [-3.14, 3.14]
+
+    # Shared completion-rate DR mechanism. It is opt-in so existing robot
+    # recipes are unchanged; enabled embodiments provide physical target
+    # ranges in their experiment config.
+    curriculum:
+      enabled: false
+
+      robot_friction_completion_rate:
+        enabled: true
+        func: robot_friction_range_by_completion_rate
+        params:
+          metric_key: "Task/Completion_Rate"
+          num_updates: 5
+          cr_thresholds: [0.10, 0.20, 0.28, 0.34, 0.40]
+          static_friction_target: [0.3, 1.6]
+          dynamic_friction_target: [0.3, 1.2]
+          body_names: ".*"
+          restitution_range: [0.0, 0.5]
+          num_buckets: 64
+
+      rigid_body_com_completion_rate:
+        enabled: true
+        func: rigid_body_com_by_completion_rate
+        params:
+          metric_key: "Task/Completion_Rate"
+          num_updates: 5
+          cr_thresholds: [0.10, 0.20, 0.28, 0.34, 0.40]
+          asset_name: robot
+          body_names: ${robot.torso_name}
+          com_range_target:
+            x: [-0.025, 0.025]
+            y: [-0.05, 0.05]
+            z: [-0.05, 0.05]
+
+      default_dof_pos_bias_completion_rate:
+        enabled: true
+        func: default_dof_pos_bias_by_completion_rate
+        params:
+          metric_key: "Task/Completion_Rate"
+          num_updates: 5
+          cr_thresholds: [0.10, 0.20, 0.28, 0.34, 0.40]
+          joint_names: [".*"]
+          pos_distribution_params_target: [-0.01, 0.01]
+          operation: add
+          distribution: uniform
+
+      push_by_setting_velocity_completion_rate:
+        enabled: true
+        func: isaaclab_mdp.modify_term_cfg
+        params:
+          address: events.push_by_setting_velocity.params
+          modify_fn: push_by_setting_velocity_range_by_completion_rate
+          modify_params:
+            metric_key: "Task/Completion_Rate"
+            num_updates: 3
+            cr_thresholds: [0.20, 0.30, 0.40]
+            velocity_range_target:
+              x: [-0.5, 0.5]
+              y: [-0.5, 0.5]
+              z: [-0.2, 0.2]
+              roll: [-0.52, 0.52]
+              pitch: [-0.52, 0.52]
+              yaw: [-0.78, 0.78]
+
+      randomize_actuator_gains_completion_rate:
+        enabled: true
+        func: randomize_actuator_gains_by_completion_rate
+        params:
+          metric_key: "Task/Completion_Rate"
+          num_updates: 3
+          cr_thresholds: [0.20, 0.30, 0.40]
+          asset_name: robot
+          body_names: ".*"
+          stiffness_distribution_params_target: [0.9, 1.1]
+          damping_distribution_params_target: [0.9, 1.1]
+          operation: scale
+          distribution: uniform

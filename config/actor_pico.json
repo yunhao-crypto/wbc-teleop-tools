@@ -1,0 +1,258 @@
+{
+  "schema": "vita_actor_pico_shadow_v1",
+  "scope": "inference_only",
+  "artifacts": {
+    "model": {
+      "path": "artifacts/actor_g1/actor_g1.onnx",
+      "sha256": "f0dfa04684b4f8967623ddbcf8ede8ef3d862d0b403e9e3659e2a519eade6fae"
+    },
+    "urdf": {
+      "path": "artifacts/output_envelopes.motion.urdf",
+      "sha256": "83ce0b3ee9758889e398c5c6bb9b59b14347dfbf9a9d3d1602f650d26dade894"
+    }
+  },
+  "sdk_version": "0.2.1",
+  "sdk_commit": "f411caeff5c98a4b933f0cac084b03aabfefd763",
+  "sdk_sources": {
+    "wbc_tracking_policy.py": "8bf9ecbcce9d06fde34eaaa817fe7966354958be012f74af159cfd711ce53b9e",
+    "_policy_state.py": "c416d610d85aec54ac78a3b786aba412273dde945c7dd84329c01d3f0b4aad82",
+    "body_types.py": "1b4fdc11b96d851a0a348b90d8fce8a4d6cfb24ded35827c5b9b7268ea5a16ec"
+  },
+  "body_profile": {
+    "joint_limits": {
+      "left_hip_pitch_joint": [
+        -2.879793,
+        1.745329
+      ],
+      "right_hip_pitch_joint": [
+        -2.879793,
+        1.745329
+      ],
+      "waist_yaw_joint": [
+        -1.570796,
+        1.570796
+      ],
+      "left_hip_roll_joint": [
+        -0.436332,
+        2.181662
+      ],
+      "right_hip_roll_joint": [
+        -2.181662,
+        0.436332
+      ],
+      "waist_pitch_joint": [
+        -0.523599,
+        0.523599
+      ],
+      "left_hip_yaw_joint": [
+        -1.570796,
+        1.570796
+      ],
+      "right_hip_yaw_joint": [
+        -1.570796,
+        1.570796
+      ],
+      "left_shoulder_pitch_joint": [
+        -2.565634,
+        2.565634
+      ],
+      "right_shoulder_pitch_joint": [
+        -2.565634,
+        2.565634
+      ],
+      "left_knee_joint": [
+        0.0,
+        2.181662
+      ],
+      "right_knee_joint": [
+        0.0,
+        2.181662
+      ],
+      "left_shoulder_roll_joint": [
+        -0.235619,
+        2.277655
+      ],
+      "right_shoulder_roll_joint": [
+        -2.277655,
+        0.235619
+      ],
+      "left_ankle_pitch_joint": [
+        -0.751,
+        0.414
+      ],
+      "right_ankle_pitch_joint": [
+        -0.751,
+        0.414
+      ],
+      "left_shoulder_yaw_joint": [
+        -2.45829625,
+        2.4281675
+      ],
+      "right_shoulder_yaw_joint": [
+        -2.4281675,
+        2.45829625
+      ],
+      "left_ankle_roll_joint": [
+        -0.43625,
+        0.43625
+      ],
+      "right_ankle_roll_joint": [
+        -0.43625,
+        0.43625
+      ],
+      "left_elbow_joint": [
+        -0.667414,
+        2.421819
+      ],
+      "right_elbow_joint": [
+        -0.667414,
+        2.421819
+      ],
+      "left_wrist_roll_joint": [
+        -2.321288,
+        2.321288
+      ],
+      "right_wrist_roll_joint": [
+        -2.32129,
+        2.32129
+      ],
+      "left_wrist_yaw_joint": [
+        -0.912807,
+        1.70519
+      ],
+      "right_wrist_yaw_joint": [
+        -1.70519,
+        0.912807
+      ],
+      "left_wrist_pitch_joint": [
+        -1.87099,
+        1.96873
+      ],
+      "right_wrist_pitch_joint": [
+        -1.87099,
+        1.96873
+      ]
+    },
+    "fixed_joints": {
+      "neck_pitch_joint": {
+        "q": 0.0,
+        "kp": 20.0,
+        "kd": 1.0
+      },
+      "neck_yaw_joint": {
+        "q": 0.0,
+        "kp": 20.0,
+        "kd": 1.0
+      }
+    },
+    "ankle_clamp_feedforward": true,
+    "lead_in": {
+      "speed_q_per_s": 1.2,
+      "min_duration_s": 0.3,
+      "max_duration_s": 3.0,
+      "stand_on_activate": true
+    },
+    "fall_tilt_threshold_rad": 0.8,
+    "schema_version": 1,
+    "command_slots": 31,
+    "state_slots": 31,
+    "source": "vita-robot 6f674d249: actions/policy_profiles/vt_human_v2_tracking_asample.yaml",
+    "body_joint_order": [
+      "left_hip_pitch_joint",
+      "left_hip_roll_joint",
+      "left_hip_yaw_joint",
+      "left_knee_joint",
+      "left_ankle_pitch_joint",
+      "left_ankle_roll_joint",
+      "right_hip_pitch_joint",
+      "right_hip_roll_joint",
+      "right_hip_yaw_joint",
+      "right_knee_joint",
+      "right_ankle_pitch_joint",
+      "right_ankle_roll_joint",
+      "waist_yaw_joint",
+      "waist_pitch_joint",
+      "waist_roll_joint",
+      "left_shoulder_pitch_joint",
+      "left_shoulder_roll_joint",
+      "left_shoulder_yaw_joint",
+      "left_elbow_joint",
+      "left_wrist_roll_joint",
+      "left_wrist_yaw_joint",
+      "left_wrist_pitch_joint",
+      "right_shoulder_pitch_joint",
+      "right_shoulder_roll_joint",
+      "right_shoulder_yaw_joint",
+      "right_elbow_joint",
+      "right_wrist_roll_joint",
+      "right_wrist_yaw_joint",
+      "right_wrist_pitch_joint",
+      "neck_pitch_joint",
+      "neck_yaw_joint"
+    ]
+  },
+  "segments": [
+    {
+      "robot_link": "waist_pitch_link",
+      "pico_joint": 9
+    },
+    {
+      "robot_link": "left_hip_yaw_link",
+      "pico_joint": 1
+    },
+    {
+      "robot_link": "left_knee_link",
+      "pico_joint": 4
+    },
+    {
+      "robot_link": "left_ankle_roll_link",
+      "pico_joint": 7
+    },
+    {
+      "robot_link": "left_shoulder_yaw_link",
+      "pico_joint": 16
+    },
+    {
+      "robot_link": "left_elbow_link",
+      "pico_joint": 18
+    },
+    {
+      "robot_link": "left_wrist_pitch_link",
+      "pico_joint": 20
+    },
+    {
+      "robot_link": "right_hip_yaw_link",
+      "pico_joint": 2
+    },
+    {
+      "robot_link": "right_knee_link",
+      "pico_joint": 5
+    },
+    {
+      "robot_link": "right_ankle_roll_link",
+      "pico_joint": 8
+    },
+    {
+      "robot_link": "right_shoulder_yaw_link",
+      "pico_joint": 17
+    },
+    {
+      "robot_link": "right_elbow_link",
+      "pico_joint": 19
+    },
+    {
+      "robot_link": "right_wrist_pitch_link",
+      "pico_joint": 21
+    }
+  ],
+  "ik_iterations": 12,
+  "ik_max_residual_rad": 0.6,
+  "reference_maximum_gap_s": 0.1,
+  "provenance": {
+    "tracking_checkout_commit": "5eb34b2",
+    "tracking_profile_source": "humanoid-sdk-tracking/examples/groot_tracking_asample.json",
+    "tracking_profile_sha256": "7969af4d52d44e7a0ac4c6060a74300b233715c6a0430080c06c843629f2b1e7",
+    "model_source": "/host/actor_g1.onnx",
+    "retargeter": "New calibrated orientation IK; shadow only; not a trained or contact-aware retargeter"
+  }
+}

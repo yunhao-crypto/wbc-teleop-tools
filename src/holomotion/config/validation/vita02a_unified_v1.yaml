@@ -1,0 +1,124 @@
+# Frozen user-approved initial software acceptance targets; not hardware proof.
+schema_version: 1
+name: vita02a_meshcoll_v3_unified_v1
+robot_config: robot/vbot/Vita02A/vita02a_meshcoll_v3_30dof_training_isaaclab
+seeds: {train: 20260907, evaluation: [20260907, 20260908, 20260909], reset: 20260907}
+asset:
+  variant: official_meshcoll_v3_slided_wrist_nohand_30dof
+  source_urdf_sha256: cead6e92e10a5a2e633cdb7a097cd4648079ef66c485711b2ebe29a11c9f0371
+  hydrated_urdf_sha256: af2779d0a6ca6882b1fc82b5c8fdb5de0393dae46ced57b80e231c75b61cc2a4
+  mass_kg: 54.44955488
+  control_dofs: 30
+  velocity_actions: 28
+  motion_actions: 30
+  expected_velocity_observations: 752
+  expected_motion_observations: 3126
+  semantic_nodes: 14
+  robot_h5_reads: 0
+  missing_meshes: 0
+  lfs_pointers: 0
+  mass_relative_error: 1.0e-5
+  fk_position_error_m: 1.0e-4
+  fk_orientation_error_rad: 1.0e-3
+collision:
+  reset_samples: 10000
+  reset_joint_perturbation_rad: 0.06
+  floor_clearance_min_m: 0.0054
+  penetration_tolerance_m: 1.0e-4
+  expected_unwanted_penetrations: 0
+physics:
+  zero_joint_friction_atol: 1.0e-8
+  parameter_atol: 1.0e-6
+  parameter_rtol: 1.0e-5
+  ankle_samples: 1000
+  ankle_torque_atol_nm: 1.0e-3
+  ankle_torque_rtol: 1.0e-5
+  com_offsets_m: [0.006, 0.012, 0.018]
+  com_repeat_count: 100
+  com_drift_atol_m: 1.0e-6
+observation:
+  same_state_samples: 256
+  max_abs_error: 1.0e-5
+  onnx_fp32_atol: 1.0e-4
+  onnx_fp32_rtol: 1.0e-4
+functional:
+  local_updates: 2
+  motion_experts: 1024
+  debug_updates: 100
+  memory_windows: 20
+  allocated_memory_growth_ratio_max: 0.05
+  repair_retries_per_stage: 2
+behavior:
+  # Evaluation-only rules fixed before inspecting newly learned policies.
+  # The first two values match the current common Velocity termination config.
+  velocity_failure:
+    root_height_min_m: 0.20
+    tilt_max_rad: 0.80
+    forbidden_ground_normal_force_min_n: 20.0
+    forbidden_ground_contact_duration_s: 0.10
+    allowed_ground_bodies_source: robot.feet_body_names
+  motion_failure:
+    # Same immediate-next semantic torso rule as Motion training, not a height gate.
+    torso_gravity_z_difference_max: 0.80
+    training_termination: smpl_torso_gravity_projection_far
+  failure_sample: record_terminal_state_and_exclude_failed_control_interval_from_completion
+  nominal: {terrain: plane, domain_randomization: false, observation_noise: false, actuator_delay: training_config}
+  motion_future_boundary: clamp_to_last_frame_without_trimming_scored_duration
+  torque_saturation_fraction_of_declared_limit: 0.99
+pilot:
+  max_updates_per_task: 2000
+  checkpoints: [500, 1000, 2000]
+  velocity:
+    stand_duration_s: 20
+    stand_success_count: 3
+    # vx, vy, yaw_rate. Includes both directions of yaw.
+    commands: [[0.25, 0.0, 0.0], [-0.25, 0.0, 0.0], [0.0, 0.0, 0.5], [0.0, 0.0, -0.5]]
+    command_duration_s: 20
+    transition_s: 2
+    completion_rate_min: 0.80
+    linear_rmse_max_m_s: 0.20
+    yaw_rmse_max_rad_s: 0.30
+    signed_response_fraction_min: 0.50
+  motion:
+    clips_min: 8
+    clip_duration_min_s: 10
+    duration_fraction_min: 0.70
+    clip_success_rate_min: 0.50
+    clip_macro_mean_tracking_error_max_rad: 0.55
+full:
+  first_update_gate: 2
+  velocity: {num_envs_per_rank: 8192, world_size: 8, max_updates: 10000}
+  motion: {num_envs_per_rank: 8192, world_size: 16, nodes: 2, max_updates: 20000, experts: 1024}
+  regression:
+    consecutive_evaluations: 3
+    completion_drop_percentage_points: 20
+    tracking_error_relative_increase: 0.30
+final:
+  velocity:
+    stand_duration_s: 60
+    stand_success_count: 3
+    stand_drift_max_m: 0.20
+    command_duration_s: 30
+    commands: [[0.25, 0.0, 0.0], [0.50, 0.0, 0.0], [-0.25, 0.0, 0.0], [0.0, 0.20, 0.0], [0.0, -0.20, 0.0], [0.0, 0.0, 0.50], [0.0, 0.0, -0.50], [0.25, 0.0, 0.50], [0.0, 0.0, 0.0]]
+    completion_rate_min: 1.0
+    transition_s: 2
+    linear_rmse_max_m_s: 0.10
+    yaw_rmse_max_rad_s: 0.15
+    robustness_episodes: 100
+    robustness_duration_s: 20
+    robustness_completion_rate_min: 0.90
+  motion:
+    clips_min: 20
+    basic_clips_min: 12
+    duration_fraction_min: 0.95
+    clip_success_rate_min: 0.90
+    clip_macro_mean_tracking_error_max_rad: 0.35
+    clip_macro_wrist_orientation_max_rad: 0.52
+    metrics_count: 16
+    undefined_metrics: report_null_and_coverage
+    include_failed_remainder_in_completion: true
+deployment:
+  real_robot_output_authorized: false
+  target_device_test_duration_s: 600
+  p99_deadline: policy_period
+  deadline_misses_max: 0
