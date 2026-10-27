@@ -4,7 +4,7 @@
 `model_step_431500_g1.onnx` → SDK 0.2.1 Body31。GMR 的算法、模型和参数固定自
 `763f560`，已移除自写姿态 IK；它与 HoloMotion 的 SMPL 输入双策略是不同的链路。
 
-**当前交付位于 `feature/actor-pico-external`，见 [PR #1](https://github.com/yunhao-crypto/wbc-teleop-tools/pull/1)。**
+**当前交付已合入 `main`，见已合并的 [PR #1](https://github.com/yunhao-crypto/wbc-teleop-tools/pull/1)。**
 代码、21 个 ARM wheel、Pico 服务/绑定、GMR 模型与配置、测试资源均在 Git 中。
 **策略权重不公开提交**：拉取后还需提供下列模型，以及目标 S100 已有的匹配固件、
 私有 Zenoh peer 配置和有效硬件 YAML；无需原开发目录或另一个源码仓库。
@@ -29,7 +29,7 @@
 有网络时按下面获取，离线时将相同 Git 版本的完整归档复制到目标机。
 
 ```bash
-git clone --branch feature/actor-pico-external --single-branch \
+git clone --branch main --single-branch \
   https://github.com/yunhao-crypto/wbc-teleop-tools.git /userdata/vita_actor_pico
 cd /userdata/vita_actor_pico
 git rev-parse HEAD

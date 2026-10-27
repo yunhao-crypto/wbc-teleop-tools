@@ -66,8 +66,7 @@ permission for SCHED_RR priority 1.
 
 ## Install and verify
 
-From a fresh checkout of `feature/actor-pico-external` on S100 (the default
-branch may not include the pending PR):
+From a fresh checkout of `main` on S100:
 
 ```bash
 source /app/script/env.sh

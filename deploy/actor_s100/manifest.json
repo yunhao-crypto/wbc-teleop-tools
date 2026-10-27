@@ -101,8 +101,8 @@
     },
     {
       "path": "README.md",
-      "bytes": 6131,
-      "sha256": "eea362831ae6abe6ecb364c6f20309ccd1ac13e215dbed9df9232168095ec021"
+      "bytes": 6100,
+      "sha256": "04a9bf6c2c14a2d89a0a5a0a18d9fdd1ade5bea57d3a9ce773cbcd4aecba8194"
     },
     {
       "path": "README_ACTOR_PICO.md",
@@ -166,8 +166,8 @@
     },
     {
       "path": "deploy/actor_s100/README.md",
-      "bytes": 9705,
-      "sha256": "5d58586010cabb905cf53257159c541e295eecb55061ce32a634d451ea3924fb"
+      "bytes": 9630,
+      "sha256": "fbc47b4a8313f76831e175b211b432de2d5b6cdefdd7b924abb3ad79f1ff7e40"
     },
     {
       "path": "deploy/actor_s100/requirements-host-check.txt",
