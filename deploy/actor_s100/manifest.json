@@ -97,17 +97,17 @@
     {
       "path": "ACTOR-PICO-MANIFEST.json",
       "bytes": 8396,
-      "sha256": "6c16a1d5bcbda256041f549c24cc4055149093c511a8f5fa6a24b5c35f2334c3"
+      "sha256": "b934e7b8fa1ead4721c0dbe40a4e3c159b5176567bf4c45f9e1e9536caa118d2"
     },
     {
       "path": "README.md",
-      "bytes": 6100,
-      "sha256": "04a9bf6c2c14a2d89a0a5a0a18d9fdd1ade5bea57d3a9ce773cbcd4aecba8194"
+      "bytes": 6208,
+      "sha256": "8080d08ea276d35622741c484a63157dc42e40c6b4e42bb0ec006bb23d0b760c"
     },
     {
       "path": "README_ACTOR_PICO.md",
-      "bytes": 28893,
-      "sha256": "70175712253bc8a8cdaf5852b6de8e1d812f551cce886879b453e87f4bf1469a"
+      "bytes": 28861,
+      "sha256": "05c33cc1e05ba9ca9d8503a806b4b1d88f75ef75b8ffb2b9535658b002bd9ab6"
     },
     {
       "path": "artifacts/model_motion/pools_nk/manifest.json",
@@ -166,8 +166,8 @@
     },
     {
       "path": "deploy/actor_s100/README.md",
-      "bytes": 9630,
-      "sha256": "fbc47b4a8313f76831e175b211b432de2d5b6cdefdd7b924abb3ad79f1ff7e40"
+      "bytes": 9482,
+      "sha256": "d7ea2efd2069d4e5fce851b27afd1128c844a4130a9503a3cb447e8c661bf199"
     },
     {
       "path": "deploy/actor_s100/requirements-host-check.txt",

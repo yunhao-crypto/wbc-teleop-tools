@@ -4,14 +4,12 @@ This directory versions the actor dependencies. The separate `live` entry can
 move the robot only after explicit on-site confirmation; see
 [supported trial instructions](../../README_ACTOR_PICO.md#supported-external-trial).
 Installation and validation never run that entry. Model weights are supplied
-separately and are excluded from Git. Their required SHA256 is pinned in
-`config/actor_pico.json` and `manifest.json` under `external_resources`:
-`a341391a346e050caf11c40c6989336c658c445e3e124f12dcbe292d91324474`.
-This is `model_step_431500_g1.onnx` (10 references at 20 ms spacing), installed
-under the canonical `artifacts/actor_g1/actor_g1.onnx` path. The earlier
-`f0dfa046…` actor has different weights, limits and timing and is not accepted
-by this delivery manifest. Use a fresh checkout for the new model; an existing
-different model/environment is preserved rather than overwritten.
+separately and are excluded from Git. The model identity,
+size, SHA256 and installation path are pinned in `config/actor_pico.json`
+(`artifacts.model`) and `manifest.json` (`external_resources`). Supply the separately delivered
+model matching those records; the local filename does not select its version.
+Use a fresh checkout for a changed model delivery. A different existing
+model/environment is preserved rather than overwritten.
 The URDF, source code, tests and configuration are tracked. No original `venv`, `reference`,
 `model_dependencies_readonly`, `vendor_packages` or `build` directory is needed
 from the developer's machine.
@@ -70,16 +68,16 @@ From a fresh checkout of `main` on S100:
 
 ```bash
 source /app/script/env.sh
-python3.10 scripts/bootstrap_actor_s100.py --model /path/to/actor_g1.onnx
+python3.10 scripts/bootstrap_actor_s100.py --model /path/to/policy.onnx
 # Optional alternative, compiling the binding locally:
-# python3.10 scripts/bootstrap_actor_s100.py --model /path/to/actor_g1.onnx --build-pico
+# python3.10 scripts/bootstrap_actor_s100.py --model /path/to/policy.onnx --build-pico
 bash scripts/start_actor_pico.sh check --steps 100
 bash scripts/start_actor_pico.sh state-check --seconds 5
 bash scripts/start_actor_pico.sh shadow --seconds 60 --group default
 ```
 
 Supply the model from your model delivery location. The bootstrap validates its
-size and SHA256 before copying it to `artifacts/actor_g1/actor_g1.onnx`.
+size and SHA256 before copying it to the installation path declared in the configuration.
 An already placed matching file can be reused without `--model`. Missing or
 mismatched weights stop installation; they are never downloaded implicitly.
 The default installation uses prebuilt libraries and needs no C++ compiler.
@@ -158,7 +156,7 @@ pick a new SDK just by version date or bypass its schema guard.
 
 Stage intended changes, run `scripts/seal_actor_delivery.py`, stage the regenerated
 manifest and `ACTOR-PICO-MANIFEST.json`, then run
-`scripts/verify_actor_delivery.py --host-inference --model /path/to/actor_g1.onnx`.
+`scripts/verify_actor_delivery.py --host-inference --model /path/to/policy.onnx`.
 For host inference, first install the separate
 `requirements-host-check.txt` into a clean Linux x86_64 Python 3.10 venv; it
 includes NumPy, ONNX Runtime, GMR and their host dependencies, not ARM binaries.

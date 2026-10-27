@@ -1,11 +1,10 @@
-# actor_g1 + Pico on S100
+# Vita02A policy + Pico on S100
 
-This entry runs `model_step_431500_g1.onnx` through the installed SDK 0.2.1 WBC
-observation/decoder math. The model is supplied separately (excluded from Git)
-and copied by the bootstrap to `artifacts/actor_g1/actor_g1.onnx`
-and SHA256 pinned in `config/actor_pico.json`. Its metadata identifies
-`vita02a`, G1 encoder, input `[1,1520]`, output `[1,28]`, and 50 Hz.
-It is the Vita28 tracking actor, regardless of the `g1` filename.
+This entry runs the reviewed joint-reference policy through the installed SDK
+0.2.1 WBC observation/decoder math. The model is supplied separately and excluded
+from Git. Its identity, installation path and SHA256 are pinned in
+`config/actor_pico.json` and the delivery manifest. Supply the model matching
+that contract; the example filename `policy.onnx` is only a local pathname.
 
 The entry supports model checks, offline Pico replay, live-input shadow
 inference, and a separately armed supported EXTERNAL trial. Shadow subscribes to Body31 feedback and reads Pico through its owned vendor
@@ -64,7 +63,7 @@ Use the host Python, which has NumPy and ONNX Runtime. The ARM venv interpreter
 cannot run on x86. Offline mode reads the installed SDK's Python math and DTOs
 without loading its ARM inference extension or constructing any Aorta node.
 For a fresh clone without an installed SDK, use the staged-export verifier:
-`python3 scripts/verify_actor_delivery.py --host-inference --model /path/to/actor_g1.onnx`.
+`python3 scripts/verify_actor_delivery.py --host-inference --model /path/to/policy.onnx`.
 It uses the explicit, hash-verified external model and versioned wheels/resources,
 and materializes SDK sources in a temporary
 export. The direct commands below also work in the original snapshot or an
@@ -101,7 +100,7 @@ Clone the repository into a new directory on S100, then run:
 
 ```bash
 source /app/script/env.sh
-python3.10 scripts/bootstrap_actor_s100.py --model /path/to/actor_g1.onnx
+python3.10 scripts/bootstrap_actor_s100.py --model /path/to/policy.onnx
 ```
 The 21 offline wheels, Pico service, binding, sources and synthetic replay
 fixture are tracked in Git. The model must be supplied separately; its SHA256
@@ -269,7 +268,7 @@ The reference for the activation design is the user-selected
 `vt_human_v2_tracking_asample.yaml`: measured-pose reference, continuous policy
 inference, heading alignment, metadata-derived reference timing and stand hold
 before live references. This application still uses the separately supplied
-step431500 ONNX and Body31 SDK EXTERNAL contract. It does not load the firmware
+configured ONNX policy and Body31 SDK EXTERNAL contract. It does not load the firmware
 HUMANOID_TRACKING model or copy its legacy 42-slot/finger/planner interfaces.
 Model hash, 20 ms reference spacing, gains, order and native/schema guards
 remain pinned by this standalone delivery; no monorepo is needed on S100.
@@ -439,7 +438,7 @@ been reviewed. The historical P1/P2/P3 `7200` config is not used by this entry.
 `robot_root_quat_wxyz [T,4]` and `robot_root_angvel_local [T,3]` contain the
 model's HIP-frame state convention. Units are radians, rad/s and seconds/ns as
 named. Every one of the actor's 28 joints must be present. Replay inference
-starts only after the full model-derived window is available (200 ms for step 431500).
+starts only after the full model-derived window is available (200 ms for the current contract).
 
 ## Validation boundary
 

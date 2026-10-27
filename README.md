@@ -1,7 +1,7 @@
 # Vita02A / S100 actor + Pico
 
 部署链路：Pico → **motion-stream-bridge Vita02A GMR** → Vita02A 关节参考 →
-`model_step_431500_g1.onnx` → SDK 0.2.1 Body31。GMR 的算法、模型和参数固定自
+已审核的关节参考策略模型 → SDK 0.2.1 Body31。GMR 的算法、模型和参数固定自
 `763f560`，已移除自写姿态 IK；它与 HoloMotion 的 SMPL 输入双策略是不同的链路。
 
 **当前交付已合入 `main`，见已合并的 [PR #1](https://github.com/yunhao-crypto/wbc-teleop-tools/pull/1)。**
@@ -34,21 +34,18 @@ git clone --branch main --single-branch \
 cd /userdata/vita_actor_pico
 git rev-parse HEAD
 source /app/script/env.sh
-python3.10 scripts/bootstrap_actor_s100.py --model /absolute/path/model_step_431500_g1.onnx
+python3.10 scripts/bootstrap_actor_s100.py --model /absolute/path/policy.onnx
 bash scripts/start_actor_pico.sh check --steps 100
 bash scripts/start_actor_pico.sh state-check --seconds 5
 # 头显已完成全身追踪标定并点击 Send 后，运行只记录结果的影子推理：
 bash scripts/start_actor_pico.sh shadow --seconds 30 --human-height 1.75
 ```
 
-模型为 **57,652,911 bytes**，SHA256 必须为：
-
-```text
-a341391a346e050caf11c40c6989336c658c445e3e124f12dcbe292d91324474
-```
-
-安装器校验后将模型复制到 `artifacts/actor_g1/actor_g1.onnx`，离线解析全部 wheel 依赖，
-创建独立 `venv`，解包 Pico 运行库，检查 SDK/绑定/动态库，并运行无动作模型检查。
+模型版本、文件大小、SHA256 和安装目标路径统一记录在
+[`config/actor_pico.json`](config/actor_pico.json) 与
+[`deploy/actor_s100/manifest.json`](deploy/actor_s100/manifest.json) 中。
+示例使用通用文件名 `policy.onnx`；安装器按交付清单校验模型内容并复制到配置指定的位置，
+随后离线解析全部 wheel 依赖、创建独立 `venv`，解包 Pico 运行库，检查 SDK/绑定/动态库，并运行无动作模型检查。
 不会启动机器人服务或发布动作。不同的已有模型、第三方虚拟环境和运行库会被保留并报错；
 升级请换新目录。只有重编译 Pico 绑定才需 `--build-pico` 和 g++/Python 开发头文件。
 
@@ -101,7 +98,7 @@ git add <intended-files>
 python3 scripts/seal_actor_delivery.py
 git add ACTOR-PICO-MANIFEST.json deploy/actor_s100/manifest.json
 /tmp/vita-actor-host-check/bin/python scripts/verify_actor_delivery.py \
-  --host-inference --model /absolute/path/model_step_431500_g1.onnx
+  --host-inference --model /absolute/path/policy.onnx
 ```
 
 验证不借用开发目录的 `venv`、`build`、`vendor_packages`、`reference` 或外部源码树。
