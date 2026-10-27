@@ -182,7 +182,11 @@ The sequence is:
    completion. A retired keyframe can clear the action name; that alone does
    not count as FIXED_STAND readiness.
 2. Request FIXED_STAND once, and require actual active FIXED_STAND plus healthy,
-   hardware-bounded, stationary feedback for 0.5 s. In `policy-online` mode the
+   hardware-bounded, stationary feedback for 0.5 s. Policy-online startup also
+   requires HIP IMU tilt <=2 degrees and gyro norm <=0.10 rad/s, with live
+   numerical diagnostics so the attendant can keep the supported body upright.
+   This is an entry condition, separate from the unchanged 0.8 rad running
+   fall threshold. In `policy-online` mode the
    policy reference starts at the measured pose: exact zero joint positions
    are not an activation prerequisite. Progress and failure logs name the
    largest joint position error and speed; no request is retried after failure.
@@ -401,3 +405,10 @@ python3 scripts/validate_actor_stand_mujoco.py --scene /path/to/scene.xml \
 MuJoCo and these external assets are not SDK deployment prerequisites. This
 simulation uses serial virtual ankle joints, not the robot's parallel motor
 adapter; its success is separate from hardware control and balance acceptance.
+
+The captured failed hardware preflight was reproduced exactly on host ORT
+(observation difference 0; action difference about 7e-7). Its measured HIP
+tilt was about 11 degrees. An offline counterfactual removing tilt brought
+the initial target step below the unchanged 0.35 rad guard; this is diagnostic
+evidence, not permission to rewrite real IMU observations. The startup
+orientation check requires actual supported alignment instead.

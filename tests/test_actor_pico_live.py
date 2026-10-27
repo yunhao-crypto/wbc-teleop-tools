@@ -879,6 +879,30 @@ class LiveTests(unittest.TestCase):
         self.assertEqual(len(published['feedback']['root_wxyz']),4)
         self.assertIn('applied_sequence',published['feedback'])
 
+    def test_online_tilted_initial_body_waits_then_cancels_before_external(self):
+        self.online_setup()
+        original=self.transport.state_fault
+        def leaned(state):
+            state=original(state);imu=state.imu_values.copy()
+            imu[0,:4]=[np.cos(.1),0.,np.sin(.1),0.]
+            return replace(state,imu_values=imu)
+        self.transport.state_fault=leaned
+        with self.assertRaisesRegex(TimeoutError,'IMU tilt=11.46'):self.auto_trial()
+        self.assertEqual(self.transport.requests,[])
+        self.assertEqual([x[0] for x in self.startup_calls],['CANCEL'])
+        evidence=next(r for r in self.rows if r.get('record_type')=='fixed_stand_feedback')
+        self.assertGreater(evidence['tilt_deg'],11.)
+
+    def test_online_body_gyro_must_settle_before_external(self):
+        self.online_setup()
+        original=self.transport.state_fault
+        def spinning(state):
+            state=original(state);imu=state.imu_values.copy();imu[0,4]=.2
+            return replace(state,imu_values=imu)
+        self.transport.state_fault=spinning
+        with self.assertRaisesRegex(TimeoutError,'gyro_norm=0.200'):self.auto_trial()
+        self.assertEqual(self.transport.requests,[])
+
     def test_status_freeze_is_detected(self):
         guard = StatusGuard(self.clock)
         status = self.controller.status

@@ -21,6 +21,8 @@ SETTLE_ERROR = .04
 SETTLE_SPEED = .05
 SETTLE_SECONDS = .5
 SETTLE_TIMEOUT = 5.
+ONLINE_START_TILT = math.radians(2.)
+ONLINE_START_GYRO = .10
 
 
 def vector(value, label):
@@ -81,6 +83,8 @@ class StartupPlan:
             entry_policy='policy-online' if online else 'joint-ramp',
             fixed_stand_ready='active FIXED_STAND, healthy hardware-bounded feedback and stationary joints' if online
                 else 'measured positions at FIXED_STAND target and stationary joints',
+            online_start_tilt_limit_degrees=2. if online else None,
+            online_start_gyro_limit_rad_s=ONLINE_START_GYRO if online else None,
             startup_exit='CANCEL to PASSIVE on an incomplete FIXED_STAND startup; loaded limbs may fall')
 
     def check_hardware_pose(self, envelope, state):
@@ -142,16 +146,16 @@ def fixed_stand_startup(plan, envelope, runtime, args, controller, inputs, stop,
         if counts != baseline or status.timeout_hold:
             raise RuntimeError('Startup reject/drop/fault/generation changed; no retry')
         plan.check_hardware_pose(envelope,state)
-        return state,status
+        return state,status,root,gyro
     request_action = request_action or FirmwareActions(stop,clock,monitor)
-    state,status = monitor()
+    state,status,root,gyro = monitor()
     initial = status.current_action
     if initial in plan.damping:
         started=clock.monotonic(); deadline=started+plan.damping[initial]; next_print=started
         retired = False
         while clock.monotonic() < deadline:
             if stop.is_set(): return False
-            state,status=monitor()
+            state,status,root,gyro=monitor()
             # TickActive retires a completed keyframe and clears its name.
             # Continue the conservative timed wait, accepting only this known
             # completion edge. A fresh action appearing afterward is a fault.
@@ -174,20 +178,24 @@ def fixed_stand_startup(plan, envelope, runtime, args, controller, inputs, stop,
         deadline=clock.monotonic()+args.startup_timeout; settled=None; next_print=clock.monotonic()
         while True:
             if stop.is_set(): raise InterruptedError('Startup interrupted after FIXED_STAND')
-            state,status=monitor()
+            state,status,root,gyro=monitor()
+            tilt=math.acos(float(np.clip(runtime.math.rotation(root)[2,2],-1.,1.)))
+            gyro_speed=float(np.linalg.norm(gyro))
             # The zero-time FIXED_STAND keyframe can finish between two status
             # publications. After the one accepted request, verify actual q/dq
             # continuously and require either that action or no active action.
             named_ready = status.current_action == 'FIXED_STAND' if plan.online else status.current_action in ('FIXED_STAND','')
             if named_ready:
                 position_ready = plan.online or np.max(np.abs(state.q-plan.fixed_q)) <= SETTLE_ERROR
-                good=position_ready and np.max(np.abs(state.dq)) <= SETTLE_SPEED
+                orientation_ready = not plan.online or (tilt<=ONLINE_START_TILT and gyro_speed<=ONLINE_START_GYRO)
+                good=position_ready and orientation_ready and np.max(np.abs(state.dq)) <= SETTLE_SPEED
                 settled = (settled if settled is not None else clock.monotonic()) if good else None
                 if settled is not None and clock.monotonic()-settled >= SETTLE_SECONDS:
                     print('AUTO_START: FIXED_STAND feedback ready; entering EXTERNAL '+
                           ('policy-online lead-in' if plan.online else 'pose preparation'),flush=True)
                     write(dict(record_type='fixed_stand_confirmed',actions_sent=0,
-                               entry_policy=plan.review['entry_policy'],q=state.q.tolist(),dq=state.dq.tolist()))
+                               entry_policy=plan.review['entry_policy'],q=state.q.tolist(),dq=state.dq.tolist(),
+                               root_wxyz=root.tolist(),gyro=gyro.tolist(),tilt_deg=math.degrees(tilt)))
                     return True
             elif status.current_action != initial:
                 raise RuntimeError('Unexpected action during FIXED_STAND activation')
@@ -196,14 +204,18 @@ def fixed_stand_startup(plan, envelope, runtime, args, controller, inputs, stop,
                 raise TimeoutError(f'FIXED_STAND did not settle; no EXTERNAL request sent; '
                     f'action={status.current_action!r}, {envelope.body.joint_names[i]} '
                     f'q={state.q[i]:.5f}, fixed_target={plan.fixed_q[i]:.5f}; '
-                    f'{envelope.body.joint_names[v]} dq={state.dq[v]:.5f}')
+                    f'{envelope.body.joint_names[v]} dq={state.dq[v]:.5f}; '
+                    f'IMU tilt={math.degrees(tilt):.2f} deg, gyro_norm={gyro_speed:.3f} rad/s')
             if clock.monotonic() >= next_print:
                 i=int(np.argmax(np.abs(state.q-plan.fixed_q)));v=int(np.argmax(np.abs(state.dq)))
                 print(f'AUTO_START: verifying FIXED_STAND, action={status.current_action!r}, '
                       f'max position error={abs(state.q[i]-plan.fixed_q[i]):.3f} rad ({envelope.body.joint_names[i]}), '
-                      f'max speed={abs(state.dq[v]):.3f} rad/s ({envelope.body.joint_names[v]})',flush=True)
+                      f'max speed={abs(state.dq[v]):.3f} rad/s ({envelope.body.joint_names[v]}), '
+                      f'IMU tilt={math.degrees(tilt):.2f} deg'+
+                      (' (need <=2 deg), keep supported/upright' if plan.online else ''),flush=True)
                 write(dict(record_type='fixed_stand_feedback',current_action=status.current_action,
                     q=state.q.tolist(),dq=state.dq.tolist(),position_target=plan.fixed_q.tolist(),
+                    root_wxyz=root.tolist(),gyro=gyro.tolist(),tilt_deg=math.degrees(tilt),
                     entry_policy=plan.review['entry_policy'],actions_sent=0))
                 next_print=clock.monotonic()+1.
             clock.sleep(.02)
