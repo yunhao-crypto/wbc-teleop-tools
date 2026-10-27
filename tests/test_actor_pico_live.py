@@ -35,8 +35,8 @@ def robot_config():
                 geometry=dict(lx=.05, ly=.02175, z_top=.31, z_bot=.235)),
         actions=dict(EXTERNAL=dict(generator='builtin::external', params=dict(
             ankle_virtual_pd_intent=True, command_timeout_ms=1000,
-            safe_hold=dict(kp=[10.]*42, kd=[1.]*42), command_limits=dict(default=dict(
-                max_kp=500., max_kd=50., max_abs_dq_rad_s=25., allowed_modes=[10]))))))
+            recover_valid_frames=1, interpolation=dict(min_period_ms=2, max_period_ms=100),
+            safe_hold=dict(kp=[10.]*42, kd=[1.]*42)))))
 
 
 class Pico:
@@ -434,6 +434,58 @@ class LiveTests(unittest.TestCase):
         for key, value in [('q', 99.), ('dq', 99.), ('tau', 999.), ('kp', 999.), ('kd', 999.)]:
             joints = list(cmd.joints); joints[0] = replace(joints[0], **{key:value})
             with self.assertRaisesRegex(ValueError, 'outside'): env.check(replace(cmd, joints=tuple(joints)))
+
+    def capability_reply(self, index, **changes):
+        reply = self.transport.reply
+        caps = list(reply.info.body.joints)
+        caps[index] = replace(caps[index], **changes)
+        return replace(reply, info=replace(reply.info, body=replace(reply.info.body, joints=tuple(caps))))
+
+    def test_current_firmware_config_needs_no_yaml_command_limits(self):
+        params, _ = load_robot_config(self.config)
+        self.assertNotIn('command_limits', params)
+        CommandEnvelope(self.runtime, self.transport.reply, params)
+
+    def test_obsolete_yaml_limits_and_invalid_timing_refuse_before_control(self):
+        for changes in (dict(command_limits={}), dict(command_timeout_ms=True),
+                        dict(recover_valid_frames=0),
+                        dict(interpolation=dict(min_period_ms=100, max_period_ms=2))):
+            config = robot_config()
+            config['actions']['EXTERNAL']['params'].update(changes)
+            self.config.write_text(json.dumps(config))
+            with self.assertRaises(ValueError): self.run_trial()
+        self.assertEqual((self.transport.requests, self.transport.commands), ([], []))
+
+    def test_missing_or_malformed_linear_ranges_and_support_are_rejected(self):
+        params, _ = load_robot_config(self.config)
+        for changes in (dict(valid_limits=1), dict(supported_fields=1),
+                        dict(kp_max=0.), dict(tau_min=float('nan'))):
+            with self.assertRaises(ValueError):
+                CommandEnvelope(self.runtime, self.capability_reply(0, **changes), params)
+
+    def test_model_and_safe_hold_gains_must_fit_robot_info(self):
+        params, _ = load_robot_config(self.config)
+        with self.assertRaisesRegex(ValueError, 'safe_hold'):
+            CommandEnvelope(self.runtime, self.capability_reply(0, kp_max=5.), params)
+        with self.assertRaisesRegex(ValueError, 'outside'):
+            CommandEnvelope(self.runtime, self.capability_reply(0, kp_max=11.), params)
+
+    def test_parallel_ankle_absent_ranges_are_delegated_not_zero_limits(self):
+        params, _ = load_robot_config(self.config)
+        reply = self.transport.reply
+        caps = list(reply.info.body.joints)
+        for i in (4, 5, 10, 11):
+            caps[i] = replace(caps[i], valid_limits=1, dq_min=0., dq_max=0.,
+                tau_min=0., tau_max=0., kp_min=0., kp_max=0., kd_min=0., kd_max=0.)
+        reply = replace(reply, info=replace(reply.info, body=replace(reply.info.body, joints=tuple(caps))))
+        env = CommandEnvelope(self.runtime, reply, params)
+        self.assertEqual(len(env.delegated_joints), 4)
+        command, _ = self.runtime.policy.decode(np.zeros(28))
+        self.assertGreater(command.joints[4].kp, 0.)
+        env.check(command)
+        for change in (dict(q=9.), dict(tau=float('nan')), dict(kp=-1.)):
+            joints = list(command.joints); joints[4] = replace(joints[4], **change)
+            with self.assertRaises(ValueError): env.check(replace(command, joints=tuple(joints)))
 
     def test_status_freeze_is_detected(self):
         guard = StatusGuard(self.clock)

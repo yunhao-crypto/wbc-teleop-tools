@@ -79,17 +79,22 @@ def load_robot_config(path):
             raise ValueError('EXTERNAL must use builtin::external')
         if ankle['pd']['strategy'] != 'virtual_pd' or params['ankle_virtual_pd_intent'] is not True:
             raise ValueError('Requires virtual_pd and EXTERNAL ankle_virtual_pd_intent=true; no config is changed')
+        unknown = set(params)-{'command_timeout_ms', 'recover_valid_frames',
+                              'interpolation', 'safe_hold', 'ankle_virtual_pd_intent'}
+        if unknown:
+            raise ValueError('Unsupported EXTERNAL params: '+', '.join(sorted(unknown)))
         timeout = params['command_timeout_ms']
-        if not isinstance(timeout, (int, float)) or not math.isfinite(timeout) or timeout <= 0:
+        if type(timeout) is not int or timeout <= 0:
             raise ValueError('EXTERNAL command watchdog must be enabled')
-        limits = params['command_limits']
-        default = limits['default']
-        for key in ('max_kp', 'max_kd', 'max_abs_dq_rad_s'):
-            value = default[key]
-            if isinstance(value, bool) or not math.isfinite(value) or value <= 0:
-                raise ValueError('Invalid EXTERNAL command limit: '+key)
-        if 10 not in default['allowed_modes']:
-            raise ValueError('EXTERNAL must allow position/PD mode 10')
+        recover = params['recover_valid_frames']
+        if type(recover) is not int or recover < 1:
+            raise ValueError('EXTERNAL recover_valid_frames must be a positive integer')
+        interpolation = params['interpolation']
+        periods = [interpolation[key] for key in ('min_period_ms', 'max_period_ms')]
+        if (set(interpolation) != {'min_period_ms', 'max_period_ms'}
+                or any(type(value) is not int or value <= 0 for value in periods)
+                or periods[0] > periods[1]):
+            raise ValueError('Invalid EXTERNAL interpolation periods')
         hold = params['safe_hold']
         for key in ('kp', 'kd'):
             values = np.asarray(hold[key], dtype=float)
@@ -108,7 +113,13 @@ def load_robot_config(path):
 
 
 class CommandEnvelope:
-    """Reject commands outside advertised hardware and effective limits; no clipping."""
+    """Use RobotInfo ranges, with the A-sample virtual ankle delegation contract.
+
+    Current firmware rejects YAML command_limits. Its four parallel ankle axes
+    advertise all five supported fields but only joint-domain q limits; their
+    dq/tau/kp/kd validation belongs to the motor-space adapter, not zero-valued
+    absent RobotInfo ranges. Every other populated axis needs all five ranges.
+    """
     def __init__(self, runtime, reply, params):
         from .sdkmain_adapter import validate_robot_info, BODY_TO_LEGACY
         validate_robot_info(reply)
@@ -117,39 +128,35 @@ class CommandEnvelope:
             raise ValueError('Expected body roster_version=1')
         runtime.policy.bind_body_info(self.body)
         self.limits = []
-        overrides = params['command_limits'].get('joint_overrides', {})
-        if not isinstance(overrides, dict):
-            raise ValueError('joint_overrides must be a joint-name mapping')
+        self.delegated_joints = []
+        ankles = {'left_ankle_pitch_joint', 'left_ankle_roll_joint',
+                  'right_ankle_pitch_joint', 'right_ankle_roll_joint'}
         for index, (name, cap) in enumerate(zip(self.body.joint_names, self.body.joints)):
             if not cap.populated:
                 self.limits.append(None)
                 continue
             if cap.is_mock or cap.slot_role != 1:
                 raise ValueError('Physical ACTIVE body actuator required: '+name)
-            if not cap.valid_limits & 1:
-                raise ValueError('Advertised position limits unavailable: '+name)
-            limit = dict(params['command_limits']['default'])
-            limit.update(overrides.get(name, {}))
-            if 10 not in limit['allowed_modes']:
-                raise ValueError('PD mode denied: '+name)
+            if cap.supported_fields != 31:
+                raise ValueError('Required q/dq/tau/kp/kd support unavailable: '+name)
+            delegated = name in ankles and cap.valid_limits == 1
+            if cap.valid_limits != 31 and not delegated:
+                raise ValueError('Advertised command limits unavailable: '+name)
             ranges = [(cap.q_min, cap.q_max), (cap.dq_min, cap.dq_max),
                       (cap.tau_min, cap.tau_max), (cap.kp_min, cap.kp_max),
                       (cap.kd_min, cap.kd_max)]
-            if not np.isfinite(ranges).all() or any(low > high for low, high in ranges):
+            if delegated:
+                self.delegated_joints.append(name)
+                ranges[1:] = [None]*4
+            if any(not np.isfinite(bounds).all() or bounds[0] >= bounds[1]
+                   for bounds in ranges if bounds is not None):
                 raise ValueError('Invalid advertised command ranges: '+name)
-            ranges[0] = (max(cap.q_min, limit.get('q_lower_rad', cap.q_min)),
-                         min(cap.q_max, limit.get('q_upper_rad', cap.q_max)))
-            ranges[1] = (max(cap.dq_min, -limit['max_abs_dq_rad_s']),
-                         min(cap.dq_max, limit['max_abs_dq_rad_s']))
-            ranges[3] = (max(0., cap.kp_min), min(cap.kp_max, limit['max_kp']))
-            ranges[4] = (max(0., cap.kd_min), min(cap.kd_max, limit['max_kd']))
-            if not np.isfinite(ranges).all() or any(low > high for low, high in ranges):
-                raise ValueError('Empty effective command range: '+name)
             for key, value_range in (('kp', ranges[3]), ('kd', ranges[4])):
                 values = params['safe_hold'][key]
                 slot = index if len(values) == 31 else BODY_TO_LEGACY[index]
                 value = values[slot]
-                if not value_range[0] <= value <= value_range[1] or value <= 0:
+                if (not math.isfinite(value) or value <= 0 or (value_range is not None
+                        and not value_range[0] <= value <= value_range[1])):
                     raise ValueError('safe_hold gain unavailable/out of bounds: '+name)
             self.limits.append(ranges)
         # A fixed model/gain profile, including both necks, must fit BEFORE entry.
@@ -180,7 +187,12 @@ class CommandEnvelope:
                 if any(values):
                     raise ValueError('Nonzero command for unpopulated slot: '+name)
                 continue
-            for key, value, (low, high) in zip(('q', 'dq', 'tau', 'kp', 'kd'), values, ranges):
+            if joint.kp < 0 or joint.kd < 0:
+                raise ValueError('Negative body command gain: '+name)
+            for key, value, bounds in zip(('q', 'dq', 'tau', 'kp', 'kd'), values, ranges):
+                if bounds is None:
+                    continue  # Validated by the firmware's parallel ankle adapter.
+                low, high = bounds
                 if not low <= value <= high:
                     raise ValueError(f'{name}.{key}={value} outside [{low}, {high}]')
 

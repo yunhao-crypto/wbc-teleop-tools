@@ -154,6 +154,17 @@ requires no Xbox configuration or Wi-Fi controller key.
 
 ## Supported EXTERNAL trial
 
+The deployed Body31 firmware takes command ranges from `get_robot_info`, not
+YAML `command_limits` (which it rejects). The client checks supported fields
+and every advertised range, including model and safe-hold gains. For the four
+A-sample parallel ankle axes, `supported_fields=31, valid_limits=1` means only
+q has a joint-domain range; dq/tau/kp/kd remain validated by the firmware's
+motor-space adapter. Those absent ranges are not zero limits. Other populated
+axes must advertise all five ranges; missing or degraded capabilities fail
+before requesting ownership. The full A-sample YAML still supplies watchdog,
+recovery, interpolation, safe-hold and virtual-PD intent. Do not add old limits
+to robot YAML or weaken model entry-pose checks to get past preflight.
+
 `live` is an experimental, bounded **supported** trial. It is not acceptance
 for unsupported standing/walking. Obtain authorization for the actual robot
 and motion; keep reliable support, clear motion/pinch zones, an attendant and

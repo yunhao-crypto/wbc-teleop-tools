@@ -65,7 +65,7 @@ def main():
     missing = set(required)-set(names)
     if missing:
         raise RuntimeError('Stage these required delivery files first: '+', '.join(sorted(missing)))
-    record = dict(schema='vita_actor_s100_delivery_v1', version='2026.10.27-actor4',
+    record = dict(schema='vita_actor_s100_delivery_v1', version='2026.10.27-actor5',
                   target=dict(os='Linux', architecture='aarch64', python='3.10', glibc_min='2.35'),
                   scope='offline/shadow checks and explicitly armed supported EXTERNAL trials; hardware not_measured',
                   required_inputs=required, external_resources=[external], archives=archives,
