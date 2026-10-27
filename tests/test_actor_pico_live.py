@@ -702,6 +702,52 @@ class LiveTests(unittest.TestCase):
         self.assertEqual(self.startup_calls,[])
         self.assertEqual(self.transport.requests,[])
 
+    def test_auto_initial_retired_action_still_requests_and_verifies_fixed_pose(self):
+        self.auto_setup('')
+        self.auto_trial()
+        self.assertEqual([x[0] for x in self.startup_calls],['FIXED_STAND'])
+        self.assert_cancelled()
+
+    def test_auto_fixed_completion_between_status_frames_requires_settled_feedback(self):
+        self.auto_setup('')
+        def action(name):
+            self.startup_calls.append((name,self.clock.monotonic()))
+            self.transport.value=replace(self.transport.value,
+                current_action='' if name=='FIXED_STAND' else 'PASSIVE')
+        self.request_action=action
+        self.auto_trial()
+        self.assertEqual([x[0] for x in self.startup_calls],['FIXED_STAND'])
+        self.assertTrue(any(r.get('record_type')=='fixed_stand_confirmed' for r in self.rows))
+        self.assert_cancelled()
+
+    def test_auto_damping_completion_clears_action_name_without_false_failure(self):
+        self.auto_setup('PASSIVE')
+        original=self.transport.state_fault
+        def retired(s):
+            if 102.1<self.clock.monotonic()<104.:
+                self.transport.value=replace(self.transport.value,current_action='')
+            return original(s)
+        self.transport.state_fault=retired
+        self.auto_trial()
+        self.assertEqual([x[0] for x in self.startup_calls],['FIXED_STAND'])
+        self.assertGreaterEqual(self.startup_calls[0][1],104.)
+        self.assert_cancelled()
+
+    def test_auto_empty_action_does_not_replace_fixed_stand_feedback_validation(self):
+        self.auto_setup('')
+        def action(name):
+            self.startup_calls.append((name,self.clock.monotonic()))
+            self.transport.value=replace(self.transport.value,
+                current_action='' if name=='FIXED_STAND' else 'PASSIVE')
+        self.request_action=action
+        def wrong_pose(state):
+            q=np.zeros(31,np.float32);q[0]=.2
+            return replace(state,q=q)
+        self.transport.state_fault=wrong_pose
+        with self.assertRaisesRegex(TimeoutError,'FIXED_STAND did not settle'):self.auto_trial()
+        self.assertEqual([x[0] for x in self.startup_calls],['FIXED_STAND','CANCEL'])
+        self.assertEqual(self.transport.requests,[])
+
     def test_status_freeze_is_detected(self):
         guard = StatusGuard(self.clock)
         status = self.controller.status

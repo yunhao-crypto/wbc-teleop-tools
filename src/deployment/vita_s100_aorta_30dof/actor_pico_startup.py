@@ -123,7 +123,7 @@ def fixed_stand_startup(plan, envelope, runtime, args, controller, inputs, stop,
     Wait a full configured damping curve on continuous fresh feedback before
     the single request; a late/rejected admission is a failure, not a retry.
     """
-    allowed = ('PASSIVE','QUIET_PASSIVE','FIXED_STAND')
+    allowed = ('PASSIVE','QUIET_PASSIVE','FIXED_STAND','')
     guard = StatusGuard(clock, initial_actions=allowed)
     baseline = None
     def monitor():
@@ -143,10 +143,16 @@ def fixed_stand_startup(plan, envelope, runtime, args, controller, inputs, stop,
     initial = status.current_action
     if initial in plan.damping:
         started=clock.monotonic(); deadline=started+plan.damping[initial]; next_print=started
+        retired = False
         while clock.monotonic() < deadline:
             if stop.is_set(): return False
             state,status=monitor()
-            if status.current_action != initial:
+            # TickActive retires a completed keyframe and clears its name.
+            # Continue the conservative timed wait, accepting only this known
+            # completion edge. A fresh action appearing afterward is a fault.
+            if status.current_action == '':
+                retired = True
+            elif status.current_action != initial or retired:
                 raise RuntimeError('Action changed while waiting for damping completion')
             if clock.monotonic() >= next_print:
                 print(f'AUTO_START: waiting for {initial} damping, {deadline-clock.monotonic():.0f}s remaining',flush=True)
@@ -164,7 +170,10 @@ def fixed_stand_startup(plan, envelope, runtime, args, controller, inputs, stop,
         while True:
             if stop.is_set(): raise InterruptedError('Startup interrupted after FIXED_STAND')
             state,status=monitor()
-            if status.current_action == 'FIXED_STAND':
+            # The zero-time FIXED_STAND keyframe can finish between two status
+            # publications. After the one accepted request, verify actual q/dq
+            # continuously and require either that action or no active action.
+            if status.current_action in ('FIXED_STAND',''):
                 good=(np.max(np.abs(state.q-plan.fixed_q)) <= SETTLE_ERROR
                       and np.max(np.abs(state.dq)) <= SETTLE_SPEED)
                 settled = (settled if settled is not None else clock.monotonic()) if good else None
@@ -188,7 +197,7 @@ def fixed_stand_startup(plan, envelope, runtime, args, controller, inputs, stop,
 def cancel_startup(controller, request_action, clock, write, generation):
     try:
         current=controller.status
-        if (current is None or current.current_action not in ('PASSIVE','QUIET_PASSIVE','FIXED_STAND')
+        if (current is None or current.current_action not in ('PASSIVE','QUIET_PASSIVE','FIXED_STAND','')
                 or phase(current) != 'IDLE' or current.generation != generation):
             raise RuntimeError('Startup ownership/state changed; no cancellation of an unknown session')
         request_action('CANCEL')

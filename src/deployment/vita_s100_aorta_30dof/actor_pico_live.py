@@ -341,7 +341,10 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
     requires_pico = not args.stand_only and not manual
     if auto and (not manual or args.stand_only):
         raise ValueError('One-click startup requires manual Pico mode')
-    initial_actions = ('PASSIVE', 'QUIET_PASSIVE', 'FIXED_STAND') if auto else ('PASSIVE',)
+    # Firmware retires completed keyframes, leaving current_action empty. Auto
+    # explicitly requests FIXED_STAND and verifies measured targets afterward;
+    # an empty name alone is never treated as completed fixed stand.
+    initial_actions = ('PASSIVE', 'QUIET_PASSIVE', 'FIXED_STAND', '') if auto else ('PASSIVE',)
     inputs = Inputs(runtime, controller, pico if requires_pico else None, clock)
     guard = StatusGuard(clock, initial_actions=initial_actions)
     if manual and manual_pico is None:
@@ -422,7 +425,7 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
             envelope.check_entry_pose(runtime, state, q)
         if requires_pico:
             inputs.require_pico()
-        guard = StatusGuard(clock, initial_actions=('FIXED_STAND',) if auto else ('PASSIVE',))
+        guard = StatusGuard(clock, initial_actions=('FIXED_STAND', '') if auto else ('PASSIVE',))
         guard.check(controller.status)
     except BaseException:
         if auto:

@@ -174,12 +174,16 @@ required. No service restart, persistent configuration change or built-in
 The sequence is:
 
 1. From PASSIVE or QUIET_PASSIVE, observe a full configured damping duration
-   plus two seconds of margin on fresh feedback (42 seconds with the current
-   robot YAML). SDK `action_phase=IDLE` describes EXTERNAL, not the completion
+   plus two seconds of margin on fresh feedback (currently 42 seconds for
+   PASSIVE and 6 seconds for QUIET_PASSIVE). SDK `action_phase=IDLE` describes EXTERNAL, not the completion
    of the damping action. The wait prints progress. Already-active FIXED_STAND
-   skips this wait. Other actions or ownership are rejected.
+   skips this wait. An empty action name denotes no active action after the
+   firmware retires a completed keyframe: auto still explicitly requests
+   FIXED_STAND and validates the resulting measured targets. It is not an
+   alias for completed stand. Other named actions or ownership are rejected.
 2. Issue one firmware FIXED_STAND request through the installed humanoid CLI;
-   verify the actual action and positions within 0.04 rad, speeds within
+   verify FIXED_STAND or its retired no-active-action state and positions
+   within 0.04 rad, speeds within
    0.05 rad/s continuously for 0.5 seconds. Rejection, timeout, changed status
    counters or ownership stop startup; no motion request is retried.
 3. Enter one SDK EXTERNAL session and prepare the supplied model's default
