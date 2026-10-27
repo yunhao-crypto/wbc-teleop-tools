@@ -6,8 +6,8 @@
   "files": [
     {
       "path": "README_ACTOR_PICO.md",
-      "sha256": "f51659902da17672e6c862627ae67aaf7189fbcfcb4e382a5751391f3c33bbe3",
-      "bytes": 16647,
+      "sha256": "7587efa9380a19dd6a9b3328f22fd52a26c844a5d8b4f9092d90afe11cf73331",
+      "bytes": 20021,
       "mode": "0o644"
     },
     {
@@ -18,8 +18,8 @@
     },
     {
       "path": "scripts/actor_pico.py",
-      "sha256": "6abfd296bd16fdaa0d00071a3cd71d969e99da9febc2ee2fb6dfb248ae1436af",
-      "bytes": 20120,
+      "sha256": "4ec9be5915df244a52c1b509490fcb5f339842ff6c4e20af59593f19029fa852",
+      "bytes": 20405,
       "mode": "0o755"
     },
     {
@@ -30,8 +30,8 @@
     },
     {
       "path": "scripts/start_actor_pico.sh",
-      "sha256": "265aea446711dd4cbcff9f9ecc17627f7cae8e6a331f55ec120a28d7d33c43b4",
-      "bytes": 1887,
+      "sha256": "77ea708bdda10ed342ef04cae428de6978b9f5030e1db1fc96c0c9d6e2ca8ba6",
+      "bytes": 1977,
       "mode": "0o755"
     },
     {
@@ -72,20 +72,26 @@
     },
     {
       "path": "src/deployment/vita_s100_aorta_30dof/actor_pico_live.py",
-      "sha256": "a8b3b53e1f4f8a6ae58ce4e09845c25d9f84fea943c046f6d71c7387a9a60e01",
-      "bytes": 29567,
+      "sha256": "ebace4e8bff871914367bafc0b5249915a1666d0d05e203fd941e6d27bceaec2",
+      "bytes": 33830,
       "mode": "0o644"
     },
     {
       "path": "tests/test_actor_pico_live.py",
-      "sha256": "1be43683d03f3c8258f52d17afb007a7ce665396f9662c2369fed818f1a9aff2",
-      "bytes": 28660,
+      "sha256": "6e7223f9e78f3bb5543c31fd5e7572703342bba218a86d002ff401db77a9f9d6",
+      "bytes": 39620,
       "mode": "0o644"
     },
     {
       "path": "src/deployment/vita_s100_aorta_30dof/actor_pico_worker.py",
       "sha256": "de08fd27e0aa38756880f684ef5a0374b9e65253ac265ba80a382a031929a006",
       "bytes": 6181,
+      "mode": "0o644"
+    },
+    {
+      "path": "src/deployment/vita_s100_aorta_30dof/actor_pico_startup.py",
+      "sha256": "157c2b4beb937c541eaba1986f9fd82cbbe1123d650e1cf4b1155f54d89d29ff",
+      "bytes": 12979,
       "mode": "0o644"
     }
   ],

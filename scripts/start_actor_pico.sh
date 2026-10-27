@@ -3,8 +3,9 @@ set -euo pipefail
 ROOT=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 MODE=${1:-check}
 case "$MODE" in
+  auto) shift; MODE=live; set -- --auto-start --manual-pico --confirm-motion "$@" ;;
   check|replay|state-check|shadow|live) shift "$(( $# > 0 ? 1 : 0 ))" ;;
-  *) echo 'Usage: start_actor_pico.sh {check|replay|state-check|shadow|live} [options]' >&2; exit 2 ;;
+  *) echo 'Usage: start_actor_pico.sh {check|replay|state-check|shadow|live|auto} [options]' >&2; exit 2 ;;
 esac
 if [[ "$MODE" == state-check || "$MODE" == shadow || "$MODE" == live ]]; then
   set +u

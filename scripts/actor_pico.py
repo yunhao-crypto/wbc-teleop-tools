@@ -311,8 +311,12 @@ def main():
     parser.add_argument('--stand-only', action='store_true', help='live supported policy preparation/stand trial, without Pico following')
     parser.add_argument('--manual-pico', action='store_true',
                         help='live: enter ONNX stand without Pico, then CONNECT/PICO commands in the same session')
+    parser.add_argument('--auto-start', action='store_true',
+                        help='live: one confirmation, wait damping, FIXED_STAND, bounded pose preparation, ONNX stand; implies manual Pico')
     args = parser.parse_args()
     if args.mode == 'live':
+        if args.auto_start:
+            args.manual_pico = True
         if args.stand_only and args.manual_pico:
             parser.error('--stand-only and --manual-pico are mutually exclusive')
         if (not args.confirm_motion or not args.robot_id or not args.robot_id.strip()
@@ -320,7 +324,7 @@ def main():
             parser.error('live requires --confirm-motion, --robot-id and an absolute --robot-config; on-site confirmation remains mandatory')
         if args.seconds > 120:
             parser.error('live trials are bounded to 120 seconds')
-    elif args.confirm_motion or args.robot_id or args.robot_config or args.stand_only or args.manual_pico:
+    elif args.confirm_motion or args.robot_id or args.robot_config or args.stand_only or args.manual_pico or args.auto_start:
         parser.error('motion authorization/options apply only to live')
     if (args.steps < 1 or not math.isfinite(args.seconds) or not 1 <= args.seconds <= 7200
             or not math.isfinite(args.startup_timeout) or not 1 <= args.startup_timeout <= 120):

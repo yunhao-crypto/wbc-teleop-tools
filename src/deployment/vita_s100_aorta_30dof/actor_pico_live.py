@@ -241,8 +241,9 @@ class Inputs:
 
 
 class StatusGuard:
-    def __init__(self, clock):
+    def __init__(self, clock, initial_actions=('PASSIVE',)):
         self.clock, self.identity, self.changed = clock, None, clock.monotonic()
+        self.initial_actions = initial_actions
 
     def check(self, status, entered=None):
         if status is None:
@@ -255,8 +256,9 @@ class StatusGuard:
         if entered is None:
             if status.current_action == 'EXTERNAL':
                 raise RuntimeError('Another EXTERNAL session is active')
-            if status.current_action != 'PASSIVE' or phase(status) != 'IDLE':
-                raise RuntimeError('Supported trial must start from confirmed PASSIVE/IDLE')
+            if status.current_action not in self.initial_actions or phase(status) != 'IDLE':
+                raise RuntimeError('Supported trial must start from confirmed '+
+                                   '/'.join(self.initial_actions)+'/IDLE')
         elif (status.current_action != 'EXTERNAL' or phase(status) != 'RUNNING'
               or status.timeout_hold or any(getattr(status, key) != getattr(entered, key)
                   for key in ('generation', 'client_id', 'lease_id', 'reject_count', 'ingress_drop_count'))):
@@ -276,9 +278,12 @@ def onsite_confirmation(robot_id, stop):
     deadline = time.monotonic()+60
     while not stop.is_set() and time.monotonic() < deadline:
         if select.select([sys.stdin], [], [], .1)[0]:
-            if sys.stdin.readline().strip() != 'MOVE '+robot_id:
-                raise RuntimeError('On-site confirmation declined')
-            return
+            line = sys.stdin.readline()
+            if not line:
+                raise RuntimeError('On-site confirmation input closed; use an interactive terminal')
+            if line.strip() == 'MOVE '+robot_id:
+                return
+            print('Not confirmed. Type exactly MOVE '+robot_id+' or Ctrl-C to exit.',flush=True)
     raise RuntimeError('On-site confirmation interrupted/timed out')
 
 
@@ -317,7 +322,8 @@ def manual_reference(runtime, snapshot, now):
 
 
 def run_live(runtime, args, write, controller, pico, stop, service_alive,
-             confirm=onsite_confirmation, clock=time, manual_pico=None, poll_command=lambda:None):
+             confirm=onsite_confirmation, clock=time, manual_pico=None, poll_command=lambda:None,
+             request_action=None):
     """One trial only. Every attempted entry is followed by checked CANCEL.
 
     Fake I/O in unit tests exercises this same runner; actual transport and
@@ -325,9 +331,19 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
     """
     params, receipt = load_robot_config(args.robot_config)
     envelope = CommandEnvelope(runtime, controller.get_robot_info(args.startup_timeout), params)
+    auto = bool(getattr(args, 'auto_start', False))
+    startup = None
+    if auto:
+        from .actor_pico_startup import (StartupPlan, PosePreparation, fixed_stand_startup,
+                                         cancel_startup, FirmwareActions)
+        startup = StartupPlan(runtime, envelope, args.robot_config)
     manual = bool(getattr(args, 'manual_pico', False))
     requires_pico = not args.stand_only and not manual
-    inputs, guard = Inputs(runtime, controller, pico if requires_pico else None, clock), StatusGuard(clock)
+    if auto and (not manual or args.stand_only):
+        raise ValueError('One-click startup requires manual Pico mode')
+    initial_actions = ('PASSIVE', 'QUIET_PASSIVE', 'FIXED_STAND') if auto else ('PASSIVE',)
+    inputs = Inputs(runtime, controller, pico if requires_pico else None, clock)
+    guard = StatusGuard(clock, initial_actions=initial_actions)
     if manual and manual_pico is None:
         raise ValueError('Manual Pico mode requires an idle capture worker')
     runtime.reset_inputs()
@@ -352,7 +368,10 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
         if (not requires_pico or runtime.reference.ready()) and status is not None:
             if requires_pico:
                 inputs.require_pico()
-            envelope.check_entry_pose(runtime, state, q)
+            if auto:
+                startup.check_hardware_pose(envelope, state)
+            else:
+                envelope.check_entry_pose(runtime, state, q)
             started = clock.monotonic()
             if requires_pico:
                 command, obs, row = runtime.infer_command(q=q, dq=dq, root=root, gyro=gyro,
@@ -373,7 +392,8 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
     print('ACTOR_LIVE_REVIEW '+json.dumps(dict(robot_id=args.robot_id,
         model=runtime.config['artifacts']['model'], config=receipt,
         stand_only=args.stand_only, seconds=args.seconds,
-        manual_pico=manual,
+        manual_pico=manual, auto_start=auto,
+        startup_plan=startup.review if auto else None,
         default_pose=dict(zip(runtime.model.contract.names, runtime.model.contract.default.tolist())),
         kp=dict(zip(runtime.model.contract.names, runtime.model.contract.kp.tolist())),
         kd=dict(zip(runtime.model.contract.names, runtime.model.contract.kd.tolist())),
@@ -384,16 +404,34 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
     # Confirmation can take a minute: refresh inputs and config BEFORE PREPARE.
     if load_robot_config(args.robot_config)[1] != receipt:
         raise RuntimeError('Effective config file changed during confirmation')
-    runtime.reset_inputs()
-    state, q, _, _, _ = inputs.read(STATE_AGE)
-    envelope.check_entry_pose(runtime, state, q)
-    if requires_pico:
-        inputs.require_pico()
-    guard = StatusGuard(clock)
-    guard.check(controller.status)
+    if auto:
+        if not fixed_stand_startup(startup, envelope, runtime, args, controller, inputs,
+                                  stop, write, clock, request_action=request_action,
+                                  poll_command=poll_command):
+            return dict(mode='live', actions_sent=0, entered=False, stopped_by_signal=True)
+    startup_generation = controller.status.generation if auto else None
+    cancel_action = (request_action or FirmwareActions(stop, clock, lambda:inputs.read(.1))) if auto else None
+    try:
+        if auto and load_robot_config(args.robot_config)[1] != receipt:
+            raise RuntimeError('Effective config file changed during startup')
+        runtime.reset_inputs()
+        state, q, _, _, _ = inputs.read(STATE_AGE)
+        if auto:
+            startup.check_hardware_pose(envelope, state)
+        else:
+            envelope.check_entry_pose(runtime, state, q)
+        if requires_pico:
+            inputs.require_pico()
+        guard = StatusGuard(clock, initial_actions=('FIXED_STAND',) if auto else ('PASSIVE',))
+        guard.check(controller.status)
+    except BaseException:
+        if auto:
+            cancel_startup(controller, cancel_action, clock, write, startup_generation)
+        raise
     attempted, sent_count = False, 0
     report = dict(mode='live', actions_sent=0, control_handles_created=1, entered=False,
-                  exit_confirmed=False, robot_id=args.robot_id, stand_only=args.stand_only)
+                  exit_confirmed=False, robot_id=args.robot_id, stand_only=args.stand_only,
+                  auto_start=auto, pose_prepared=not auto, onnx_control_enabled=False)
     try:
         if stop.is_set():
             return report
@@ -409,7 +447,9 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
         state, q, dq, root, gyro = inputs.read(0)
         if requires_pico:
             inputs.require_pico()
-        envelope.check_entry_pose(runtime, state, q)
+        pose_prepare = PosePreparation(startup, envelope, state) if auto else None
+        if not auto:
+            envelope.check_entry_pose(runtime, state, q)
         lead = runtime.math.Motion.hold(runtime.model.contract.default).lead_in(
             q, root, runtime.config['body_profile']['lead_in'])
         offset = runtime.math.yaw(root)
@@ -417,9 +457,12 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
                       for name in runtime.config['body_profile']['fixed_joints']}
         preparation = max(3., (len(lead.q)-1)*runtime.model.contract.period)
         start = deadline = clock.monotonic()
+        policy_start = None if auto else start
         tracking = False
+        if auto:
+            print('POSE_PREPARE: bounded joint/gain ramp; ONNX control remains disabled until feedback settles.',flush=True)
         if manual:
-            print(f'ONNX_STAND: no Pico required. After preparation: CONNECT {args.robot_id}; '
+            print(f'PICO_MANUAL: no Pico required. After preparation: CONNECT {args.robot_id}; '
                   f'keep wearer neutral, then PICO {args.robot_id}. STOP or Ctrl-C cancels.', flush=True)
         previous_pico_state = None
         while not stop.is_set() and clock.monotonic()-start < args.seconds:
@@ -433,9 +476,27 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
             state, q, dq, root, gyro = inputs.read(0)
             if requires_pico:
                 inputs.require_pico()
-            elapsed = cycle-start
+            elapsed = 0. if policy_start is None else cycle-policy_start
+            pose_row = None
+            if pose_prepare is not None:
+                command, ready, pose_row = pose_prepare.step(cycle-start, state)
+                request = poll_command()
+                if request:
+                    print('AUTO_START: pose preparation in progress; CONNECT/PICO rejected, not queued',flush=True)
+                if ready:
+                    envelope.check_entry_pose(runtime, state, q)
+                    runtime.reset_inputs()
+                    lead = runtime.math.Motion.hold(runtime.model.contract.default).lead_in(
+                        q, root, runtime.config['body_profile']['lead_in'])
+                    offset = runtime.math.yaw(root)
+                    neck_start = {name:float(state.q[runtime.policy.order.index(name)])
+                                  for name in runtime.config['body_profile']['fixed_joints']}
+                    policy_start = cycle
+                    report['pose_prepared'] = True
+                    pose_prepare = None
+                    print('POSE_READY: default pose confirmed; switching to ONNX stand',flush=True)
             snapshot = None
-            if manual:
+            if manual and pose_row is None:
                 request = poll_command()
                 if request == 'connect':
                     if manual_pico.connect(root):
@@ -462,7 +523,9 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
                         tracking = True
                         print('PICO_TRACKING: same EXTERNAL session and policy history.', flush=True)
                         write(dict(record_type='tracking_started', actions_sent=sent_count))
-            if manual and tracking:
+            if pose_row is not None:
+                row, obs = pose_row, None
+            elif manual and tracking:
                 motion, diagnostics = manual_reference(runtime, snapshot, clock.monotonic())
                 command, obs, row = runtime.infer_motion_command(motion, q=q, dq=dq,
                     root=root, gyro=gyro, diagnostics=diagnostics)
@@ -509,20 +572,27 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
             sent = controller.publish(command)  # SDK alone owns session + sequence.
             sent_count += 1
             report['actions_sent'] = sent_count
+            if pose_row is None:
+                if auto and not report['onnx_control_enabled']:
+                    print('ONNX_READY: policy commands started; waiting for manual Pico connection',flush=True)
+                report['onnx_control_enabled'] = True
             write(dict(row, actions_sent=sent_count, control_handles_created=1,
-                stage='pico_tracking' if tracking else 'prepare_stand',
+                stage='pose_prepare' if pose_row is not None else ('pico_tracking' if tracking else 'prepare_stand'),
                 state_id=int(state.state_id), source_state_us=int(state.ts_state_real_us),
                 session_id=sent.session_id, sequence=sent.sequence,
                 publish_ms=(clock.monotonic()-before)*1000,
                 sent_body_targets=[dict(q=j.q, dq=j.dq, tau=j.tau, kp=j.kp, kd=j.kd) for j in sent.joints]), obs)
             if sent_count % 50 == 0:
-                print(f'ONNX_LIVE steps={sent_count} stage='+('pico_tracking' if tracking else 'stand'), flush=True)
+                stage = 'pose_prepare' if pose_row is not None else ('pico_tracking' if tracking else 'stand')
+                print(f'ACTOR_LIVE steps={sent_count} stage={stage}', flush=True)
             deadline += runtime.model.contract.period
             if clock.monotonic() > deadline+1e-9:
                 raise TimeoutError('Complete policy cycle including publish/log exceeded 20 ms; no catch-up/retry')
         report['stopped_by_signal'] = stop.is_set()
         return report
     finally:
+        if auto and not attempted:
+            cancel_startup(controller, cancel_action, clock, write, startup_generation)
         if attempted:
             original = sys.exc_info()[1]
             try:

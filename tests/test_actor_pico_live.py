@@ -31,12 +31,19 @@ class Clock:
 
 
 def robot_config():
-    return dict(parallel_ankle=dict(pd=dict(strategy='virtual_pd'),
+    config = dict(parallel_ankle=dict(pd=dict(strategy='virtual_pd'),
                 geometry=dict(lx=.05, ly=.02175, z_top=.31, z_bot=.235)),
         actions=dict(EXTERNAL=dict(generator='builtin::external', params=dict(
             ankle_virtual_pd_intent=True, command_timeout_ms=1000,
             recover_valid_frames=1, interpolation=dict(min_period_ms=2, max_period_ms=100),
             safe_hold=dict(kp=[10.]*42, kd=[1.]*42)))))
+    config['actions']['FIXED_STAND'] = dict(generator='builtin::keyframe', params=dict(
+        keyframes=[dict(timestamp=0,positions=[0.]*42,kp=[10.]*42,kd=[1.]*42)]))
+    for name in ('PASSIVE','QUIET_PASSIVE'):
+        config['actions'][name] = dict(generator='builtin::keyframe', params=dict(
+            kp=0.,keyframes=[dict(timestamp=0,positions=[0.]*42,kd=5.),
+                            dict(timestamp=2,positions=[0.]*42,kd=0.)]))
+    return config
 
 
 class Pico:
@@ -486,6 +493,214 @@ class LiveTests(unittest.TestCase):
         for change in (dict(q=9.), dict(tau=float('nan')), dict(kp=-1.)):
             joints = list(command.joints); joints[4] = replace(joints[4], **change)
             with self.assertRaises(ValueError): env.check(replace(command, joints=tuple(joints)))
+
+    def auto_setup(self, initial='PASSIVE'):
+        self.args.auto_start = self.args.manual_pico = True
+        self.args.seconds = 12.
+        self.transport.value = replace(self.transport.value,current_action=initial)
+        self.startup_calls = []
+        self.transport.state_fault = lambda s:replace(s,q=np.zeros(31,np.float32)) if not self.transport.commands else s
+        self.worker = ManualPico(self.runtime,self.clock)
+        def action(name):
+            self.startup_calls.append((name,self.clock.monotonic()))
+            self.transport.value = replace(self.transport.value,
+                current_action='FIXED_STAND' if name=='FIXED_STAND' else 'PASSIVE')
+        self.request_action = action
+
+    def auto_trial(self, **kwargs):
+        return self.run_trial(manual_pico=self.worker,request_action=self.request_action,**kwargs)
+
+    def test_auto_waits_full_damping_once_then_fixed_pose_and_onnx_without_pico(self):
+        self.auto_setup()
+        result = self.auto_trial()
+        self.assertEqual([x[0] for x in self.startup_calls],['FIXED_STAND'])
+        self.assertGreaterEqual(self.startup_calls[0][1],104.)
+        stages = [r['stage'] for r in self.rows if 'stage' in r]
+        self.assertIn('pose_prepare',stages);self.assertIn('prepare_stand',stages)
+        self.assertNotIn('pico_tracking',stages)
+        self.assertFalse(self.worker.connected)
+        self.assertEqual([r.operation.value for r in self.transport.requests],['PREPARE','COMMIT','CANCEL'])
+        self.assertTrue(result['exit_confirmed'])
+        pose = [r for r in self.rows if r.get('stage')=='pose_prepare']
+        q = np.array([[j['q'] for j in r['sent_body_targets']] for r in pose])
+        self.assertLessEqual(np.max(np.abs(np.diff(q,axis=0)))/.02,.150001)
+        self.assertTrue(all(not r['onnx_control_enabled'] for r in pose))
+        np.testing.assert_allclose(q[0],np.zeros(31),atol=1e-6)
+        self.assertGreater(q[-1,3],.39)
+        self.assert_cancelled()
+
+    def test_auto_existing_fixed_stand_does_not_cycle_through_passive(self):
+        self.auto_setup('FIXED_STAND')
+        self.auto_trial()
+        self.assertEqual(self.startup_calls,[])
+        self.assert_cancelled()
+
+    def test_auto_confirmation_decline_has_no_fixed_or_external_requests(self):
+        self.auto_setup()
+        self.confirm = lambda *_:(_ for _ in ()).throw(RuntimeError('declined'))
+        with self.assertRaisesRegex(RuntimeError,'declined'):self.auto_trial()
+        self.assertEqual(self.startup_calls,[])
+        self.assertEqual(self.transport.requests,[])
+
+    def test_auto_hardware_outside_pose_refuses_before_fixed_stand(self):
+        self.auto_setup()
+        def bad(s):
+            q=s.q.copy();q[3]=99.;return replace(s,q=q)
+        self.transport.state_fault=bad
+        with self.assertRaisesRegex(ValueError,'outside'):self.auto_trial()
+        self.assertEqual(self.startup_calls,[])
+        self.assertEqual(self.transport.requests,[])
+
+    def test_auto_fixed_rejection_cancels_once_without_external_retry(self):
+        self.auto_setup()
+        original=self.request_action
+        def reject(name):
+            original(name)
+            if name=='FIXED_STAND':raise RuntimeError('firmware rejected')
+        self.request_action=reject
+        with self.assertRaisesRegex(RuntimeError,'firmware rejected'):self.auto_trial()
+        self.assertEqual([x[0] for x in self.startup_calls],['FIXED_STAND','CANCEL'])
+        self.assertEqual(self.transport.requests,[])
+
+    def test_auto_stuck_joint_stops_pose_and_cancels_before_onnx_control(self):
+        self.auto_setup('FIXED_STAND')
+        self.transport.state_fault=lambda s:replace(s,q=np.zeros(31,np.float32))
+        with self.assertRaisesRegex(RuntimeError,'tracking error'):self.auto_trial()
+        self.assertTrue(self.transport.commands)
+        self.assertFalse(any(r.get('stage')=='prepare_stand' for r in self.rows))
+        self.assert_cancelled()
+
+    def test_auto_wait_interrupt_does_not_send_any_motion_request(self):
+        self.auto_setup()
+        original=self.transport.state_fault
+        def interrupt(s):
+            if self.clock.monotonic()>101.:self.stop.set()
+            return original(s)
+        self.transport.state_fault=interrupt
+        self.auto_trial()
+        self.assertEqual(self.startup_calls,[])
+        self.assertEqual(self.transport.requests,[])
+
+    def test_auto_other_external_owner_is_not_cancelled(self):
+        self.auto_setup('FIXED_STAND')
+        def takeover(name):
+            self.startup_calls.append((name,self.clock.monotonic()))
+            self.transport.value=replace(self.transport.value,current_action='EXTERNAL',generation=99)
+        self.transport.value=replace(self.transport.value,current_action='PASSIVE')
+        self.request_action=takeover
+        with self.assertRaisesRegex(RuntimeError,'Another EXTERNAL'):self.auto_trial()
+        self.assertEqual([x[0] for x in self.startup_calls],['FIXED_STAND'])
+        self.assertEqual(self.transport.requests,[])
+
+    def test_auto_pico_handoff_stays_in_one_external_session(self):
+        self.auto_setup('FIXED_STAND')
+        self.args.seconds=14.
+        def command():
+            n=len(self.transport.commands)
+            if n==450:return 'connect'
+            if n==500:return 'track'
+        self.auto_trial(poll_command=command)
+        self.assertTrue(any(r.get('stage')=='pico_tracking' for r in self.rows))
+        self.assertEqual([r.operation.value for r in self.transport.requests],['PREPARE','COMMIT','CANCEL'])
+        sequences=[c.sequence for c in self.transport.commands]
+        self.assertEqual(sequences,list(range(1,len(sequences)+1)))
+        self.assert_cancelled()
+
+    def test_auto_stale_feedback_never_proceeds_to_fixed_or_external(self):
+        self.auto_setup()
+        original=self.transport.state_fault
+        def stale(s):
+            s=original(s)
+            return replace(s,ts_state_pub_us=s.ts_state_pub_us-200_000) if self.clock.monotonic()>101 else s
+        self.transport.state_fault=stale
+        with self.assertRaises(TimeoutError):self.auto_trial()
+        self.assertEqual(self.startup_calls,[])
+        self.assertEqual(self.transport.requests,[])
+
+    def test_auto_pose_timeout_does_not_enable_onnx_control(self):
+        self.auto_setup('FIXED_STAND');self.args.seconds=20.
+        original=self.transport.state_fault
+        # Hold a fixed 0.06 rad residual near the endpoint without accumulating
+        # lag on every frame; tracking error stays below the 0.10 rad abort.
+        def residual(s):
+            s=original(s)
+            if self.transport.commands:
+                q=s.q.copy()
+                target=self.transport.commands[-1].joints[3].q
+                q[3]=max(0.,target-.06)
+                return replace(s,q=q)
+            return s
+        self.transport.state_fault=residual
+        with self.assertRaisesRegex(TimeoutError,'did not settle'):self.auto_trial()
+        self.assertFalse(any(r.get('stage')=='prepare_stand' for r in self.rows))
+        self.assert_cancelled()
+
+    def test_auto_fixed_timeout_cancels_and_never_enters_external(self):
+        self.auto_setup()
+        def no_activation(name):
+            self.startup_calls.append((name,self.clock.monotonic()))
+        self.request_action=no_activation
+        with self.assertRaisesRegex(TimeoutError,'FIXED_STAND did not settle'):self.auto_trial()
+        self.assertEqual([x[0] for x in self.startup_calls],['FIXED_STAND','CANCEL'])
+        self.assertEqual(self.transport.requests,[])
+
+    def test_auto_invalid_fixed_gains_reject_before_confirmation_or_motion(self):
+        self.auto_setup()
+        config=robot_config()
+        config['actions']['FIXED_STAND']['params']['keyframes'][0]['kp']=[999.]*42
+        self.config.write_text(json.dumps(config))
+        with self.assertRaisesRegex(ValueError,'outside'):self.auto_trial()
+        self.assertEqual(self.startup_calls,[])
+        self.assertEqual(self.transport.requests,[])
+
+    def test_auto_early_pico_request_is_not_queued_during_pose_preparation(self):
+        self.auto_setup('FIXED_STAND')
+        self.auto_trial(poll_command=lambda:'connect' if len(self.transport.commands)==20 else None)
+        self.assertFalse(self.worker.connected)
+        self.assertFalse(any(r.get('stage')=='pico_tracking' for r in self.rows))
+
+    def test_auto_preparation_preserves_zero_policy_history_until_pose_settles(self):
+        self.auto_setup('FIXED_STAND')
+        def published(command):
+            if command.sequence <= 200:self.assertEqual(len(self.runtime.policy.history),0)
+        self.transport.after_publish=published
+        result=self.auto_trial()
+        self.assertTrue(result['pose_prepared'])
+        self.assertTrue(result['onnx_control_enabled'])
+
+    def test_auto_excessive_measured_speed_during_pose_cancels(self):
+        self.auto_setup('FIXED_STAND')
+        original=self.transport.state_fault
+        def fast(s):
+            s=original(s)
+            return replace(s,dq=np.full(31,.30,np.float32)) if self.transport.commands else s
+        self.transport.state_fault=fast
+        with self.assertRaisesRegex(RuntimeError,'joint speed'):self.auto_trial()
+        self.assertEqual(len(self.transport.commands),1)
+        self.assert_cancelled()
+
+    def test_auto_config_change_after_fixed_startup_cancels_before_prepare(self):
+        self.auto_setup('FIXED_STAND')
+        from deployment.vita_s100_aorta_30dof import actor_pico_startup as startup
+        original=startup.fixed_stand_startup
+        def changed(*a,**kw):
+            result=original(*a,**kw)
+            config=robot_config();config['actions']['EXTERNAL']['params']['command_timeout_ms']=2000
+            self.config.write_text(json.dumps(config))
+            return result
+        with patch.object(startup,'fixed_stand_startup',changed):
+            with self.assertRaisesRegex(RuntimeError,'config file changed during startup'):self.auto_trial()
+        self.assertEqual([x[0] for x in self.startup_calls],['CANCEL'])
+        self.assertEqual(self.transport.requests,[])
+        self.assertEqual(self.transport.value.current_action,'PASSIVE')
+
+    def test_auto_stop_terminal_command_is_polled_during_damping_wait(self):
+        self.auto_setup()
+        def stop_command():
+            if self.clock.monotonic()>101:self.stop.set()
+        self.auto_trial(poll_command=stop_command)
+        self.assertEqual(self.startup_calls,[])
+        self.assertEqual(self.transport.requests,[])
 
     def test_status_freeze_is_detected(self):
         guard = StatusGuard(self.clock)

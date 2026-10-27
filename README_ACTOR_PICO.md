@@ -152,6 +152,62 @@ The bootstrap creates the interpreter with the proper permissions and restores
 executable mode on the service from the sealed archive. The actor shadow entry
 requires no Xbox configuration or Wi-Fi controller key.
 
+## One-command supported startup
+
+On S100, from the deployment root:
+
+```bash
+bash scripts/start_actor_pico.sh auto --seconds 120 \
+  --robot-id 10.100.23.96 \
+  --robot-config /app/locomotion/config/locomotion_foot_humanoid_asample_none.yaml
+```
+
+`auto` expands to `live --auto-start --manual-pico --confirm-motion`. Verify the
+actual target and effective configuration; this example identifies the current
+user-selected robot, not a reusable authorization for a different session.
+The terminal shows all fixed-stand and model gains/targets, then requires one
+current on-site `MOVE <robot-id>` confirmation for the entire sequence. Reliable
+support, clear movement/pinch zones, an attendant and usable E-stop remain
+required. No service restart, persistent configuration change or built-in
+`HUMANOID_TRACKING` policy is used.
+
+The sequence is:
+
+1. From PASSIVE or QUIET_PASSIVE, observe a full configured damping duration
+   plus two seconds of margin on fresh feedback (42 seconds with the current
+   robot YAML). SDK `action_phase=IDLE` describes EXTERNAL, not the completion
+   of the damping action. The wait prints progress. Already-active FIXED_STAND
+   skips this wait. Other actions or ownership are rejected.
+2. Issue one firmware FIXED_STAND request through the installed humanoid CLI;
+   verify the actual action and positions within 0.04 rad, speeds within
+   0.05 rad/s continuously for 0.5 seconds. Rejection, timeout, changed status
+   counters or ownership stop startup; no motion request is retried.
+3. Enter one SDK EXTERNAL session and prepare the supplied model's default
+   pose, independently of ONNX output. Start at measured joint positions and
+   fixed-stand gains; use a cosine ramp of at least 5 seconds with peak target
+   speed at most 0.15 rad/s. Interpolate gains to the model values. Validate
+   hardware ranges on every frame, abort for tracking error over 0.10 rad or
+   measured speed over 0.25 rad/s, and require the endpoint to settle. The
+   unchanged actor entry-pose check applies before ONNX control starts.
+4. `ONNX_READY` reports that native policy commands have actually started. The
+   same session maintains ONNX stand without Pico. Enter `CONNECT <robot-id>`
+   to start Pico capture, stay neutral, then enter `PICO <robot-id>` after the
+   reference window is ready and policy preparation has completed. No switch
+   is queued by an early command; the last action/history/sequence are preserved.
+
+The 120-second live budget starts with EXTERNAL pose preparation; confirmation,
+initial damping wait and fixed-stand activation are additional bounded time.
+`STOP`/Ctrl-C and normal EXTERNAL exit send checked SDK CANCEL to PASSIVE.
+An incomplete fixed-stand startup sends one firmware cancel and checks actual
+PASSIVE/IDLE if the same non-EXTERNAL state/generation is still present; unknown
+ownership is not cancelled. Exit failure is reported and never auto-retried.
+PASSIVE removes position stiffness and can let loaded limbs fall. The client
+has no ownership expiry; emergency stop remains the attendant's responsibility.
+The preparation and handoff are tested with simulated I/O; physical trajectory,
+full-cycle timing, balance and Pico handoff remain `not_measured` until an
+attended hardware run. The original `live` entry retains strict actor-pose
+preflight and does not perform this separate preparation automatically.
+
 ## Supported EXTERNAL trial
 
 The deployed Body31 firmware takes command ranges from `get_robot_info`, not
