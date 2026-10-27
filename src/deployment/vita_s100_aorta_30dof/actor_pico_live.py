@@ -162,19 +162,16 @@ class CommandEnvelope:
         # A fixed model/gain profile, including both necks, must fit BEFORE entry.
         command, _ = runtime.policy.decode(np.zeros(28))
         self.check(command)
+        self.profile_command = command
         runtime.policy.reset()
 
-    def check_entry_pose(self, runtime, state, q):
-        outside = np.flatnonzero((q < runtime.policy.lower) | (q > runtime.policy.upper))
-        if len(outside):
-            detail = '; '.join(f'{runtime.model.contract.names[i]} q={q[i]:.6f} '
-                f'allowed=[{runtime.policy.lower[i]:.6f}, {runtime.policy.upper[i]:.6f}]' for i in outside)
-            raise ValueError('Measured entry pose is outside actor limits; no clipping: '+detail)
-        command, _ = runtime.policy.decode(np.zeros(28))
-        command = replace(command, joints=tuple(replace(j, q=float(state.q[i])) if self.limits[i] else j
-                                               for i, j in enumerate(command.joints)))
+    def check_measured_pose(self, state):
+        # Observations are measurements, not decoded policy targets. Match the
+        # SDK example: straight knees may be below the model's output bounds.
+        command = replace(self.profile_command, joints=tuple(
+            replace(j, q=float(state.q[i])) if self.limits[i] else j
+            for i, j in enumerate(self.profile_command.joints)))
         self.check(command)
-        runtime.policy.reset()
 
     def check(self, command):
         if len(command.joints) != 31:
@@ -204,8 +201,8 @@ class Inputs:
         self.last_pico_received = None
 
     def validate_state(self, state):
-        from .sdkmain_adapter import raw_state_from_arrays
-        raw_state_from_arrays(state, received_monotonic_ns=state.received_monotonic_ns)
+        from .sdkmain_adapter import validate_body_arrays
+        validate_body_arrays(state)
         if state.roster_version != 1:
             raise ValueError('Expected body roster_version=1')
         self.fresh(state)
@@ -350,14 +347,15 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
     params, receipt = load_robot_config(args.robot_config)
     envelope = CommandEnvelope(runtime, controller.get_robot_info(args.startup_timeout), params)
     auto = bool(getattr(args, 'auto_start', False))
-    online = auto and getattr(args, 'entry_policy', 'joint-ramp') == 'policy-online'
+    if getattr(args, 'entry_policy', 'policy-online') != 'policy-online':
+        raise ValueError('Only policy-online startup is supported; joint-ramp was removed')
     wait_pico = bool(getattr(args, 'wait_pico', False))
     auto_pico = bool(getattr(args, 'auto_pico', False))
     startup = None
     if auto:
-        from .actor_pico_startup import (StartupPlan, PosePreparation, fixed_stand_startup,
+        from .actor_pico_startup import (StartupPlan, fixed_stand_startup,
                                          cancel_startup, FirmwareActions)
-        startup = StartupPlan(runtime, envelope, args.robot_config, online=online)
+        startup = StartupPlan(runtime, envelope, args.robot_config)
     manual = bool(getattr(args, 'manual_pico', False))
     requires_pico = not args.stand_only and not manual
     if auto and (not manual or args.stand_only):
@@ -395,17 +393,20 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
             if auto:
                 startup.check_hardware_pose(envelope, state)
             else:
-                envelope.check_entry_pose(runtime, state, q)
+                envelope.check_measured_pose(state)
+            if auto:
+                # The real first-command preflight belongs after FIXED_STAND.
+                # A second policy rollout on the earlier PASSIVE pose is unused.
+                break
             started = clock.monotonic()
             if requires_pico:
                 command, obs, row = runtime.infer_command(q=q, dq=dq, root=root, gyro=gyro,
                     now_monotonic=started, maximum_pico_age=PICO_AGE)
             else:
                 motion = runtime.math.Motion.hold(runtime.model.contract.default)
-                if online:
-                    motion = motion.lead_in(q, root, runtime.config['body_profile']['lead_in'])
+                motion = motion.lead_in(q, root, runtime.config['body_profile']['lead_in'])
                 command, obs, row = runtime.infer_motion_command(motion,
-                    q=q, dq=dq, root=root, gyro=gyro, yaw_offset=runtime.math.yaw(root) if online else 0.)
+                    q=q, dq=dq, root=root, gyro=gyro, yaw_offset=runtime.math.yaw(root))
             envelope.check(command)
             record_period_overrun(write,'preflight',clock.monotonic()-started,0)
             inputs.fresh(state)
@@ -419,7 +420,7 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
     print('ACTOR_LIVE_REVIEW '+json.dumps(dict(robot_id=args.robot_id,
         model=runtime.config['artifacts']['model'], config=receipt,
         stand_only=args.stand_only, seconds=args.seconds,
-        manual_pico=manual, auto_start=auto, entry_policy='policy-online' if online else 'joint-ramp',
+        manual_pico=manual, auto_start=auto, entry_policy='policy-online',
         wait_pico=wait_pico, auto_pico=auto_pico,
         startup_plan=startup.review if auto else None,
         default_pose=dict(zip(runtime.model.contract.names, runtime.model.contract.default.tolist())),
@@ -447,12 +448,12 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
         if auto:
             startup.check_hardware_pose(envelope, state)
         else:
-            envelope.check_entry_pose(runtime, state, q)
+            envelope.check_measured_pose(state)
         if requires_pico:
             inputs.require_pico()
         guard = StatusGuard(clock, initial_actions=('FIXED_STAND', '') if auto else ('PASSIVE',))
         guard.check(controller.status)
-        if online:
+        if auto:
             # PASSIVE can have a very different pose. Validate the first policy
             # command on the actual prepared FIXED_STAND feedback, not on an
             # earlier passive snapshot, and still before requesting EXTERNAL.
@@ -485,7 +486,7 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
     attempted, sent_count = False, 0
     report = dict(mode='live', actions_sent=0, control_handles_created=1, entered=False,
                   exit_confirmed=False, robot_id=args.robot_id, stand_only=args.stand_only,
-                  auto_start=auto, pose_prepared=not auto or online, onnx_control_enabled=False,
+                  auto_start=auto, onnx_control_enabled=False,
                   missed_policy_ticks=0)
     try:
         if stop.is_set():
@@ -502,24 +503,19 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
         state, q, dq, root, gyro = inputs.read(0)
         if requires_pico:
             inputs.require_pico()
-        pose_prepare = PosePreparation(startup, envelope, state) if auto and not online else None
-        if online:
+        if auto:
             startup.check_hardware_pose(envelope,state)
         if not auto:
-            envelope.check_entry_pose(runtime, state, q)
+            envelope.check_measured_pose(state)
         lead = runtime.math.Motion.hold(runtime.model.contract.default).lead_in(
             q, root, runtime.config['body_profile']['lead_in'])
         offset = runtime.math.yaw(root)
-        neck_start = {name:float(state.q[runtime.policy.order.index(name)])
-                      for name in runtime.config['body_profile']['fixed_joints']}
         preparation = max(3., (len(lead.q)-1)*runtime.model.contract.period)
         start = deadline = clock.monotonic()
-        policy_start = None if pose_prepare is not None else start
+        policy_tick = 0
         tracking = False
-        if online:
+        if auto:
             print('POLICY_LEAD_IN: ONNX runs from measured-pose reference toward model stand; awaiting Pico',flush=True)
-        elif auto:
-            print('POSE_PREPARE: bounded joint/gain ramp; ONNX control remains disabled until feedback settles.',flush=True)
         if manual:
             print(f'PICO_MANUAL: no Pico required. After preparation: CONNECT {args.robot_id}; '
                   f'keep wearer neutral, then PICO {args.robot_id}. STOP or Ctrl-C cancels.', flush=True)
@@ -544,27 +540,13 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
             state_end = clock.monotonic()
             if requires_pico:
                 inputs.require_pico()
-            elapsed = 0. if policy_start is None else cycle-policy_start
-            pose_row = None
-            if pose_prepare is not None:
-                command, ready, pose_row = pose_prepare.step(cycle-start, state)
-                request = poll_command()
-                if request:
-                    print('AUTO_START: pose preparation in progress; CONNECT/PICO rejected, not queued',flush=True)
-                if ready:
-                    envelope.check_entry_pose(runtime, state, q)
-                    runtime.reset_inputs()
-                    lead = runtime.math.Motion.hold(runtime.model.contract.default).lead_in(
-                        q, root, runtime.config['body_profile']['lead_in'])
-                    offset = runtime.math.yaw(root)
-                    neck_start = {name:float(state.q[runtime.policy.order.index(name)])
-                                  for name in runtime.config['body_profile']['fixed_joints']}
-                    policy_start = cycle
-                    report['pose_prepared'] = True
-                    pose_prepare = None
-                    print('POSE_READY: default pose confirmed; switching to ONNX stand',flush=True)
+            # Match SDK ReferenceSession: one reference frame per successful
+            # inference/publication, independent of wall-clock scheduling jitter.
+            elapsed = policy_tick*runtime.model.contract.period
+            reference_frame = min(policy_tick,len(lead.q)-1)
+            reference_time = reference_frame*runtime.model.contract.period
             snapshot = None
-            if manual and pose_row is None:
+            if manual:
                 request = poll_command()
                 if request == 'connect':
                     if manual_pico.connect(root):
@@ -598,9 +580,7 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
                         tracking = True
                         print('PICO_TRACKING: same EXTERNAL session and policy history.', flush=True)
                         write(dict(record_type='tracking_started', actions_sent=sent_count))
-            if pose_row is not None:
-                row, obs = pose_row, None
-            elif manual and tracking:
+            if manual and tracking:
                 motion, diagnostics = manual_reference(runtime, snapshot, clock.monotonic())
                 command, obs, row = runtime.infer_motion_command(motion, q=q, dq=dq,
                     root=root, gyro=gyro, diagnostics=diagnostics)
@@ -616,15 +596,7 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
                     now_monotonic=clock.monotonic(), maximum_pico_age=PICO_AGE)
             else:
                 command, obs, row = runtime.infer_motion_command(lead, q=q, dq=dq,
-                    root=root, gyro=gyro, ref_time=elapsed, yaw_offset=offset)
-                # The policy omits neck actions. Ramp the fixed neck profile
-                # from measured entry positions rather than jumping to zero.
-                alpha = min(1., elapsed/preparation)
-                joints = list(command.joints)
-                for name, initial in neck_start.items():
-                    index = runtime.policy.order.index(name)
-                    joints[index] = replace(joints[index], q=(1-alpha)*initial+alpha*joints[index].q)
-                command = replace(command, joints=tuple(joints))
+                    root=root, gyro=gyro, ref_time=reference_time, yaw_offset=offset)
             envelope.check(command)
             compute_end = clock.monotonic()
             record_period_overrun(write,'compute',compute_end-cycle,sent_count,
@@ -651,6 +623,7 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
             before = clock.monotonic()
             sent = controller.publish(command)  # SDK alone owns session + sequence.
             sent_count += 1
+            policy_tick += 1
             report['actions_sent'] = sent_count
             last_publish = before
             if clock.monotonic()-before > STATE_AGE:
@@ -658,12 +631,14 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
                     session_id=sent.session_id,sequence=sent.sequence,
                     elapsed_ms=(clock.monotonic()-before)*1000))
                 raise TimeoutError('Command publication stalled beyond 100 ms freshness budget')
-            if pose_row is None:
-                if auto and not report['onnx_control_enabled']:
-                    print('ONNX_READY: policy commands started; waiting for manual Pico connection',flush=True)
-                report['onnx_control_enabled'] = True
+            if auto and not report['onnx_control_enabled']:
+                print('ONNX_READY: policy commands started; Pico following requires PICO',flush=True)
+            report['onnx_control_enabled'] = True
             write(dict(row, actions_sent=sent_count, control_handles_created=1,
-                stage='pose_prepare' if pose_row is not None else ('pico_tracking' if tracking else 'prepare_stand'),
+                stage='pico_tracking' if tracking else 'prepare_stand',
+                policy_tick=policy_tick-1,
+                reference_time_s=0. if tracking else reference_time,
+                reference_frame=0 if tracking else reference_frame,
                 state_id=int(state.state_id), source_state_us=int(state.ts_state_real_us),
                 feedback=dict(q_body=state.q.tolist(),dq_body=state.dq.tolist(),
                     root_wxyz=root.tolist(),gyro=gyro.tolist(),
@@ -675,7 +650,7 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
                 compute_ms=(compute_end-cycle)*1000,
                 sent_body_targets=[dict(q=j.q, dq=j.dq, tau=j.tau, kp=j.kp, kd=j.kd) for j in sent.joints]), obs)
             if sent_count % 50 == 0:
-                stage = 'pose_prepare' if pose_row is not None else ('pico_tracking' if tracking else 'stand')
+                stage = 'pico_tracking' if tracking else 'stand'
                 print(f'ACTOR_LIVE steps={sent_count} stage={stage}', flush=True)
             complete = clock.monotonic()
             record_period_overrun(write,'complete_cycle',complete-cycle,sent_count)

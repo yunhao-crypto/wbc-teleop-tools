@@ -1,4 +1,4 @@
-"""Explicit, attended fixed-stand and pose preparation before actor inference.
+"""Explicit, attended FIXED_STAND before continuous actor inference.
 
 No nodes, services or motion are created on import. The firmware CLI is the
 only action-request implementation; EXTERNAL remains owned by the real SDK.
@@ -13,14 +13,8 @@ import numpy as np
 
 from .actor_pico_live import phase, StatusGuard, status_row
 
-POSE_SPEED = .15  # rad/s, peak of cosine position interpolation
-POSE_MIN_SECONDS = 5.
-POSE_MAX_SECONDS = 15.
-POSE_ERROR = .10
-SETTLE_ERROR = .04
 SETTLE_SPEED = .05
 SETTLE_SECONDS = .5
-SETTLE_TIMEOUT = 5.
 ONLINE_START_GYRO = .10
 
 
@@ -38,10 +32,9 @@ def vector(value, label):
 
 
 class StartupPlan:
-    def __init__(self, runtime, envelope, config_path, *, online=False):
+    def __init__(self, runtime, envelope, config_path):
         import yaml
         root = yaml.safe_load(Path(config_path).read_text())
-        self.online = online
         action = root['actions']['FIXED_STAND']
         params = action['params']
         frames = params['keyframes']
@@ -52,13 +45,11 @@ class StartupPlan:
         self.fixed_q = vector(frame['positions'], 'positions')
         self.fixed_kp = vector(frame.get('kp', params.get('kp')), 'kp')
         self.fixed_kd = vector(frame.get('kd', params.get('kd')), 'kd')
-        self.target, _ = runtime.policy.decode(np.zeros(28))
-        runtime.policy.reset()
-        self.fixed = replace(self.target, joints=tuple(replace(j, q=float(q), dq=0., tau=0.,
+        template = envelope.profile_command
+        self.fixed = replace(template, joints=tuple(replace(j, q=float(q), dq=0., tau=0.,
             kp=float(kp), kd=float(kd)) for j,q,kp,kd in
-            zip(self.target.joints, self.fixed_q, self.fixed_kp, self.fixed_kd)))
+            zip(template.joints, self.fixed_q, self.fixed_kp, self.fixed_kd)))
         envelope.check(self.fixed)
-        envelope.check(self.target)
         for i, bounds in enumerate(envelope.limits):
             if bounds is not None and (self.fixed_kp[i] <= 0 or self.fixed_kd[i] <= 0):
                 raise ValueError('Startup FIXED_STAND must control each installed body joint')
@@ -73,16 +64,14 @@ class StartupPlan:
                 raise ValueError('Unknown PASSIVE/QUIET_PASSIVE damping completion contract')
             self.damping[name] = float(stamps[-1])+2.  # Conservative full curve from first observation.
         self.review = dict(sequence=['wait_damping', 'FIXED_STAND',
-                                     'EXTERNAL_policy_lead_in' if online else 'EXTERNAL_pose_prepare',
+                                     'EXTERNAL_policy_lead_in',
                                      'ONNX_stand', 'manual_Pico'],
             fixed_stand=[dict(q=j.q,kp=j.kp,kd=j.kd) for j in self.fixed.joints],
-            pose_speed_rad_s=POSE_SPEED, pose_min_seconds=POSE_MIN_SECONDS,
-            settle_error_rad=SETTLE_ERROR, settle_speed_rad_s=SETTLE_SPEED,
+            settle_speed_rad_s=SETTLE_SPEED,
             damping_wait_seconds=self.damping,
-            entry_policy='policy-online' if online else 'joint-ramp',
-            fixed_stand_ready='active FIXED_STAND, healthy hardware-bounded feedback and stationary joints' if online
-                else 'measured positions at FIXED_STAND target and stationary joints',
-            online_start_gyro_limit_rad_s=ONLINE_START_GYRO if online else None,
+            entry_policy='policy-online',
+            fixed_stand_ready='active FIXED_STAND, healthy hardware-bounded feedback and stationary joints',
+            online_start_gyro_limit_rad_s=ONLINE_START_GYRO,
             startup_exit='CANCEL to PASSIVE on an incomplete FIXED_STAND startup; loaded limbs may fall')
 
     def check_hardware_pose(self, envelope, state):
@@ -179,21 +168,14 @@ def fixed_stand_startup(plan, envelope, runtime, args, controller, inputs, stop,
             state,status,root,gyro=monitor()
             tilt=math.acos(float(np.clip(runtime.math.rotation(root)[2,2],-1.,1.)))
             gyro_speed=float(np.linalg.norm(gyro))
-            # The zero-time FIXED_STAND keyframe can finish between two status
-            # publications. After the one accepted request, verify actual q/dq
-            # continuously and require either that action or no active action.
-            named_ready = status.current_action == 'FIXED_STAND' if plan.online else status.current_action in ('FIXED_STAND','')
-            if named_ready:
-                position_ready = plan.online or np.max(np.abs(state.q-plan.fixed_q)) <= SETTLE_ERROR
-                angular_motion_ready = not plan.online or gyro_speed<=ONLINE_START_GYRO
+            if status.current_action == 'FIXED_STAND':
                 # Tilt validity is already checked by policy.state against the
                 # reviewed tracking profile. Display it, but do not invent a
                 # tighter angular admission threshold from a single sample.
-                good=position_ready and angular_motion_ready and np.max(np.abs(state.dq)) <= SETTLE_SPEED
+                good=gyro_speed<=ONLINE_START_GYRO and np.max(np.abs(state.dq)) <= SETTLE_SPEED
                 settled = (settled if settled is not None else clock.monotonic()) if good else None
                 if settled is not None and clock.monotonic()-settled >= SETTLE_SECONDS:
-                    print('AUTO_START: FIXED_STAND feedback ready; entering EXTERNAL '+
-                          ('policy-online lead-in' if plan.online else 'pose preparation'),flush=True)
+                    print('AUTO_START: FIXED_STAND feedback ready; entering EXTERNAL policy lead-in',flush=True)
                     write(dict(record_type='fixed_stand_confirmed',actions_sent=0,
                                entry_policy=plan.review['entry_policy'],q=state.q.tolist(),dq=state.dq.tolist(),
                                root_wxyz=root.tolist(),gyro=gyro.tolist(),tilt_deg=math.degrees(tilt)))
@@ -247,43 +229,3 @@ def cancel_startup(controller, request_action, clock, write, generation):
         try: actual=status_row(controller.status)
         except BaseException: actual=None
         write(dict(record_type='startup_exit_failure',error=repr(error),actual_status=actual))
-
-
-class PosePreparation:
-    """Hardware-bounded cosine position/gain ramp; no ONNX actions in this phase."""
-    def __init__(self, plan, envelope, state):
-        plan.check_hardware_pose(envelope,state)
-        self.plan,self.envelope=plan,envelope
-        self.q0=np.array(state.q,dtype=float)
-        self.q1=np.array([j.q for j in plan.target.joints])
-        delta=float(np.max(np.abs(self.q1-self.q0)))
-        # The reviewed fixed stand must have settled before take-over.
-        if np.max(np.abs(self.q0-plan.fixed_q)) > SETTLE_ERROR:
-            raise ValueError('FIXED_STAND drifted before EXTERNAL preparation')
-        self.duration=max(POSE_MIN_SECONDS,math.pi*delta/(2*POSE_SPEED))
-        if self.duration > POSE_MAX_SECONDS:
-            raise ValueError('Pose preparation exceeds reviewed motion budget')
-        self.last_target=self.q0.copy();self.settled=None
-
-    def step(self, elapsed, state):
-        if np.max(np.abs(state.dq)) > POSE_SPEED+.10:
-            raise RuntimeError('Pose preparation measured joint speed exceeds 0.25 rad/s')
-        if np.max(np.abs(np.asarray(state.q)-self.last_target)) > POSE_ERROR:
-            raise RuntimeError('Pose preparation tracking error exceeds 0.10 rad')
-        fraction=min(1.,max(0.,elapsed/self.duration))
-        alpha=.5-.5*math.cos(math.pi*fraction)
-        q=self.q0+alpha*(self.q1-self.q0)
-        joints=tuple(replace(j,q=float(q[i]),dq=0.,tau=0.,
-            kp=float((1-alpha)*self.plan.fixed_kp[i]+alpha*j.kp),
-            kd=float((1-alpha)*self.plan.fixed_kd[i]+alpha*j.kd))
-            for i,j in enumerate(self.plan.target.joints))
-        command=replace(self.plan.target,joints=joints)
-        self.envelope.check(command);self.last_target=q
-        good=(fraction==1 and np.max(np.abs(np.asarray(state.q)-self.q1)) <= SETTLE_ERROR
-              and np.max(np.abs(state.dq)) <= SETTLE_SPEED)
-        self.settled=(elapsed if self.settled is None else self.settled) if good else None
-        complete=self.settled is not None and elapsed-self.settled >= SETTLE_SECONDS
-        if elapsed > self.duration+SETTLE_TIMEOUT and not complete:
-            raise TimeoutError('Model default pose did not settle; ONNX control was not enabled')
-        return command,complete,dict(record_type='pose_preparation',pose_fraction=fraction,
-            pose_duration_s=self.duration,hardware_ranges_checked=True,onnx_control_enabled=False)

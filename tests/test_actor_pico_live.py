@@ -560,6 +560,54 @@ class LiveTests(unittest.TestCase):
             joints = list(command.joints); joints[4] = replace(joints[4], **change)
             with self.assertRaises(ValueError): env.check(replace(command, joints=tuple(joints)))
 
+    def test_reference_advances_one_frame_per_published_step_despite_wallclock_jitter(self):
+        self.online_setup()
+        times=[]
+        original=self.runtime.infer_motion_command
+        def infer(*a,**kw):
+            if self.transport.requests: times.append(kw.get('ref_time',0.))
+            return original(*a,**kw)
+        def published(command):
+            self.clock.sleep(.021)
+            if command.sequence==5:self.stop.set()
+        self.transport.after_publish=published
+        with patch.object(self.runtime,'infer_motion_command',infer):report=self.auto_trial()
+        np.testing.assert_allclose(times,np.arange(5)*.02,atol=1e-10)
+        self.assertEqual(report['missed_policy_ticks'],5)
+        self.assert_cancelled()
+
+    def test_straight_knees_are_valid_observations_for_direct_stand_entry(self):
+        self.args.stand_only=True
+        self.transport.state_fault=lambda s:replace(s,q=np.zeros(31,np.float32))
+        self.transport.after_publish=lambda *_:self.stop.set()
+        self.run_trial()
+        self.assertEqual(len(self.transport.commands),1)
+        self.assert_cancelled()
+
+    def test_actor_does_not_construct_legacy44_state_on_body31_path(self):
+        from deployment.vita_s100_aorta_30dof import sdkmain_adapter as adapter
+        self.args.stand_only=True
+        self.transport.after_publish=lambda *_:self.stop.set()
+        with patch.object(adapter,'VitaRawLowState',side_effect=AssertionError('unused legacy conversion')):
+            self.run_trial()
+        self.assertEqual(len(self.transport.commands),1)
+        self.assert_cancelled()
+
+    def test_native_body_validation_preserves_fault_and_finite_guards(self):
+        from deployment.vita_s100_aorta_30dof.sdkmain_adapter import validate_body_arrays
+        state=self.transport.wait_state()
+        validate_body_arrays(state)
+        for name,index,value in [('error_code',0,1),('q',29,np.nan),('dq',30,np.inf),
+                                 ('imu_values',(0,7),np.nan)]:
+            data=getattr(state,name).copy();data[index]=value
+            with self.subTest(name=name),self.assertRaises(ValueError):
+                validate_body_arrays(replace(state,**{name:data}))
+
+    def test_joint_ramp_option_fails_before_any_motion(self):
+        self.online_setup();self.args.entry_policy='joint-ramp'
+        with self.assertRaisesRegex(ValueError,'removed'):self.auto_trial()
+        self.assertEqual((self.transport.requests,self.transport.commands,self.startup_calls),([],[],[]))
+
     def auto_setup(self, initial='PASSIVE'):
         self.args.auto_start = self.args.manual_pico = True
         self.args.seconds = 12.
@@ -576,23 +624,20 @@ class LiveTests(unittest.TestCase):
     def auto_trial(self, **kwargs):
         return self.run_trial(manual_pico=self.worker,request_action=self.request_action,**kwargs)
 
-    def test_auto_waits_full_damping_once_then_fixed_pose_and_onnx_without_pico(self):
+    def test_auto_waits_full_damping_once_then_fixed_and_continuous_onnx_without_pico(self):
         self.auto_setup()
         result = self.auto_trial()
         self.assertEqual([x[0] for x in self.startup_calls],['FIXED_STAND'])
         self.assertGreaterEqual(self.startup_calls[0][1],104.)
         stages = [r['stage'] for r in self.rows if 'stage' in r]
-        self.assertIn('pose_prepare',stages);self.assertIn('prepare_stand',stages)
+        self.assertNotIn('pose_prepare',stages);self.assertIn('prepare_stand',stages)
         self.assertNotIn('pico_tracking',stages)
         self.assertFalse(self.worker.connected)
         self.assertEqual([r.operation.value for r in self.transport.requests],['PREPARE','COMMIT','CANCEL'])
         self.assertTrue(result['exit_confirmed'])
-        pose = [r for r in self.rows if r.get('stage')=='pose_prepare']
-        q = np.array([[j['q'] for j in r['sent_body_targets']] for r in pose])
-        self.assertLessEqual(np.max(np.abs(np.diff(q,axis=0)))/.02,.150001)
-        self.assertTrue(all(not r['onnx_control_enabled'] for r in pose))
-        np.testing.assert_allclose(q[0],np.zeros(31),atol=1e-6)
-        self.assertGreater(q[-1,3],.39)
+        self.assertTrue(result['onnx_control_enabled'])
+        self.assertEqual(self.rows[0]['record_type'],'fixed_stand_requested')
+        self.assertFalse(any(r.get('record_type')=='live_preflight' for r in self.rows))
         self.assert_cancelled()
 
     def test_auto_existing_fixed_stand_does_not_cycle_through_passive(self):
@@ -628,13 +673,6 @@ class LiveTests(unittest.TestCase):
         self.assertEqual([x[0] for x in self.startup_calls],['FIXED_STAND','CANCEL'])
         self.assertEqual(self.transport.requests,[])
 
-    def test_auto_stuck_joint_stops_pose_and_cancels_before_onnx_control(self):
-        self.auto_setup('FIXED_STAND')
-        self.transport.state_fault=lambda s:replace(s,q=np.zeros(31,np.float32))
-        with self.assertRaisesRegex(RuntimeError,'tracking error'):self.auto_trial()
-        self.assertTrue(self.transport.commands)
-        self.assertFalse(any(r.get('stage')=='prepare_stand' for r in self.rows))
-        self.assert_cancelled()
 
     def test_auto_wait_interrupt_does_not_send_any_motion_request(self):
         self.auto_setup()
@@ -683,23 +721,6 @@ class LiveTests(unittest.TestCase):
         self.assertEqual(self.startup_calls,[])
         self.assertEqual(self.transport.requests,[])
 
-    def test_auto_pose_timeout_does_not_enable_onnx_control(self):
-        self.auto_setup('FIXED_STAND');self.args.seconds=20.
-        original=self.transport.state_fault
-        # Hold a fixed 0.06 rad residual near the endpoint without accumulating
-        # lag on every frame; tracking error stays below the 0.10 rad abort.
-        def residual(s):
-            s=original(s)
-            if self.transport.commands:
-                q=s.q.copy()
-                target=self.transport.commands[-1].joints[3].q
-                q[3]=max(0.,target-.06)
-                return replace(s,q=q)
-            return s
-        self.transport.state_fault=residual
-        with self.assertRaisesRegex(TimeoutError,'did not settle'):self.auto_trial()
-        self.assertFalse(any(r.get('stage')=='prepare_stand' for r in self.rows))
-        self.assert_cancelled()
 
     def test_auto_fixed_timeout_cancels_and_never_enters_external(self):
         self.auto_setup()
@@ -719,31 +740,22 @@ class LiveTests(unittest.TestCase):
         self.assertEqual(self.startup_calls,[])
         self.assertEqual(self.transport.requests,[])
 
-    def test_auto_early_pico_request_is_not_queued_during_pose_preparation(self):
+    def test_auto_early_pico_request_is_not_queued_during_policy_lead_in(self):
         self.auto_setup('FIXED_STAND')
-        self.auto_trial(poll_command=lambda:'connect' if len(self.transport.commands)==20 else None)
-        self.assertFalse(self.worker.connected)
+        self.args.wait_pico=True
+        self.auto_trial(poll_command=lambda:'track' if len(self.transport.commands)==20 else None)
+        self.assertTrue(self.worker.connected)
+        self.assertTrue(any(r.get('record_type')=='pico_switch_rejected' for r in self.rows))
         self.assertFalse(any(r.get('stage')=='pico_tracking' for r in self.rows))
 
-    def test_auto_preparation_preserves_zero_policy_history_until_pose_settles(self):
+    def test_auto_uses_policy_history_from_first_published_frame(self):
         self.auto_setup('FIXED_STAND')
         def published(command):
-            if command.sequence <= 200:self.assertEqual(len(self.runtime.policy.history),0)
+            self.assertEqual(len(self.runtime.policy.history),10)
         self.transport.after_publish=published
         result=self.auto_trial()
-        self.assertTrue(result['pose_prepared'])
         self.assertTrue(result['onnx_control_enabled'])
 
-    def test_auto_excessive_measured_speed_during_pose_cancels(self):
-        self.auto_setup('FIXED_STAND')
-        original=self.transport.state_fault
-        def fast(s):
-            s=original(s)
-            return replace(s,dq=np.full(31,.30,np.float32)) if self.transport.commands else s
-        self.transport.state_fault=fast
-        with self.assertRaisesRegex(RuntimeError,'joint speed'):self.auto_trial()
-        self.assertEqual(len(self.transport.commands),1)
-        self.assert_cancelled()
 
     def test_auto_config_change_after_fixed_startup_cancels_before_prepare(self):
         self.auto_setup('FIXED_STAND')
@@ -774,17 +786,6 @@ class LiveTests(unittest.TestCase):
         self.assertEqual([x[0] for x in self.startup_calls],['FIXED_STAND'])
         self.assert_cancelled()
 
-    def test_auto_fixed_completion_between_status_frames_requires_settled_feedback(self):
-        self.auto_setup('')
-        def action(name):
-            self.startup_calls.append((name,self.clock.monotonic()))
-            self.transport.value=replace(self.transport.value,
-                current_action='' if name=='FIXED_STAND' else 'PASSIVE')
-        self.request_action=action
-        self.auto_trial()
-        self.assertEqual([x[0] for x in self.startup_calls],['FIXED_STAND'])
-        self.assertTrue(any(r.get('record_type')=='fixed_stand_confirmed' for r in self.rows))
-        self.assert_cancelled()
 
     def test_auto_damping_completion_clears_action_name_without_false_failure(self):
         self.auto_setup('PASSIVE')
@@ -970,7 +971,7 @@ class LiveTests(unittest.TestCase):
         self.transport.state_fault=leaned
         params,_=load_robot_config(self.config)
         envelope=CommandEnvelope(self.runtime,self.transport.reply,params)
-        plan=StartupPlan(self.runtime,envelope,self.config,online=True)
+        plan=StartupPlan(self.runtime,envelope,self.config)
         inputs=Inputs(self.runtime,self.controller,None,self.clock)
         with redirect_stdout(io.StringIO()):
             ready=fixed_stand_startup(plan,envelope,self.runtime,self.args,self.controller,inputs,

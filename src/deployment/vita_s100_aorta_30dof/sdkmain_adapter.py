@@ -32,6 +32,8 @@ BODY_NAMES = (
 )
 BODY_TO_LEGACY = tuple(VITA_COMMAND_SLOT_NAMES.index(n) if n in VITA_COMMAND_SLOT_NAMES
                        else None for n in BODY_NAMES)
+BODY_POPULATED = np.array([i for i, slot in enumerate(BODY_TO_LEGACY) if slot is not None])
+LEGACY_POPULATED = np.array([slot for slot in BODY_TO_LEGACY if slot is not None])
 
 
 def verify_state_decoder():
@@ -108,14 +110,13 @@ def decode_body_raw(payload, *, received_monotonic_ns):
                                  received_monotonic_ns=received_monotonic_ns)
 
 
-def raw_state_from_arrays(state, *, received_monotonic_ns):
-    """Use native arrays directly, preserving the reviewed body/IMU guards.
-
-    No access to the SDK's lazy .joints/.imu_states/.body_state() DTO views.
-    Timestamp arrays stay uint64 and diagnostic arrays stay uint32.
-    """
+def validate_body_arrays(state):
+    """Check native Body31 inputs without building an unused legacy44 state."""
     if state.protocol_version != 2 or not state.attitude_valid:
         raise ValueError('Expected valid-attitude protocol2 body31 state')
+    if (isinstance(state.state_id, bool) or not isinstance(state.state_id, (int, np.integer))
+            or not 0 <= state.state_id < 1 << 64):
+        raise ValueError('state_id must fit uint64')
     for name, shape, dtype in (
         ('q', (31,), np.float32), ('dq', (31,), np.float32),
         ('error_code', (31,), np.uint32),
@@ -124,12 +125,10 @@ def raw_state_from_arrays(state, *, received_monotonic_ns):
         value = getattr(state, name)
         if not isinstance(value, np.ndarray) or value.shape != shape or value.dtype != dtype:
             raise ValueError('Unexpected native array: ' + name)
-    body = np.asarray([i for i, slot in enumerate(BODY_TO_LEGACY) if slot is not None])
-    legacy = np.asarray([slot for slot in BODY_TO_LEGACY if slot is not None])
-    if np.any(state.error_code[body] != JointError.NONE):
+    if np.any(state.error_code[BODY_POPULATED] != JointError.NONE):
         raise ValueError('Policy joint Q/Dq unavailable')
-    q, dq = np.zeros(44, np.float32), np.zeros(44, np.float32)
-    q[legacy], dq[legacy] = state.q[body], state.dq[body]
+    if not np.isfinite(state.q[BODY_POPULATED]).all() or not np.isfinite(state.dq[BODY_POPULATED]).all():
+        raise ValueError('Body q/dq contains NaN or Inf')
     count = len(state.imu_location)
     if not 1 <= count <= 2:
         raise ValueError('Expected one or two known IMUs')
@@ -139,7 +138,9 @@ def raw_state_from_arrays(state, *, received_monotonic_ns):
             state.imu_status.shape != (count,) or
             state.imu_state_present.shape != (count,)):
         raise ValueError('Unexpected native IMU arrays')
-    imus, seen = [], set()
+    if not np.isfinite(state.imu_values).all():
+        raise ValueError('IMU contains NaN or Inf')
+    seen = set()
     for i in range(count):
         location, status = int(state.imu_location[i]), int(state.imu_status[i])
         if location not in (0, 1) or location in seen or not state.imu_state_present[i]:
@@ -147,11 +148,18 @@ def raw_state_from_arrays(state, *, received_monotonic_ns):
         seen.add(location)
         if location == 0 and status != 1:
             raise ValueError('HIP IMU quaternion/gyro unavailable')
-        values = state.imu_values[i]
-        imus.append(VitaImuSample(location, status, values[:4], values[4:7],
-            values[7:10], values[10:13], *(int(v) for v in state.imu_stamps_us[i])))
     if 0 not in seen:
         raise ValueError('Missing HIP IMU')
+
+
+def raw_state_from_arrays(state, *, received_monotonic_ns):
+    """Convert only for legacy consumers; actor inference stays on Body31."""
+    validate_body_arrays(state)
+    q, dq = np.zeros(44, np.float32), np.zeros(44, np.float32)
+    q[LEGACY_POPULATED], dq[LEGACY_POPULATED] = state.q[BODY_POPULATED], state.dq[BODY_POPULATED]
+    imus = tuple(VitaImuSample(int(state.imu_location[i]), int(state.imu_status[i]),
+        values[:4], values[4:7], values[7:10], values[10:13],
+        *(int(v) for v in state.imu_stamps_us[i])) for i,values in enumerate(state.imu_values))
     return VitaRawLowState(state.state_id, state.ts_state_real_us, state.ts_state_pub_us,
         state.ts_consumed_us, int(received_monotonic_ns), state.attitude_valid,
         q, dq, np.zeros(44, np.float32), np.zeros(44, np.float32),

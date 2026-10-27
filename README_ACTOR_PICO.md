@@ -230,9 +230,9 @@ bash scripts/start_actor_pico.sh auto --seconds 120 \
   --robot-config /app/locomotion/config/locomotion_foot_humanoid_asample_none.yaml
 ```
 
-`--entry-policy joint-ramp` retains the earlier supported, independently
-bounded preparation experiment with its strict FIXED_STAND zero-target and
-actor-entry checks; it is not the default. `live --manual-pico` retains manual
+Startup always runs the policy on the measured-pose reference. The earlier
+independent `joint-ramp` experiment was removed; `--entry-policy policy-online`
+remains accepted for existing launch commands. `live --manual-pico` retains manual
 receiver connection with `CONNECT`. `--auto-pico` is an explicit opt-in to
 following a fresh neutral reference automatically; it is not enabled by this
 board's selected local profile.
@@ -336,9 +336,11 @@ flag is provided. The CLI identity is an operator label, not discovered robot
 serial evidence. Confirm the actual device/connection and effective config.
 
 Entry uses the SDK's PREPARE/COMMIT and verifies owned EXTERNAL/RUNNING.
-It discards preflight policy/reference history, leads the reference from the
-measured body pose to actor defaults, and ramps neck positions to zero over
-at least three seconds. At the handoff, the entire buffered Pico reference
+It discards preflight policy/reference history and leads the reference from the
+measured body pose to actor defaults. As in the SDK tracking example, the
+reference advances by one 20 ms frame per inference, capped at its final frame;
+wall-clock delays do not skip reference frames. Fixed neck targets use the
+reviewed profile directly. At the handoff, the entire buffered Pico reference
 must remain within 0.10 rad of defaults; otherwise the trial cancels.
 The complete decoded BodyCmd is sent, including ankle compensation torque.
 The unpopulated waist-roll slot remains inert; no hand command is sent.
@@ -351,6 +353,9 @@ commands are never replayed in a catch-up burst. Feedback is rechecked just
 before publication. A publication gap or blocking publish exceeding the same
 100 ms freshness budget cancels the trial, even if a newer state has arrived.
 The effective firmware watchdog/interpolation settings remain unchanged.
+The Body31 actor path validates native arrays directly without materializing
+an unused legacy44 state. Logs use a 1 MiB buffer, flushed on entry, exit,
+candidate capture and errors; abrupt process termination may lose buffered rows.
 Faults, timeouts, command
 rejections/drops, ownership changes and SIGINT/SIGTERM stop the trial without
 automatic retry. Logging records requested commands, session/sequence and

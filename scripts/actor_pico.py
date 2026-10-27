@@ -312,10 +312,10 @@ def main():
     parser.add_argument('--manual-pico', action='store_true',
                         help='live: enter ONNX stand without Pico, then CONNECT/PICO commands in the same session')
     parser.add_argument('--auto-start', action='store_true',
-                        help='live: one confirmation, wait damping, FIXED_STAND, bounded pose preparation, ONNX stand; implies manual Pico')
+                        help='live: one confirmation, wait damping, FIXED_STAND, continuous ONNX stand; implies manual Pico')
     parser.add_argument('--local-start', action='store_true', help='live: load private defaults bound to this S100; still requires on-site confirmation')
-    parser.add_argument('--entry-policy', choices=('policy-online','joint-ramp'), default='policy-online',
-                        help='auto-start activation: policy-online matches the tracking profile; joint-ramp retains the explicit supported preparation trial')
+    parser.add_argument('--entry-policy', choices=('policy-online',), default='policy-online',
+                        help='compatibility option; startup always uses continuous policy inference')
     parser.add_argument('--wait-pico', action='store_true', help='live manual-Pico path: start receiving Pico automatically while ONNX stand continues')
     parser.add_argument('--auto-pico', action='store_true', help='live: receive Pico and automatically follow only after preparation and a fresh neutral reference window')
     args = parser.parse_args()
@@ -347,11 +347,14 @@ def main():
     runtime = ActorPicoRuntime(args.root, backend=args.backend, threads=args.threads)
     args.log = args.log or args.root/'outputs'/f'actor_pico_{args.mode}_{time.time_ns()}.jsonl'
     args.log.parent.mkdir(parents=True, exist_ok=True)
-    with args.log.open('x', buffering=1) as stream:
+    with args.log.open('x', buffering=1024*1024) as stream:
         def write(row, observation=None):
             if args.record_observations and observation is not None:
                 row = dict(row, observation=observation.tolist())
             stream.write(json.dumps(row, allow_nan=False, separators=(',', ':'))+'\n')
+            if row.get('record_type') in ('external_entered', 'external_exit', 'error', 'summary',
+                                        'prepared_policy_candidate', 'startup_exit_failure', 'exit_failure'):
+                stream.flush()
         write(dict(record_type='header', model=runtime.config['artifacts']['model'],
                    contract=dict(input_dim=1520, action_dim=28, policy_hz=50),
                    scope='supported_external_trial' if args.mode == 'live' else 'inference_only',
