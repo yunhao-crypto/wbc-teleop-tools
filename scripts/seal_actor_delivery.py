@@ -29,7 +29,8 @@ def main():
     actor['files'] = [item for item in actor['files'] if item['path'] != model['path']]
     actor['external_resources'] = [external]
     actor['scope'] = 'inference checks and explicitly armed supported EXTERNAL trials; hardware not_measured'
-    for name in ('src/deployment/vita_s100_aorta_30dof/actor_pico_live.py',
+    for name in ('scripts/replay_actor_candidate.py', 'scripts/validate_actor_stand_mujoco.py',
+                 'src/deployment/vita_s100_aorta_30dof/actor_pico_live.py',
                  'src/deployment/vita_s100_aorta_30dof/actor_pico_local.py',
                  'src/deployment/vita_s100_aorta_30dof/actor_pico_startup.py',
                  'src/deployment/vita_s100_aorta_30dof/actor_pico_worker.py', 'tests/test_actor_pico_live.py'):
@@ -69,7 +70,7 @@ def main():
     missing = set(required)-set(names)
     if missing:
         raise RuntimeError('Stage these required delivery files first: '+', '.join(sorted(missing)))
-    record = dict(schema='vita_actor_s100_delivery_v1', version='2026.10.27-actor8',
+    record = dict(schema='vita_actor_s100_delivery_v1', version='2026.10.27-actor9',
                   target=dict(os='Linux', architecture='aarch64', python='3.10', glibc_min='2.35'),
                   scope='offline/shadow checks and explicitly armed supported EXTERNAL trials; hardware not_measured',
                   required_inputs=required, external_resources=[external], archives=archives,

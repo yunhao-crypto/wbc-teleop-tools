@@ -844,6 +844,41 @@ class LiveTests(unittest.TestCase):
             self.assertEqual(terminal.poll(),'track')
         self.assertFalse(self.stop.is_set())
 
+    def test_rejected_policy_candidate_preserves_full_inputs_before_guard(self):
+        self.online_setup()
+        original=self.runtime.infer_motion_command
+        def jumping(*a,**kw):
+            command,obs,row=original(*a,**kw)
+            joints=list(command.joints);joints[0]=replace(joints[0],q=1.)
+            return replace(command,joints=tuple(joints)),obs,row
+        with patch.object(self.runtime,'infer_motion_command',jumping):
+            with self.assertRaisesRegex(RuntimeError,'Policy command step'):self.auto_trial()
+        candidate=next(r for r in self.rows if r.get('record_type')=='prepared_policy_candidate')
+        self.assertEqual(len(candidate['observation']),1520)
+        self.assertEqual(len(candidate['input_state']['q']),28)
+        self.assertEqual(len(candidate['input_state']['body_q']),31)
+        self.assertTrue(candidate['reference']['q'])
+        self.assertEqual(self.transport.commands,[])
+
+    def test_complete_candidate_replay_and_feedback_evidence(self):
+        import subprocess
+        self.online_setup();self.args.seconds=1.
+        self.auto_trial()
+        candidate=next(r for r in self.rows if r.get('record_type')=='prepared_policy_candidate')
+        path=Path(self.tmp.name)/'candidate.jsonl';path.write_text(json.dumps(candidate)+'\n')
+        process=subprocess.run([sys.executable,str(ROOT/'scripts/replay_actor_candidate.py'),
+            '--root',str(ROOT),'--backend','ort','--input',str(path)],
+            capture_output=True,text=True,timeout=15)
+        self.assertEqual(process.returncode,0,process.stdout+process.stderr)
+        report=json.loads(process.stdout)
+        self.assertEqual(report['status'],'PASS_EXACT_CANDIDATE_REPLAY')
+        self.assertEqual(report['step_guard_result'],'PASS')
+        self.assertEqual(report['actions_sent'],0)
+        published=next(r for r in self.rows if r.get('stage')=='prepare_stand')
+        self.assertEqual(len(published['feedback']['q_body']),31)
+        self.assertEqual(len(published['feedback']['root_wxyz']),4)
+        self.assertIn('applied_sequence',published['feedback'])
+
     def test_status_freeze_is_detected(self):
         guard = StatusGuard(self.clock)
         status = self.controller.status

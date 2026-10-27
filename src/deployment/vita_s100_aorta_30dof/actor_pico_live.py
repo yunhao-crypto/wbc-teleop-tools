@@ -456,9 +456,19 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
                 q, root, runtime.config['body_profile']['lead_in'])
             command, obs, row = runtime.infer_motion_command(lead,q=q,dq=dq,root=root,gyro=gyro,
                                                             yaw_offset=runtime.math.yaw(root))
+            model_elapsed = clock.monotonic()-begin
+            # Preserve the actual failing input before any guard can raise.
+            # This is one pre-ownership record, not a streaming log on the
+            # 50 Hz control path. It supports exact inference reproduction.
+            write(dict(row,record_type='prepared_policy_candidate',actions_sent=0,
+                input_state=dict(q=q.tolist(),dq=dq.tolist(),root=root.tolist(),gyro=gyro.tolist(),
+                                 body_q=state.q.tolist(),state_id=int(state.state_id)),
+                reference=dict(q=lead.q.tolist(),base=lead.base.tolist(),quat=lead.quat.tolist(),
+                               ref_time=0.,yaw_offset=runtime.math.yaw(root)),
+                observation=obs.tolist()))
             envelope.check(command)
             check_policy_step(command,state)
-            if clock.monotonic()-begin > COMPUTE_BUDGET:
+            if model_elapsed > COMPUTE_BUDGET:
                 raise TimeoutError('Prepared pose inference exceeds 20 ms; no EXTERNAL request sent')
             inputs.fresh(state)
             write(dict(row,record_type='prepared_policy_preflight',actions_sent=0),obs)
@@ -637,6 +647,11 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
             write(dict(row, actions_sent=sent_count, control_handles_created=1,
                 stage='pose_prepare' if pose_row is not None else ('pico_tracking' if tracking else 'prepare_stand'),
                 state_id=int(state.state_id), source_state_us=int(state.ts_state_real_us),
+                feedback=dict(q_body=state.q.tolist(),dq_body=state.dq.tolist(),
+                    root_wxyz=root.tolist(),gyro=gyro.tolist(),
+                    applied_session_id=int(state.applied_session_id),
+                    applied_sequence=int(state.applied_sequence),
+                    ts_first_output_us=int(state.ts_first_output_us)),
                 session_id=sent.session_id, sequence=sent.sequence,
                 publish_ms=(clock.monotonic()-before)*1000,
                 sent_body_targets=[dict(q=j.q, dq=j.dq, tau=j.tau, kp=j.kp, kd=j.kd) for j in sent.joints]), obs)

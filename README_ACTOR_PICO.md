@@ -374,3 +374,30 @@ session/math against simulated I/O, not real transport or hardware. Moving
 the robot additionally requires per-device review of the retargeted reference
 distribution, control transitions and the robot-side virtual-ankle PD contract.
 The shadow mode remains incapable of actuation.
+
+## Reproduce a rejected policy candidate
+
+Startup writes `prepared_policy_candidate` before validating the command. It
+contains the exact measured input, reference arrays, observation and decoded
+output so rejected frames can be replayed without robot control:
+
+```bash
+python3 scripts/replay_actor_candidate.py --backend ort --input /path/to/live.jsonl
+```
+
+The replay checks observation/action/command parity and reports the unchanged
+step guard. Earlier logs lacking this record cannot reconstruct the original
+IMU/reference exactly. Actual live publish records include measured Body31 q/dq,
+HIP orientation/gyro and firmware applied session/sequence evidence.
+
+Optional developer physics validation uses an explicitly supplied compatible
+MuJoCo scene/assets, never robot transport:
+
+```bash
+python3 scripts/validate_actor_stand_mujoco.py --scene /path/to/scene.xml \
+  --initial zero --seconds 10 --output /tmp/actor-physics-result.json
+```
+
+MuJoCo and these external assets are not SDK deployment prerequisites. This
+simulation uses serial virtual ankle joints, not the robot's parallel motor
+adapter; its success is separate from hardware control and balance acceptance.
