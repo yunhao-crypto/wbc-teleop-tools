@@ -183,10 +183,10 @@ The sequence is:
    not count as FIXED_STAND readiness.
 2. Request FIXED_STAND once, and require actual active FIXED_STAND plus healthy,
    hardware-bounded, stationary feedback for 0.5 s. Policy-online startup also
-   requires HIP IMU tilt <=2 degrees and gyro norm <=0.10 rad/s, with live
-   numerical diagnostics so the attendant can keep the supported body upright.
-   This is an entry condition, separate from the unchanged 0.8 rad running
-   fall threshold. In `policy-online` mode the
+   requires gyro norm <=0.10 rad/s. HIP IMU tilt is displayed and checked
+   against the reviewed profile's unchanged 0.8 rad fall threshold; there is
+   no additional 2-degree admission rule. This fall threshold alone does not
+   prove a command is safe to apply. In `policy-online` mode the
    policy reference starts at the measured pose: exact zero joint positions
    are not an activation prerequisite. Progress and failure logs name the
    largest joint position error and speed; no request is retried after failure.
@@ -410,5 +410,6 @@ The captured failed hardware preflight was reproduced exactly on host ORT
 (observation difference 0; action difference about 7e-7). Its measured HIP
 tilt was about 11 degrees. An offline counterfactual removing tilt brought
 the initial target step below the unchanged 0.35 rad guard; this is diagnostic
-evidence, not permission to rewrite real IMU observations. The startup
-orientation check requires actual supported alignment instead.
+evidence, not permission to rewrite real IMU observations. No fake upright IMU is supplied to the model. A temporary 2-degree startup
+rule inferred from this single counterfactual was withdrawn as unsupported.
+Command discontinuity and hardware/profile guards remain separate and active.

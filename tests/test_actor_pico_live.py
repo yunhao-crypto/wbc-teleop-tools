@@ -879,7 +879,9 @@ class LiveTests(unittest.TestCase):
         self.assertEqual(len(published['feedback']['root_wxyz']),4)
         self.assertIn('applied_sequence',published['feedback'])
 
-    def test_online_tilted_initial_body_waits_then_cancels_before_external(self):
+    def test_online_startup_does_not_invent_two_degree_tilt_gate(self):
+        from deployment.vita_s100_aorta_30dof.actor_pico_live import Inputs
+        from deployment.vita_s100_aorta_30dof.actor_pico_startup import StartupPlan,fixed_stand_startup
         self.online_setup()
         original=self.transport.state_fault
         def leaned(state):
@@ -887,11 +889,19 @@ class LiveTests(unittest.TestCase):
             imu[0,:4]=[np.cos(.1),0.,np.sin(.1),0.]
             return replace(state,imu_values=imu)
         self.transport.state_fault=leaned
-        with self.assertRaisesRegex(TimeoutError,'IMU tilt=11.46'):self.auto_trial()
-        self.assertEqual(self.transport.requests,[])
-        self.assertEqual([x[0] for x in self.startup_calls],['CANCEL'])
-        evidence=next(r for r in self.rows if r.get('record_type')=='fixed_stand_feedback')
+        params,_=load_robot_config(self.config)
+        envelope=CommandEnvelope(self.runtime,self.transport.reply,params)
+        plan=StartupPlan(self.runtime,envelope,self.config,online=True)
+        inputs=Inputs(self.runtime,self.controller,None,self.clock)
+        with redirect_stdout(io.StringIO()):
+            ready=fixed_stand_startup(plan,envelope,self.runtime,self.args,self.controller,inputs,
+                self.stop,lambda row:self.rows.append(row),self.clock,request_action=self.request_action)
+        self.assertTrue(ready)
+        evidence=next(r for r in self.rows if r.get('record_type')=='fixed_stand_confirmed')
         self.assertGreater(evidence['tilt_deg'],11.)
+        self.assertEqual(self.transport.requests,[])
+        self.assertEqual(self.transport.commands,[])
+        self.assertNotIn('online_start_tilt_limit_degrees',plan.review)
 
     def test_online_body_gyro_must_settle_before_external(self):
         self.online_setup()

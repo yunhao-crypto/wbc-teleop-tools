@@ -21,7 +21,6 @@ SETTLE_ERROR = .04
 SETTLE_SPEED = .05
 SETTLE_SECONDS = .5
 SETTLE_TIMEOUT = 5.
-ONLINE_START_TILT = math.radians(2.)
 ONLINE_START_GYRO = .10
 
 
@@ -83,7 +82,6 @@ class StartupPlan:
             entry_policy='policy-online' if online else 'joint-ramp',
             fixed_stand_ready='active FIXED_STAND, healthy hardware-bounded feedback and stationary joints' if online
                 else 'measured positions at FIXED_STAND target and stationary joints',
-            online_start_tilt_limit_degrees=2. if online else None,
             online_start_gyro_limit_rad_s=ONLINE_START_GYRO if online else None,
             startup_exit='CANCEL to PASSIVE on an incomplete FIXED_STAND startup; loaded limbs may fall')
 
@@ -187,8 +185,11 @@ def fixed_stand_startup(plan, envelope, runtime, args, controller, inputs, stop,
             named_ready = status.current_action == 'FIXED_STAND' if plan.online else status.current_action in ('FIXED_STAND','')
             if named_ready:
                 position_ready = plan.online or np.max(np.abs(state.q-plan.fixed_q)) <= SETTLE_ERROR
-                orientation_ready = not plan.online or (tilt<=ONLINE_START_TILT and gyro_speed<=ONLINE_START_GYRO)
-                good=position_ready and orientation_ready and np.max(np.abs(state.dq)) <= SETTLE_SPEED
+                angular_motion_ready = not plan.online or gyro_speed<=ONLINE_START_GYRO
+                # Tilt validity is already checked by policy.state against the
+                # reviewed tracking profile. Display it, but do not invent a
+                # tighter angular admission threshold from a single sample.
+                good=position_ready and angular_motion_ready and np.max(np.abs(state.dq)) <= SETTLE_SPEED
                 settled = (settled if settled is not None else clock.monotonic()) if good else None
                 if settled is not None and clock.monotonic()-settled >= SETTLE_SECONDS:
                     print('AUTO_START: FIXED_STAND feedback ready; entering EXTERNAL '+
@@ -211,8 +212,7 @@ def fixed_stand_startup(plan, envelope, runtime, args, controller, inputs, stop,
                 print(f'AUTO_START: verifying FIXED_STAND, action={status.current_action!r}, '
                       f'max position error={abs(state.q[i]-plan.fixed_q[i]):.3f} rad ({envelope.body.joint_names[i]}), '
                       f'max speed={abs(state.dq[v]):.3f} rad/s ({envelope.body.joint_names[v]}), '
-                      f'IMU tilt={math.degrees(tilt):.2f} deg'+
-                      (' (need <=2 deg), keep supported/upright' if plan.online else ''),flush=True)
+                      f'IMU tilt={math.degrees(tilt):.2f} deg',flush=True)
                 write(dict(record_type='fixed_stand_feedback',current_action=status.current_action,
                     q=state.q.tolist(),dq=state.dq.tolist(),position_target=plan.fixed_q.tolist(),
                     root_wxyz=root.tolist(),gyro=gyro.tolist(),tilt_deg=math.degrees(tilt),
