@@ -1,0 +1,10 @@
+# Optional Linux x86_64/Python 3.10 validation environment; not used on S100.
+numpy==1.26.4
+onnxruntime==1.23.2
+PyYAML==6.0.3
+flatbuffers==25.12.19
+mink==1.3.0
+mujoco==3.11.0
+scipy==1.15.3
+daqp==0.10.3
+qpsolvers==4.13.0

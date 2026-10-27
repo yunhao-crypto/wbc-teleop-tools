@@ -6,8 +6,8 @@
   "files": [
     {
       "path": "README_ACTOR_PICO.md",
-      "sha256": "6c13e4c63e03ba7bbe4893c85b0ed75a5177e52d3919cead014e443f7e444a41",
-      "bytes": 28216,
+      "sha256": "70175712253bc8a8cdaf5852b6de8e1d812f551cce886879b453e87f4bf1469a",
+      "bytes": 28893,
       "mode": "0o644"
     },
     {
@@ -18,8 +18,8 @@
     },
     {
       "path": "scripts/actor_pico.py",
-      "sha256": "fff1ce68f78955bd0e9d66c87d507c9750cdaa6545eaa7bcab5db9403d7c4311",
-      "bytes": 22736,
+      "sha256": "c584ddba9ec79740dd3113be32aafca8175789ee4704bfbf7561c44a841c47b6",
+      "bytes": 22737,
       "mode": "0o755"
     },
     {
@@ -30,8 +30,8 @@
     },
     {
       "path": "scripts/start_actor_pico.sh",
-      "sha256": "3a20d15d7861f93fa30d82eeb3064ec0c0918ba7f68b7c020e36e695b7673fa3",
-      "bytes": 2159,
+      "sha256": "6916057605a256e30f2e22eec416a1eb97e5c198a6223db67667dc537bc62557",
+      "bytes": 2364,
       "mode": "0o755"
     },
     {
@@ -78,8 +78,8 @@
     },
     {
       "path": "tests/test_actor_pico_live.py",
-      "sha256": "42fa4fb01d0204b4a777035455740abd6ed887d9df038324aea5b75f54127a33",
-      "bytes": 75426,
+      "sha256": "25a792daf9d025f14275684729b2ecd117d0db2ce19fa22f13ae6fc0f217ad58",
+      "bytes": 76023,
       "mode": "0o644"
     },
     {
@@ -96,8 +96,8 @@
     },
     {
       "path": "src/deployment/vita_s100_aorta_30dof/actor_pico_local.py",
-      "sha256": "6c1080f8d99db1e83ffe565f4eaa3eeff70455fa66f337d6b71cf05708bb50aa",
-      "bytes": 2622,
+      "sha256": "2936bab7aa6c857a1686af0d84e0b7d55811463d7e434767156c3aa793f71fe0",
+      "bytes": 6013,
       "mode": "0o644"
     },
     {
@@ -200,6 +200,18 @@
       "path": "src/deployment/vita_s100_aorta_30dof/actor_pico_scheduling.py",
       "sha256": "eecfcc1ee5e70cf67edf8faeb2b8dc8c6d46370bbe31356c0ee723a1eb21c68b",
       "bytes": 857,
+      "mode": "0o644"
+    },
+    {
+      "path": "scripts/configure_actor_s100.py",
+      "sha256": "269a6e03892d6a4f88f79205b0f80a90d8547e8148a48a7486d06610060aab36",
+      "bytes": 1776,
+      "mode": "0o644"
+    },
+    {
+      "path": "tests/test_actor_local_provision.py",
+      "sha256": "4cb5388e2da1c9fe039c3bcb421594b9ef85e0c9e7ca7efa23e4037da68e9364",
+      "bytes": 4472,
       "mode": "0o644"
     }
   ],

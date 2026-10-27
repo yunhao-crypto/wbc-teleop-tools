@@ -8,11 +8,14 @@ This is not ARM execution, live Pico reception, or robot control validation.
 import argparse
 import json
 import os
+import re
+import hashlib
 from pathlib import Path
 import subprocess
 import sys
 import tempfile
 import zipfile
+from urllib.parse import unquote
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -24,6 +27,34 @@ def run(command, *, cwd, env):
     if result.returncode:
         raise RuntimeError('Check failed: '+str(command)+'\n'+result.stdout)
     return result.stdout
+
+
+def run_tests(path, *, cwd, env):
+    output = run([sys.executable, path], cwd=cwd, env=env)
+    match = re.search(r'Ran (\d+) tests? in ', output)
+    if match is None or int(match[1]) < 1:
+        raise RuntimeError('Missing unittest execution receipt: '+path)
+    return int(match[1])
+
+
+def verify_doc_links(root):
+    links = 0
+    for name in ['README.md', 'README_ACTOR_PICO.md', 'deploy/actor_s100/README.md']:
+        document = root/name
+        for target in re.findall(r'\[[^\]]+\]\(([^)]+)\)', document.read_text()):
+            if '://' in target or target.startswith('mailto:'):
+                continue
+            path, _, anchor = unquote(target).partition('#')
+            resolved = (document.parent/path).resolve() if path else document
+            if not resolved.is_relative_to(root.resolve()) or not resolved.is_file():
+                raise RuntimeError('Broken delivery documentation link: '+name+' -> '+target)
+            if anchor and resolved.suffix == '.md':
+                headings = re.findall(r'^#+\s+(.+)$', resolved.read_text(), re.MULTILINE)
+                anchors = {re.sub(r'[^\w\- ]', '', h.lower()).replace(' ', '-') for h in headings}
+                if anchor not in anchors:
+                    raise RuntimeError('Missing delivery documentation anchor: '+name+' -> '+target)
+            links += 1
+    return links
 
 
 def main():
@@ -39,7 +70,8 @@ def main():
     for name in list(env):
         if name.startswith('PIP_'):
             env.pop(name)
-    for key in ['PYTHONPATH', 'PYTHONHOME', 'VITA_PREPROCESS_LIBRARY',
+    for key in ['PYTHONPATH', 'PYTHONHOME', 'LD_LIBRARY_PATH', 'CPATH', 'CPLUS_INCLUDE_PATH',
+                'VITA_PREPROCESS_LIBRARY',
                 'VITA_PREPROCESS_NATIVE_STAGES', 'HOLOMOTION_REAL_ROBOT']:
         env.pop(key, None)
     env.update(PYTHONDONTWRITEBYTECODE='1', PYTHONNOUSERSITE='1',
@@ -55,6 +87,7 @@ def main():
             if (export/name).exists():
                 raise RuntimeError('Unexpected untracked input in Git export: '+name)
         run([sys.executable, 'scripts/bootstrap_actor_s100.py', '--verify-only'], cwd=export, env=env)
+        documentation_links = verify_doc_links(export)
         wheelhouse = export/'deploy/actor_s100/wheelhouse'
         resolved = Path(temporary)/'resolved_wheels'
         # Resolve the full dependency graph for the target ABI, offline.
@@ -71,13 +104,18 @@ def main():
         if args.model:
             command += ['--model', str(args.model)]
         run(command, cwd=export, env=env)
-        run([sys.executable, 'tests/test_actor_delivery.py'], cwd=export, env=env)
+        installer_tests = run_tests('tests/test_actor_delivery.py', cwd=export, env=env)
+        for entry in ['scripts/bootstrap_actor_s100.py', 'scripts/configure_actor_s100.py']:
+            run([sys.executable, entry, '--help'], cwd=export, env=env)
         # Compile actual callback/parser/getter source without Python or ARM
         # libraries; no vendor SDK init or service is run by this regression.
         run([sys.executable, 'scripts/state_test_pico_snapshot.py'], cwd=export, env=env)
         result = dict(status='PASS_STAGED_GIT_DELIVERY', offline_wheels=wheel_count,
                       runtime_archives_verified=True, pico_snapshot_cpp='PASS',
-                      installer_tests=9, external_model_supplied=bool(args.model),
+                      installer_tests=installer_tests, local_provision_tests='not_measured',
+                      documentation_files=3, documentation_links=documentation_links,
+                      external_model_supplied=bool(args.model),
+                      delivery_manifest_sha256=hashlib.sha256((export/'deploy/actor_s100/manifest.json').read_bytes()).hexdigest(),
                       model_steps=0, replay_steps=0, actions_sent=0,
                       s100_install_execution='not_measured', live_inputs='not_measured')
         if args.host_inference:
@@ -91,14 +129,16 @@ def main():
                     continue
                 with zipfile.ZipFile(wheel) as archive:
                     archive.extractall(site)
-            run([sys.executable, 'tests/test_actor_pico.py'], cwd=export, env=env)
-            run([sys.executable, 'tests/test_actor_pico_live.py'], cwd=export, env=env)
-            run([sys.executable, 'src/tests/test_pico_atomic_reader.py'], cwd=export, env=env)
+            actor_tests = run_tests('tests/test_actor_pico.py', cwd=export, env=env)
+            provision_tests = run_tests('tests/test_actor_local_provision.py', cwd=export, env=env)
+            live_tests = run_tests('tests/test_actor_pico_live.py', cwd=export, env=env)
+            reader_tests = run_tests('src/tests/test_pico_atomic_reader.py', cwd=export, env=env)
             run([sys.executable, 'scripts/actor_pico.py', 'check', '--steps', '100'], cwd=export, env=env)
             run([sys.executable, 'scripts/actor_pico.py', 'replay', '--input',
                  'tests/fixtures/actor_pico/pico_replay.npz', '--steps', '100'], cwd=export, env=env)
-            result.update(model_steps=100, replay_steps=100, actor_tests=14, pico_reader_tests=3,
-                          live_runner_tests=106, live_runner_io='simulated; real SDK session/math',
+            result.update(model_steps=100, replay_steps=100, actor_tests=actor_tests, pico_reader_tests=reader_tests,
+                          local_provision_tests=provision_tests,
+                          live_runner_tests=live_tests, live_runner_io='simulated; real SDK session/math',
                           robot_motion='not_measured')
         (ROOT/'outputs').mkdir(exist_ok=True)
         (ROOT/'outputs/actor_delivery_validation.json').write_text(json.dumps(result, indent=2)+'\n')

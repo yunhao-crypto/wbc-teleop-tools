@@ -1,105 +1,109 @@
-# Vita S100 actor/Pico 部署
+# Vita02A / S100 actor + Pico
 
-本仓库以 `vita_p123_20261015_sdkmain_opt021` 部署快照作为初始基线，
-提供 Vita02A 的低延迟 G1 policy `model_step_431500_g1.onnx` 推理及 Pico 实时输入链路
-（安装后统一保存为 `artifacts/actor_g1/actor_g1.onnx`）。
-**actor 部署所需的离线 wheel、Pico ARM 服务、定制绑定和构建源码均纳入 Git；模型单独交付。**
-部署者需要提供指定版本的 `actor_g1.onnx`，安装脚本校验 SHA256 后复制到本地模型目录。
-无需复制原开发目录的虚拟环境。
+部署链路：Pico → **motion-stream-bridge Vita02A GMR** → Vita02A 关节参考 →
+`model_step_431500_g1.onnx` → SDK 0.2.1 Body31。GMR 的算法、模型和参数固定自
+`763f560`，已移除自写姿态 IK；它与 HoloMotion 的 SMPL 输入双策略是不同的链路。
 
-当前提供模型检查、离线回放、实时输入影子推理，以及需现场确认的 EXTERNAL
-支撑测试入口。影子入口不申请控制权；`live` 会运动全身。`--stand-only` 无需 Pico；
-`--manual-pico` 可先运行 ONNX 站姿参考，再在同一会话手动接入 Pico。
-已配置的 S100 可直接 `bash scripts/start_actor_pico.sh`：无需输入 MOVE，自动申请
-FIXED_STAND、进入 EXTERNAL 持续 ONNX 推理并接收 Pico；双手扳机同时按下切入跟随，
-松开后再次同时按下则平滑返回 ONNX 站姿，控制会话保持。
-默认持续到 `STOP`、Ctrl-C 或故障退出；可加 `--seconds N` 设置运行时长。
-**无参数入口现在会申请运动控制；离线检查请显式使用 `check`。**
-完整流程与限制见 [actor/Pico 运行说明](README_ACTOR_PICO.md#default-local-startup)。
+**当前交付位于 `feature/actor-pico-external`，见 [PR #1](https://github.com/yunhao-crypto/wbc-teleop-tools/pull/1)。**
+代码、21 个 ARM wheel、Pico 服务/绑定、GMR 模型与配置、测试资源均在 Git 中。
+**策略权重不公开提交**：拉取后还需提供下列模型，以及目标 S100 已有的匹配固件、
+私有 Zenoh peer 配置和有效硬件 YAML；无需原开发目录或另一个源码仓库。
+本交付覆盖 `scripts/start_actor_pico.sh`；保留的历史 HoloMotion/P1/P2/P3 入口未随包提供权重。
 
-## 在 Vita02A / S100 上部署
+## 适用环境和验证范围
 
-目标环境为 Linux ARM64、Python 3.10、glibc >= 2.35，需具备系统 venv/ensurepip。
-这些是 SDK wheel 的平台要求。Pico 和机器人反馈仍需目标机已有的匹配固件、
-设备自有 Zenoh peer 配置，以及已开启全身追踪和发送的头显客户端。
+- S100 本机：Linux aarch64、Python **3.10**、glibc ≥2.35、venv/ensurepip、Bash、`ip`、`flock`、`ldd`。
+- 已验证的软件基线：机器人 `1.6.0-200` / `c9b4e80c074a8898d1290927a1be5350bc725d4a`，
+  Aorta/messages `2026.10.20`，SDK `0.2.1`。Body31 协议 2、roster 1，28 策略关节加 2 颈关节。
+  其他机器人发行版须先核对接口和有效配置；不能仅凭包日期选择 wheel。
+- 目标机提供 `/app/script/env.sh`、部署自有 `/app_param/zenoh/s100_session_peer.json5`
+  和完整 A-sample 有效 YAML。当前无夹爪配置应与真实硬件一致，不自动修改末端选择或将执行器设为 MOCK。
+- 通过的交付/只读检查不等于运动验收。**真实 Pico 跟随质量、无支撑站立稳定性仍未完成验收。**
+  当前应按有人看护、有可靠支撑的试验部署使用。
 
-在一个**新克隆目录**中运行：
+系统库明细、版本与回退见 [离线交付说明](deploy/actor_s100/README.md)。
+
+## 首次部署：以下命令在目标 S100 执行
+
+在 `/userdata` 下使用新目录，保留旧部署以便回退；`/root` 可能随机器人系统切换而丢失。
+有网络时按下面获取，离线时将相同 Git 版本的完整归档复制到目标机。
 
 ```bash
-python3.10 scripts/bootstrap_actor_s100.py --model /path/to/actor_g1.onnx
+git clone --branch feature/actor-pico-external --single-branch \
+  https://github.com/yunhao-crypto/wbc-teleop-tools.git /userdata/vita_actor_pico
+cd /userdata/vita_actor_pico
+git rev-parse HEAD
+source /app/script/env.sh
+python3.10 scripts/bootstrap_actor_s100.py --model /absolute/path/model_step_431500_g1.onnx
 bash scripts/start_actor_pico.sh check --steps 100
-bash scripts/start_actor_pico.sh state-check --seconds 5 --group default
-bash scripts/start_actor_pico.sh shadow --seconds 60 --group default
+bash scripts/start_actor_pico.sh state-check --seconds 5
+# 头显已完成全身追踪标定并点击 Send 后，运行只记录结果的影子推理：
+bash scripts/start_actor_pico.sh shadow --seconds 30 --human-height 1.75
 ```
 
-安装脚本先校验全部交付文件，离线创建 `venv`、安装匹配依赖、解包 Pico 服务与
-预编译绑定，再验证 SDK/绑定和动态库依赖，并执行 10 步无动作模型检查。
-原有、非该脚本创建的 `venv` 会被保留并拒绝覆盖。已有安装可重跑以恢复或继续安装。
+模型为 **57,652,911 bytes**，SHA256 必须为：
 
-若希望在 S100 编译 Pico 绑定，额外准备 g++ 和 Python 3.10 开发头文件，然后运行：
-
-```bash
-python3.10 scripts/bootstrap_actor_s100.py --model /path/to/actor_g1.onnx --build-pico
+```text
+a341391a346e050caf11c40c6989336c658c445e3e124f12dcbe292d91324474
 ```
 
-仅 Pico Python 绑定和 double-conversion 需要此源码构建；SDK 使用匹配的官方
-ARM64 wheel，厂商 Pico 服务使用仓库内固定版本的运行包。
-GMR 的算法、Vita02A 模型和配置固定自 motion-stream-bridge `763f560`；
-使用身高参数进行人体尺度缩放。此链路保留 431500 模型，与 HoloMotion 的 SMPL 模型入口不同。
+安装器校验后将模型复制到 `artifacts/actor_g1/actor_g1.onnx`，离线解析全部 wheel 依赖，
+创建独立 `venv`，解包 Pico 运行库，检查 SDK/绑定/动态库，并运行无动作模型检查。
+不会启动机器人服务或发布动作。不同的已有模型、第三方虚拟环境和运行库会被保留并报错；
+升级请换新目录。只有重编译 Pico 绑定才需 `--build-pico` 和 g++/Python 开发头文件。
 
-详见 [S100 离线交付说明](deploy/actor_s100/README.md)和
-[actor/Pico 运行说明](README_ACTOR_PICO.md)。
+## 为本机生成无参数启动配置
 
-## Git 中包含什么
-
-| 内容 | 路径 |
-| --- | --- |
-| 模型接口配置及 SHA256 | `config/actor_pico.json`（模型二进制单独交付） |
-| 21 个匹配的离线 wheel | `deploy/actor_s100/wheelhouse/` |
-| Pico ARM 服务、SDK 库、Qt 插件 | `deploy/actor_s100/runtime/pico_service_arm64.tar.gz` |
-| 已验证的 Python 3.10 ARM64 绑定 | `deploy/actor_s100/runtime/pico_binding_cp310_aarch64.tar.gz` |
-| Pico 定制源码和 double-conversion | `third_party/` |
-| 可在干净克隆中使用的合成回放 | `tests/fixtures/actor_pico/pico_replay.npz` |
-| 交付文件 SHA256 清单 | `deploy/actor_s100/manifest.json` |
-| 源码、脚本和测试 | `src/`、`scripts/`、`tests/` |
-
-运行生成的 `venv/`、`build/`、`vendor_packages/`、日志、输出和私有连接凭据仍不提交。
-Pico 运行包不带已保存的设备/部署记录和用户连接配置，保留空白出厂数据库结构。
-模型二进制由 `.gitignore` 排除，两个运行归档随 Git 提交。其他历史 HoloMotion P1/P2/P3
-权重未纳入这次 actor 交付；其原源码仍保留，但不是本次离线资源闭环的目标。
-
-## 验证提交内容能否独立使用
-
-维护者在修改后先暂存文件、重新封存清单，再检查暂存区导出的干净副本：
+安装和只读检查通过后，指定**本机实际 IP**与**运行中实际生效的完整 YAML**：
 
 ```bash
-git add .
+bash scripts/start_actor_pico.sh configure \
+  --robot-id '<local S100 IPv4>' \
+  --robot-config /absolute/path/to/running/effective.yaml
+```
+
+该命令只写入本机 `outputs/actor_pico_local.json`（0600），不连接控制、不授权运动。
+它绑定机器标识、IP、末端选择和 YAML 摘要；相同配置可重跑，修改已有配置须用
+`--replace` 并自动保留私有备份。不要复制其他机器的配置或私有凭据。
+
+## 现场授权后的支撑试验
+
+**下面的无参数命令会运动全身。** 使用前须针对本机确认可靠支撑、区域清空、有人看护和急停可用。
+
+```bash
+bash scripts/start_actor_pico.sh
+# 身高默认 1.75 米，其他操作者可覆盖：
+# bash scripts/start_actor_pico.sh --human-height 1.68
+```
+
+流程为等待阻尼结束 → FIXED_STAND → EXTERNAL → 持续 ONNX 站姿推理并等待 Pico。
+双扳机同时按过 0.7 切入跟随，释放后再次同时按下返回 ONNX 站姿。
+`STOP`/Ctrl-C 尝试 CANCEL → PASSIVE；PASSIVE 下承重肢体可能下落，软件退出不能代替急停。
+EXTERNAL 没有自动到期释放；进程故障也不能假定控制权已释放。
+可用 `--seconds 5` 限定客户端试验时长；故障后不自动重试运动。
+
+控制线程采用 RR 优先级 1，需要相应 Linux 权限；GMR 子进程保持普通调度。
+100 ms 机器人反馈、600 ms Pico 新鲜度及 SDK 控制权/看门狗检查保留。
+详见 [完整运行说明](README_ACTOR_PICO.md)。
+
+## 维护者验证提交内容
+
+可只检查文件完整性：`python3 scripts/bootstrap_actor_s100.py --verify-only`。
+该检查不验证单独交付的模型，也不代表连接或运动验收。
+
+完整干净导出检查在 Linux x86_64 主机执行，需要 g++；主机依赖与目标 ARM wheel 分开：
+
+```bash
+python3.10 -m venv /tmp/vita-actor-host-check
+/tmp/vita-actor-host-check/bin/python -m pip install -r deploy/actor_s100/requirements-host-check.txt
+# 暂存本次修改后更新清单，再验证实际 Git 暂存区导出：
+git add <intended-files>
 python3 scripts/seal_actor_delivery.py
 git add ACTOR-PICO-MANIFEST.json deploy/actor_s100/manifest.json
-python3 scripts/verify_actor_delivery.py --host-inference --model /path/to/actor_g1.onnx
+/tmp/vita-actor-host-check/bin/python scripts/verify_actor_delivery.py \
+  --host-inference --model /absolute/path/model_step_431500_g1.onnx
 ```
 
-检查只接收显式指定的外部模型，不借用工作目录的 `venv`、`vendor_packages`、`reference` 或 `build`。
-它会验证全部文件/归档哈希、离线解析完整 ARM wheel 依赖、从交付归档解包运行文件，
-编译实际 Pico 原子快照 C++ 回归，并使用宿主 ONNX Runtime 运行 14 项 actor 测试、
-3 项 Pico 读取测试、EXTERNAL 离线故障回归、100 步模型检查和 100 步合成 Pico 回放。
-宿主模式需已有 NumPy、ONNX Runtime、pip 和 C++ 编译器；它不执行 ARM 二进制。
-
-S100 实际安装、推理性能、真实 Pico 输入质量和动作控制仍需分别在目标机验收。
-该模型声明 10 帧、20 ms 间隔；真实参考缓存为 0.20 秒，端到端延迟仍须实测。
-旧 `f0dfa046…` 模型声明 100 ms 间隔，所需缓存为 0.92 秒，不能混用其模型清单。
-重定向使用 motion-stream-bridge 的原版 Vita02A GMR；默认身高 1.75 米，
-可用 `--human-height 1.68` 覆盖。拟合误差作为诊断记录，不再使用旧姿态 IK。
-
-## 来源
-
-本次 Git 初始化不继承 `humanoid-sdk` 或原应用仓库历史。
-SDK 锁定为 `locomotion-aorta 0.2.1`，记录源码提交
-`f411caeff5c98a4b933f0cac084b03aabfefd763`；消息/二进制校验见
-`config/sdk021-wheel-guard.json`。原升级记录标注的应用源码基线为
-`b3e36cbb1e4992d225f890a67dba0b494c99326e`，较早 SDK 提交为
-`b697f8bbdb76b3da4a8625e00aca212b93d5cd31`。其他来源见 `source_map.json`。
-版本文件不等于与当前 vita-robot master 或实机有效控制配置完全一致。
-
-初始快照部分旧文件带有历史空白格式提示，本次保留原文以维持来源哈希。
-# wbc-teleop-tools
+验证不借用开发目录的 `venv`、`build`、`vendor_packages`、`reference` 或外部源码树。
+它验证 ARM 依赖闭环、原始 C++ 快照实现、GMR 对照、控制故障回归和 100 步推理/回放，
+结果写入 `outputs/actor_delivery_validation.json`。真实绑定、只读连接、Pico 质量和运动须分别报告。

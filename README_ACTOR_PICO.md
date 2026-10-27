@@ -8,7 +8,7 @@ and SHA256 pinned in `config/actor_pico.json`. Its metadata identifies
 It is the Vita28 tracking actor, regardless of the `g1` filename.
 
 The entry supports model checks, offline Pico replay, live-input shadow
-inference, and a separately armed supported EXTERNAL trial. Shadow subscribes to Body31 feedback and reads the existing Pico
+inference, and a separately armed supported EXTERNAL trial. Shadow subscribes to Body31 feedback and reads Pico through its owned vendor
 service. It writes computed targets to JSONL; it never creates a controller,
 requests EXTERNAL or publishes a robot command. Only `live` requests control and moves joints. The existing P1/P2/P3 runtime,
 launchers, SDK installation and protocol guards are not replaced.
@@ -97,8 +97,12 @@ reference quality or physical balance.
 
 ## Run on S100
 
-Clone the repository into a new directory on S100, then run
-`python3.10 scripts/bootstrap_actor_s100.py --model /path/to/actor_g1.onnx`.
+Clone the repository into a new directory on S100, then run:
+
+```bash
+source /app/script/env.sh
+python3.10 scripts/bootstrap_actor_s100.py --model /path/to/actor_g1.onnx
+```
 The 21 offline wheels, Pico service, binding, sources and synthetic replay
 fixture are tracked in Git. The model must be supplied separately; its SHA256
 is pinned in `config/actor_pico.json` and the delivery manifest.
@@ -159,6 +163,20 @@ Use `bash scripts/start_actor_pico.sh check` for offline inference, or
 `outputs/actor_pico_local.json`, a private 0600 file provisioned for this board.
 It binds the local IPv4 address, machine-id digest, selected end effector,
 effective YAML digest and configured duration (`0` means until STOP). It stores no authorization.
+Generate the file on the actual board after installation and read-only checks:
+
+```bash
+bash scripts/start_actor_pico.sh configure \
+  --robot-id '<actual local S100 IPv4>' \
+  --robot-config /absolute/path/to/running/effective.yaml
+```
+
+This command stores defaults only and sends no actions. It keeps an existing
+different profile unless `--replace` is specified, in which case it saves a
+private backup. It defaults to manual dual-trigger handoff and an unlimited
+client duration; add `--seconds N` for a bounded default. Configuration does not
+record authorization or prove that the supplied YAML is the running selection.
+
 Another device, changed network identity/selector/YAML or missing profile fails
 before robot handles. A generic bundle has no device profile; use explicit
 `auto --robot-id <local-robot-ip> --robot-config <effective-yaml>` or provision

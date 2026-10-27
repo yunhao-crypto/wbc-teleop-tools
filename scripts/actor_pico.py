@@ -325,7 +325,7 @@ def main():
     parser.add_argument('--entry-policy', choices=('policy-online',), default='policy-online',
                         help='compatibility option; startup always uses continuous policy inference')
     parser.add_argument('--wait-pico', action='store_true', help='live manual-Pico path: start receiving Pico automatically while ONNX stand continues')
-    parser.add_argument('--auto-pico', action='store_true', help='live: receive Pico and automatically follow only after preparation and a fresh neutral reference window')
+    parser.add_argument('--auto-pico', action='store_true', help='live: receive Pico and automatically follow only after preparation and a fresh complete reference window')
     args = parser.parse_args()
     if args.local_start:
         if args.mode != 'live' or args.robot_id or args.robot_config:

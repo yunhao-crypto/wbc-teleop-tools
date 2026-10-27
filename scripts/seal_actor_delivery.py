@@ -40,7 +40,8 @@ def main():
                  'third_party/pico_binding/bindings/controller_trigger_snapshot.h'):
         if not any(item['path'] == name for item in actor['files']):
             actor['files'].append(dict(path=name))
-    additional = ['src/deployment/vita_s100_aorta_30dof/actor_pico_scheduling.py',
+    additional = ['scripts/configure_actor_s100.py', 'tests/test_actor_local_provision.py',
+                  'src/deployment/vita_s100_aorta_30dof/actor_pico_scheduling.py',
                   'src/deployment/vita_s100_aorta_30dof/actor_pico_gmr.py',
                   'tests/fixtures/actor_pico/bridge_gmr_golden.npz',
                   'tests/fixtures/actor_pico/bridge_gmr_golden.json']
@@ -59,7 +60,7 @@ def main():
         raise RuntimeError('Remove the external model from the Git index before sealing')
     required = ['artifacts/output_envelopes.motion.urdf',
                 'config/actor_pico.json', 'config/sdk021-wheel-guard.json',
-                'scripts/bootstrap_actor_s100.py', 'scripts/start_actor_pico.sh',
+                'scripts/bootstrap_actor_s100.py', 'scripts/configure_actor_s100.py', 'scripts/start_actor_pico.sh',
                 'src/deployment/vita_s100_aorta_30dof/actor_pico_live.py',
                 'src/deployment/vita_s100_aorta_30dof/actor_pico_local.py',
                 'src/deployment/vita_s100_aorta_30dof/actor_pico_startup.py',
@@ -85,7 +86,7 @@ def main():
     missing = set(required)-set(names)
     if missing:
         raise RuntimeError('Stage these required delivery files first: '+', '.join(sorted(missing)))
-    record = dict(schema='vita_actor_s100_delivery_v1', version='2026.10.27-actor20-scheduling',
+    record = dict(schema='vita_actor_s100_delivery_v1', version='2026.10.27-actor21-delivery',
                   target=dict(os='Linux', architecture='aarch64', python='3.10', glibc_min='2.35'),
                   scope='offline/shadow checks and explicitly armed supported EXTERNAL trials; hardware not_measured',
                   required_inputs=required, external_resources=[external], archives=archives,

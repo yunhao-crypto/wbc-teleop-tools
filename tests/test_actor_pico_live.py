@@ -1333,6 +1333,13 @@ class LocalStartTests(unittest.TestCase):
         self.assertEqual(args[-2:],['--seconds','5'])
         subprocess.run(['bash',str(launcher),'check','--steps','1'],env=env,check=True,capture_output=True,text=True,timeout=10)
         args=json.loads(output.read_text());self.assertEqual(args[1:],["check","--steps","1"])
+        startup.write_text('source() { echo "unexpected robot environment access" >&2; exit 99; }\n')
+        subprocess.run(['bash',str(launcher),'--help'],env=env,check=True,capture_output=True,text=True,timeout=10)
+        args=json.loads(output.read_text());self.assertEqual(args[1:],["check","--help"])
+        subprocess.run(['bash',str(launcher),'configure','--help'],env=env,check=True,capture_output=True,text=True,timeout=10)
+        args=json.loads(output.read_text())
+        self.assertEqual(Path(args[0]).name,'configure_actor_s100.py')
+        self.assertEqual(args[1:],["--help"])
 
     def test_device_profile_selects_local_target_and_receives_pico_but_not_auto_follow(self):
         args=self.load()
