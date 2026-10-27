@@ -193,6 +193,13 @@ class PicoOrientationRetargeter:
         return q.copy(), self.math.quaternion(root), float(residual)
 
 
+class PicoReferenceGapError(ValueError):
+    """A discontinuity that must never be interpolated across."""
+    def __init__(self, gap_s, limit_s):
+        self.gap_s, self.limit_s = float(gap_s), float(limit_s)
+        super().__init__(f'Pico source gap {gap_s:.6f}s exceeds reference interpolation limit {limit_s:.6f}s')
+
+
 class CausalActorReference:
     """Delay real references until the complete future/derivative window exists.
 
@@ -228,7 +235,7 @@ class CausalActorReference:
             if gap <= 0:
                 raise ValueError('Pico timestamps must strictly increase')
             if gap > self.maximum_gap:
-                raise ValueError('Pico source gap exceeds the reference interpolation limit')
+                raise PicoReferenceGapError(gap, self.maximum_gap)
         if self.origin_ns is None:
             self.origin_ns = int(stamp_ns)
         self.samples.append(((int(stamp_ns)-self.origin_ns)*1e-9, q.copy(), root.copy()))

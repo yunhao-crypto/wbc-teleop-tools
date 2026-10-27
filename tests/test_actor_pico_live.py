@@ -269,6 +269,88 @@ class LiveTests(unittest.TestCase):
         stages=[r['stage'] for r in self.rows if 'stage' in r]
         self.assertEqual(stages[-1],'pico_tracking')
 
+    def test_pico_resync_before_following_keeps_stand_and_pins_new_epoch(self):
+        worker,command=self.manual_trial()
+        original=worker.snapshot
+        def snapshot():
+            value=original();value['reference_epoch']=1 if len(self.transport.commands)>=120 else 0
+            return value
+        with patch.object(worker,'snapshot',snapshot):
+            self.run_trial(manual_pico=worker,poll_command=command)
+        started=next(r for r in self.rows if r.get('record_type')=='tracking_started')
+        self.assertEqual(started['reference_epoch'],1)
+        self.assertTrue(any(r.get('stage')=='pico_tracking' for r in self.rows))
+        self.assert_cancelled()
+
+    def test_ready_snapshot_after_gap_cannot_resume_following_in_new_epoch(self):
+        worker,command=self.manual_trial()
+        original=worker.snapshot
+        def snapshot():
+            value=original();value['reference_epoch']=1 if len(self.transport.commands)>=161 else 0
+            return value
+        with patch.object(worker,'snapshot',snapshot):
+            with self.assertRaisesRegex(RuntimeError,'continuity changed'):
+                self.run_trial(manual_pico=worker,poll_command=command)
+        self.assertEqual(len(self.transport.commands),161)
+        self.assertEqual([r.operation.value for r in self.transport.requests],['PREPARE','COMMIT','CANCEL'])
+        self.assert_cancelled()
+
+    def test_collecting_after_gap_rejects_early_follow_request_without_queuing(self):
+        worker,command=self.manual_trial()
+        original=worker.snapshot
+        def snapshot():
+            value=original();count=len(self.transport.commands)
+            if count>=150:
+                value['reference_epoch']=1
+                if count<160:value['state']='collecting'
+            return value
+        with patch.object(worker,'snapshot',snapshot):
+            self.run_trial(manual_pico=worker,poll_command=command)
+        self.assertTrue(any(r.get('record_type')=='pico_switch_rejected' for r in self.rows))
+        self.assertFalse(any(r.get('stage')=='pico_tracking' for r in self.rows))
+        self.assert_cancelled()
+
+    def capture_fixture(self, stamps):
+        import queue
+        from unittest.mock import Mock
+        from deployment.vita_s100_aorta_30dof import actor_pico_worker as worker,pico_input
+        commands=queue.Queue();commands.put((1.,0.,0.,0.));output=queue.Queue(maxsize=128)
+        (ROOT/'outputs').mkdir(exist_ok=True)  # Same precondition as the CLI log setup.
+        stop=threading.Event();body=np.zeros((24,7),np.float32);body[:,6]=1.
+        samples=iter(stamps)
+        def step():
+            try:stamp=next(samples)
+            except StopIteration:stop.set();return None
+            return body,0,dict(timestamp_ns=stamp,timestamp_monotonic=stamp*1e-9)
+        pico=Mock();pico.step.side_effect=step
+        service=Mock();service.poll.return_value=None
+        with (patch.object(worker.os,'setsid'),patch.object(worker.subprocess,'Popen',return_value=service),
+              patch.object(pico_input,'create_pico_source',return_value=pico)):
+            worker._capture(str(ROOT),self.runtime.config,self.runtime.model.contract,
+                self.runtime.policy.lower,self.runtime.policy.upper,commands,output,stop)
+        rows=[]
+        while not output.empty():rows.append(output.get_nowait())
+        pico.stop.assert_called_once();service.terminate.assert_called_once()
+        return rows
+
+    def test_capture_source_gap_rebuilds_full_window_without_closing_connection(self):
+        stamps=[1_000_000_000+i*20_000_000 for i in range(11)]
+        stamps += [1_500_000_000+i*20_000_000 for i in range(11)]
+        rows=self.capture_fixture(stamps)
+        self.assertFalse(any(r['state']=='failed' for r in rows))
+        self.assertTrue(any(r['state']=='ready' and r['reference_epoch']==0 for r in rows))
+        rebuilt=[r for r in rows if r['reference_epoch']==1]
+        self.assertEqual(rebuilt[0]['state'],'collecting')
+        self.assertAlmostEqual(rebuilt[0]['source_gap_s'],.3)
+        self.assertTrue(all(r['state']=='collecting' for r in rebuilt[:-1]))
+        self.assertEqual(rebuilt[-1]['state'],'ready')
+
+    def test_capture_clock_regression_remains_terminal_and_is_not_resynced(self):
+        rows=self.capture_fixture([1_000_000_000,1_020_000_000,1_010_000_000])
+        self.assertEqual(rows[-1]['state'],'failed')
+        self.assertEqual(rows[-1]['reference_epoch'],0)
+        self.assertIn('strictly increase',rows[-1]['error'])
+
     def test_real_capture_process_can_start_and_stop_without_pico(self):
         from deployment.vita_s100_aorta_30dof.actor_pico_worker import PicoReferenceProcess
         worker=PicoReferenceProcess(self.runtime)

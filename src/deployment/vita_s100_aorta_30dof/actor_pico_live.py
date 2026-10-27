@@ -282,8 +282,13 @@ class TerminalCommands:
         return None
 
 
-def manual_reference(runtime, snapshot, now):
+def manual_reference(runtime, snapshot, now, *, expected_epoch=None):
     """Validate an immutable worker snapshot without touching policy history."""
+    epoch = snapshot.get('reference_epoch',0)
+    if type(epoch) is not int or epoch < 0:
+        raise ValueError('Invalid Pico reference epoch')
+    if expected_epoch is not None and epoch != expected_epoch:
+        raise RuntimeError('Pico reference continuity changed during following; cancel without retry')
     if snapshot.get('state') != 'ready':
         raise ValueError('Pico reference not ready: '+str(snapshot.get('state')))
     age = now-float(snapshot['received_monotonic'])
@@ -292,7 +297,7 @@ def manual_reference(runtime, snapshot, now):
     motion = runtime.math.Motion(snapshot['q'], snapshot['base'], snapshot['quat'])
     if len(motion.q) != runtime.reference.steps:
         raise ValueError('Pico worker reference window length differs from model')
-    return motion, dict(pico_age_s=age, reference_delay_s=runtime.reference.delay,
+    return motion, dict(pico_age_s=age, reference_epoch=epoch, reference_delay_s=runtime.reference.delay,
         retarget_ms=float(snapshot['retarget_ms']),
         ik_max_residual_rad=float(snapshot['ik_max_residual_rad']))
 
@@ -499,6 +504,7 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
         end = start+args.seconds if args.seconds > 0 else math.inf
         policy_tick = 0
         tracking = False
+        tracking_epoch = None
         if auto:
             print('POLICY_LEAD_IN: ONNX runs from measured-pose reference toward model stand; awaiting Pico',flush=True)
         if manual:
@@ -539,11 +545,18 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
                         write(dict(record_type='pico_connect_requested', actions_sent=sent_count))
                 snapshot = manual_pico.snapshot()
                 state_name = snapshot.get('state')
-                if state_name != previous_pico_state:
-                    previous_pico_state = state_name
-                    print(f'PICO_INPUT: {state_name}; ONNX '+('tracking' if tracking else 'stand'), flush=True)
+                state_key = (state_name,snapshot.get('reference_epoch',0))
+                if state_key != previous_pico_state:
+                    previous_pico_state = state_key
+                    detail = (': '+str(snapshot['error'])) if snapshot.get('error') else ''
+                    if 'source_gap_s' in snapshot:
+                        detail += f"; source gap {snapshot['source_gap_s']:.3f}s, rebuilding reference window"
+                    print(f'PICO_INPUT: {state_name}{detail}; ONNX '+('tracking' if tracking else 'stand'), flush=True)
                     write(dict(record_type='pico_input_state', state=state_name,
-                               error=snapshot.get('error'), actions_sent=sent_count))
+                               error=snapshot.get('error'),reference_epoch=state_key[1],
+                               source_gap_s=snapshot.get('source_gap_s'),
+                               receipt_gap_s=snapshot.get('receipt_gap_s'),
+                               retarget_ms=snapshot.get('retarget_ms'),actions_sent=sent_count))
                 automatic_switch = False
                 if auto_pico and not tracking and elapsed >= preparation and snapshot.get('state') == 'ready':
                     try:
@@ -563,10 +576,12 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
                         write(dict(record_type='pico_switch_rejected', error=str(error), actions_sent=sent_count))
                     else:
                         tracking = True
+                        tracking_epoch = snapshot.get('reference_epoch',0)
                         print('PICO_TRACKING: same EXTERNAL session and policy history.', flush=True)
-                        write(dict(record_type='tracking_started', actions_sent=sent_count))
+                        write(dict(record_type='tracking_started',reference_epoch=tracking_epoch,actions_sent=sent_count))
             if manual and tracking:
-                motion, diagnostics = manual_reference(runtime, snapshot, clock.monotonic())
+                motion, diagnostics = manual_reference(runtime, snapshot, clock.monotonic(),
+                                                       expected_epoch=tracking_epoch)
                 command, obs, row = runtime.infer_motion_command(motion, q=q, dq=dq,
                     root=root, gyro=gyro, diagnostics=diagnostics)
             elif requires_pico and elapsed >= preparation:

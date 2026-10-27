@@ -14,7 +14,7 @@ import signal
 import subprocess
 import time
 
-from .actor_pico_reference import CausalActorReference, PicoOrientationRetargeter
+from .actor_pico_reference import CausalActorReference, PicoOrientationRetargeter, PicoReferenceGapError
 from .actor_pico_runtime import sdk_math
 
 
@@ -37,6 +37,7 @@ def _capture(root, config, contract, lower, upper, commands, output, stop):
     # process group so the parent can clean up even if vendor init blocks.
     os.setsid()
     service = pico = log = None
+    epoch = 0
     try:
         while not stop.is_set():
             try:
@@ -61,7 +62,7 @@ def _capture(root, config, contract, lower, upper, commands, output, stop):
                                    stdout=log, stderr=subprocess.STDOUT)
         pico = create_pico_source(logger=logging.getLogger('actor-manual-pico'), maximum_age=.1)
         pico.start()
-        _latest(output, dict(state='waiting_pico'))
+        _latest(output, dict(state='waiting_pico',reference_epoch=epoch))
         while not stop.is_set():
             if service.poll() is not None:
                 raise RuntimeError('Owned Pico service exited')
@@ -71,9 +72,22 @@ def _capture(root, config, contract, lower, upper, commands, output, stop):
                 begin = time.monotonic()
                 q, root_quat, residual = retarget.solve(body, robot_root=anchor)
                 received = float(metadata['timestamp_monotonic'])
-                reference.append(int(metadata['timestamp_ns']), q, root_quat,
-                                 received_monotonic=received)
+                stamp = int(metadata['timestamp_ns'])
+                gap_info = {}
+                try:
+                    reference.append(stamp, q, root_quat, received_monotonic=received)
+                except PicoReferenceGapError as error:
+                    # Keep the capture connection alive, but discard every
+                    # sample before the gap. Following pins this epoch and
+                    # cancels on a change, even if it misses 'collecting'.
+                    gap_info = dict(source_gap_s=error.gap_s,
+                        receipt_gap_s=received-reference.last_receive_monotonic)
+                    epoch += 1
+                    reference = CausalActorReference(contract, math_api,
+                        maximum_gap=config['reference_maximum_gap_s'])
+                    reference.append(stamp,q,root_quat,received_monotonic=received)
                 snapshot = dict(state='collecting', received_monotonic=received,
+                    reference_epoch=epoch,**gap_info,
                     pico_timestamp_ns=int(metadata['timestamp_ns']), ik_max_residual_rad=residual,
                     retarget_ms=(time.monotonic()-begin)*1000)
                 if reference.ready():
@@ -82,7 +96,7 @@ def _capture(root, config, contract, lower, upper, commands, output, stop):
                 _latest(output, snapshot)
             stop.wait(.005)
     except BaseException as error:
-        _latest(output, dict(state='failed', error=repr(error)))
+        _latest(output, dict(state='failed', error=repr(error),reference_epoch=epoch))
     finally:
         if pico is not None:
             pico.stop()

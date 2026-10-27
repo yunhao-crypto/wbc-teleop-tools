@@ -213,6 +213,14 @@ The sequence is:
    are rejected and not queued; source loss after handoff cancels without
    automatic motion retry/reconnection.
 
+Before following, a source timestamp gap over 100 ms discards the causal
+reference buffer and collects a new complete 200 ms window while keeping the
+Pico service/connection alive. It never interpolates across the gap or enables
+following automatically. Each reset advances a reference epoch; following pins
+that epoch and cancels on a change, even if the controller misses the temporary
+`collecting` snapshot. Other capture errors remain terminal. State-change logs
+include the source/receipt gap, retarget time and actual failure reason.
+
 The reference for the activation design is the user-selected
 `vt_human_v2_tracking_asample.yaml`: measured-pose reference, continuous policy
 inference, heading alignment, metadata-derived reference timing and stand hold
