@@ -8,8 +8,9 @@
 无需复制原开发目录的虚拟环境。
 
 当前提供模型检查、离线回放、实时输入影子推理，以及需现场确认的 EXTERNAL
-支撑测试入口。影子入口不申请控制权；`live` 会运动全身，先运行准备站姿参考，
-再跟踪 Pico。首次上机步骤与限制见 [actor/Pico 运行说明](README_ACTOR_PICO.md#supported-external-trial)。
+支撑测试入口。影子入口不申请控制权；`live` 会运动全身。`--stand-only` 无需 Pico；
+`--manual-pico` 可先运行 ONNX 站姿参考，再在同一会话手动接入 Pico。
+首次上机步骤与限制见 [actor/Pico 运行说明](README_ACTOR_PICO.md#supported-external-trial)。
 
 ## 在 Vita02A / S100 上部署
 

@@ -51,6 +51,28 @@ class Pico:
                             timestamp_monotonic=self.clock.monotonic())
 
 
+class ManualPico:
+    def __init__(self, runtime, clock):
+        self.runtime, self.clock = runtime, clock
+        self.connected = False
+        self.fault = None
+
+    def connect(self, root):
+        if self.connected: return False
+        self.connected = True
+        return True
+
+    def snapshot(self):
+        if self.fault: return self.fault()
+        if not self.connected: return dict(state='idle')
+        r = self.runtime
+        n = r.reference.steps
+        return dict(state='ready', received_monotonic=self.clock.monotonic(),
+            q=np.repeat(r.model.contract.default[None], n, axis=0),
+            base=np.zeros((n, 3)), quat=np.tile([1., 0., 0., 0.], (n, 1)),
+            retarget_ms=.1, ik_max_residual_rad=0.)
+
+
 class Loopback:
     """Feed PREPARE/COMMIT/CANCEL ACKs to the shipped PullController.
 
@@ -175,9 +197,121 @@ class LiveTests(unittest.TestCase):
 
     def test_stand_only_never_switches_to_pico_tracking(self):
         self.args.stand_only = True
+        self.pico.step = lambda:(_ for _ in ()).throw(AssertionError('Pico must not be polled'))
         result = self.run_trial()
         self.assertTrue(result['exit_confirmed'])
         self.assertFalse(any(r.get('stage') == 'pico_tracking' for r in self.rows))
+
+    def manual_trial(self, request_after=155):
+        self.args.manual_pico = True
+        self.args.seconds = 3.4
+        worker = ManualPico(self.runtime, self.clock)
+        def command():
+            n = len(self.transport.commands)
+            if n == 50: return 'connect'
+            if n == request_after: return 'track'
+            return None
+        return worker, command
+
+    def test_manual_mode_enters_stand_without_any_pico(self):
+        worker, _ = self.manual_trial()
+        result = self.run_trial(manual_pico=worker)
+        self.assertTrue(result['exit_confirmed'])
+        self.assertGreater(result['actions_sent'], 150)
+        self.assertFalse(worker.connected)
+        self.assertFalse(any(r.get('stage') == 'pico_tracking' for r in self.rows))
+
+    def test_manual_connect_does_not_switch_until_operator_requests(self):
+        worker, command = self.manual_trial(request_after=9999)
+        self.run_trial(manual_pico=worker, poll_command=command)
+        self.assertTrue(worker.connected)
+        self.assertFalse(any(r.get('stage') == 'pico_tracking' for r in self.rows))
+
+    def test_manual_switch_keeps_one_session_and_policy_history(self):
+        worker, command = self.manual_trial()
+        # A reset on switching would clear this deque and cause this audit to fail.
+        lengths=[]
+        original=self.runtime.policy.observe
+        def observe(*a, **kw):
+            lengths.append(len(self.runtime.policy.history))
+            return original(*a, **kw)
+        with patch.object(self.runtime.policy, 'observe', observe):
+            result=self.run_trial(manual_pico=worker, poll_command=command)
+        self.assertTrue(result['exit_confirmed'])
+        self.assertTrue(any(r.get('stage') == 'pico_tracking' for r in self.rows))
+        self.assertTrue(all(n == self.runtime.model.contract.history_length for n in lengths[-20:]))
+        self.assertEqual([r.operation.value for r in self.transport.requests], ['PREPARE','COMMIT','CANCEL'])
+        self.assertEqual([c.sequence for c in self.transport.commands], list(range(1,result['actions_sent']+1)))
+
+    def test_early_manual_switch_is_rejected_and_not_queued(self):
+        worker, command=self.manual_trial(request_after=100)
+        self.run_trial(manual_pico=worker, poll_command=command)
+        self.assertTrue(any(r.get('record_type')=='pico_switch_rejected' for r in self.rows))
+        self.assertFalse(any(r.get('stage')=='pico_tracking' for r in self.rows))
+
+    def test_pico_loss_after_manual_switch_cancels_instead_of_returning_to_stand(self):
+        worker, command=self.manual_trial()
+        def fault_after_publish(c):
+            if len(self.transport.commands)>160:
+                worker.fault=lambda:dict(state='failed',error='injected disconnect')
+        self.transport.after_publish=fault_after_publish
+        with self.assertRaisesRegex(ValueError,'not ready'):
+            self.run_trial(manual_pico=worker,poll_command=command)
+        self.assert_cancelled()
+        stages=[r['stage'] for r in self.rows if 'stage' in r]
+        self.assertEqual(stages[-1],'pico_tracking')
+
+    def test_real_capture_process_can_start_and_stop_without_pico(self):
+        from deployment.vita_s100_aorta_30dof.actor_pico_worker import PicoReferenceProcess
+        worker=PicoReferenceProcess(self.runtime)
+        worker.start()
+        try:
+            self.assertEqual(worker.snapshot()['state'],'idle')
+            self.assertFalse(worker.connected)
+        finally:
+            worker.close()
+        self.assertFalse(worker.process.is_alive())
+
+    def test_manual_stale_reference_rejects_switch_and_keeps_stand(self):
+        worker, command=self.manual_trial()
+        worker.fault=lambda:dict(state='ready',received_monotonic=self.clock.monotonic()-.2)
+        result=self.run_trial(manual_pico=worker,poll_command=command)
+        self.assertTrue(result['exit_confirmed'])
+        self.assertTrue(any(r.get('record_type')=='pico_switch_rejected' for r in self.rows))
+        self.assertFalse(any(r.get('stage')=='pico_tracking' for r in self.rows))
+
+    def test_manual_non_neutral_reference_is_never_queued(self):
+        worker, command=self.manual_trial()
+        original=worker.snapshot
+        def non_neutral():
+            snapshot=original()
+            if snapshot['state']=='ready':snapshot['q']=snapshot['q']+.2
+            return snapshot
+        with patch.object(worker,'snapshot',non_neutral):
+            self.run_trial(manual_pico=worker,poll_command=command)
+        self.assertTrue(any(r.get('record_type')=='pico_switch_rejected' for r in self.rows))
+        self.assertFalse(any(r.get('stage')=='pico_tracking' for r in self.rows))
+
+    def test_stand_cli_initializes_no_pico_service_or_reader(self):
+        from deployment.vita_s100_aorta_30dof import actor_pico_live,sdk021_guard,sdkmain_adapter,pico_input
+        spec=importlib.util.spec_from_file_location('actor_cli_no_pico_test',ROOT/'scripts/actor_pico.py')
+        cli=importlib.util.module_from_spec(spec);spec.loader.exec_module(cli)
+        profile=Path(self.tmp.name)/'peer.json5';profile.touch(mode=0o600);profile.write_text('{mode:"peer"}')
+        runtime=NS(root=Path(self.tmp.name),model=NS(backend='sdk'))
+        self.args.stand_only=True;self.args.manual_pico=False;self.args.group='default'
+        with (patch.dict(os.environ,ZENOH_SESSION_CONFIG_URI=str(profile)),
+              patch.object(cli.platform,'machine',return_value='aarch64'),
+              patch.object(sdk021_guard,'verify_vendor_sources',return_value={}),
+              patch.object(sdkmain_adapter,'verify_state_decoder'),
+              patch.object(sdkmain_adapter,'RealtimeBodyTransport',return_value=self.transport),
+              patch('locomotion_aorta.pull.PullController',return_value=self.controller),
+              patch.object(pico_input,'create_pico_source',side_effect=AssertionError('Pico reader forbidden')),
+              patch.object(cli.subprocess,'Popen',side_effect=AssertionError('Pico service forbidden')),
+              patch.object(actor_pico_live,'run_live',return_value={'actions_sent':0}) as runner):
+            result=cli.live(runtime,self.args,lambda *_:None)
+        self.assertEqual(result['actions_sent'],0)
+        self.assertIsNone(runner.call_args.args[4])
+        self.assertIsNone(runner.call_args.kwargs['manual_pico'])
 
     def test_confirmation_declined_has_no_control_request_or_command(self):
         def decline(*_): raise RuntimeError('declined')

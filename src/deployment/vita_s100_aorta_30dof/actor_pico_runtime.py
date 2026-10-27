@@ -105,6 +105,10 @@ class ActorPicoRuntime:
     def reset_inputs(self):
         """Discard shadow history, calibration and references before a new trial."""
         self.policy.reset()
+        self.reset_reference()
+
+    def reset_reference(self):
+        """Reset only Pico calibration/reference; preserve running policy history."""
         self.reference = CausalActorReference(self.model.contract, self.math,
                                               maximum_gap=self.config['reference_maximum_gap_s'])
         self.retarget = PicoOrientationRetargeter(

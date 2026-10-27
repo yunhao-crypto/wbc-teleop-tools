@@ -159,8 +159,10 @@ for unsupported standing/walking. Obtain authorization for the actual robot
 and motion; keep reliable support, clear motion/pinch zones, an attendant and
 a usable hardware emergency stop. The Pico wearer must stay neutral during
 preflight and the first three seconds after entry, then use small movements.
-The 200 ms reference delay remains. `--stand-only` still moves the whole body:
+The 200 ms reference delay remains for Pico following. `--stand-only` still moves the whole body:
 it runs the online actor with a default-stand reference, not a fixed pose.
+It requires no Pico device/service/reader. Body feedback and all control guards
+remain mandatory; an entry pose outside actor/hardware limits is rejected.
 
 After installing into a new S100 directory, run the existing `check` and
 bounded `shadow` commands first. Verify the matching robot release/schema,
@@ -187,9 +189,40 @@ bash scripts/start_actor_pico.sh live --seconds 10 \
   --robot-config /absolute/path/to/running/locomotion.yaml
 ```
 
-Both commands create SDK control handles but send no control request until
+To enter ONNX stand first and manually attach Pico in the **same EXTERNAL
+session**, use the separately armed interactive mode (on S100, from the actual
+deployment root on persistent `/userdata`, not overlay `/root`):
+
+```bash
+bash scripts/start_actor_pico.sh live --manual-pico --seconds 120 \
+  --robot-id '<actual robot identity>' --confirm-motion \
+  --robot-config /absolute/path/to/running/locomotion_foot_humanoid_asample_none.yaml
+```
+
+After preflight and `MOVE <actual robot identity>`, it runs default-stand ONNX
+inference without Pico. After at least three seconds of preparation, type
+`CONNECT <actual robot identity>` to start the owned Pico service/capture.
+Connect the calibrated headset and enable Full body/Send while keeping the
+wearer neutral. When `PICO_INPUT: ready` appears, type
+`PICO <actual robot identity>` to request following. A premature/stale/nonneutral
+request is rejected while stand continues; it is **not queued for automatic
+activation**. `CONNECT` by itself never starts following. Typed `STOP` or Ctrl-C
+cancels. The trial still expires at the specified application duration.
+
+Pico initialization and retargeting run in an isolated process so blocking
+vendor initialization cannot hold the control interpreter's GIL. The process
+starts idle, opens no robot controller, and initializes Pico only on CONNECT.
+Its bounded snapshot queue retains original source receipt timestamps. Switching
+preserves the policy history/last action and the SDK session/increasing sequence.
+After following begins, a stale/failed Pico input cancels the trial; there is
+no automatic reconnection or fallback motion. Full-loop timing and hardware
+handoff remain unmeasured until a separately authorized supported trial.
+
+These commands create SDK control handles but send no control request until
 fresh inputs, live RobotInfo, physical body actuators, gains and command limits
-pass preflight. The terminal displays the named model defaults and KP/KD,
+pass preflight. Only the immediate-following mode requires Pico during entry;
+stand-only and manual-Pico modes can enter with fresh body feedback alone.
+The terminal displays the named model defaults and KP/KD,
 fixed neck targets and config hash, then requires `MOVE <actual robot identity>`
 within 60 seconds as current on-site confirmation. No unattended confirmation
 flag is provided. The CLI identity is an operator label, not discovered robot

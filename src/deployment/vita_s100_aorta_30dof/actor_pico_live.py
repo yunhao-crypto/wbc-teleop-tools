@@ -158,8 +158,11 @@ class CommandEnvelope:
         runtime.policy.reset()
 
     def check_entry_pose(self, runtime, state, q):
-        if np.any(q < runtime.policy.lower) or np.any(q > runtime.policy.upper):
-            raise ValueError('Measured entry pose is outside actor limits; no clipping')
+        outside = np.flatnonzero((q < runtime.policy.lower) | (q > runtime.policy.upper))
+        if len(outside):
+            detail = '; '.join(f'{runtime.model.contract.names[i]} q={q[i]:.6f} '
+                f'allowed=[{runtime.policy.lower[i]:.6f}, {runtime.policy.upper[i]:.6f}]' for i in outside)
+            raise ValueError('Measured entry pose is outside actor limits; no clipping: '+detail)
         command, _ = runtime.policy.decode(np.zeros(28))
         command = replace(command, joints=tuple(replace(j, q=float(state.q[i])) if self.limits[i] else j
                                                for i, j in enumerate(command.joints)))
@@ -211,7 +214,7 @@ class Inputs:
     def read(self, timeout=0):
         state = self.controller.wait_state(timeout)
         q, dq, root, gyro = self.validate_state(state)
-        sample = self.pico.step()
+        sample = self.pico.step() if self.pico is not None else None
         if sample is not None:
             body, _, metadata = sample
             self.runtime.push_pico(body, int(metadata['timestamp_ns']),
@@ -253,7 +256,7 @@ def onsite_confirmation(robot_id, stop):
     """Require a current terminal response; CLI flags never replace attendance."""
     if not sys.stdin.isatty():
         raise RuntimeError('live requires an attended interactive terminal')
-    print(f'Robot: {robot_id}. This moves all body joints toward the actor stand, then follows Pico.\n'
+    print(f'Robot: {robot_id}. This moves body joints using the mode shown in ACTOR_LIVE_REVIEW.\n'
           'Confirm THIS robot has reliable support, clear motion/pinch zones, an attendant and usable E-stop.\n'
           'Confirm --robot-config is the running effective full A-sample config, and model gains were reviewed.\n'
           'EXTERNAL has no automatic expiry. CANCEL returns PASSIVE; loaded limbs may fall.\n'
@@ -267,8 +270,42 @@ def onsite_confirmation(robot_id, stop):
     raise RuntimeError('On-site confirmation interrupted/timed out')
 
 
+class TerminalCommands:
+    def __init__(self, robot_id, stop):
+        self.robot_id, self.stop = robot_id, stop
+
+    def poll(self):
+        if not select.select([sys.stdin], [], [], 0)[0]:
+            return None
+        line = sys.stdin.readline()
+        if not line or line.strip() == 'STOP':
+            self.stop.set()
+            return None
+        if line.strip() == 'CONNECT '+self.robot_id:
+            return 'connect'
+        if line.strip() == 'PICO '+self.robot_id:
+            return 'track'
+        print(f'Commands: CONNECT {self.robot_id}, PICO {self.robot_id}, STOP', flush=True)
+        return None
+
+
+def manual_reference(runtime, snapshot, now):
+    """Validate an immutable worker snapshot without touching policy history."""
+    if snapshot.get('state') != 'ready':
+        raise ValueError('Pico reference not ready: '+str(snapshot.get('state')))
+    age = now-float(snapshot['received_monotonic'])
+    if not 0 <= age <= PICO_AGE:
+        raise TimeoutError('Pico reference worker snapshot is stale/future')
+    motion = runtime.math.Motion(snapshot['q'], snapshot['base'], snapshot['quat'])
+    if len(motion.q) != runtime.reference.steps:
+        raise ValueError('Pico worker reference window length differs from model')
+    return motion, dict(pico_age_s=age, reference_delay_s=runtime.reference.delay,
+        retarget_ms=float(snapshot['retarget_ms']),
+        ik_max_residual_rad=float(snapshot['ik_max_residual_rad']))
+
+
 def run_live(runtime, args, write, controller, pico, stop, service_alive,
-             confirm=onsite_confirmation, clock=time):
+             confirm=onsite_confirmation, clock=time, manual_pico=None, poll_command=lambda:None):
     """One trial only. Every attempted entry is followed by checked CANCEL.
 
     Fake I/O in unit tests exercises this same runner; actual transport and
@@ -276,7 +313,11 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
     """
     params, receipt = load_robot_config(args.robot_config)
     envelope = CommandEnvelope(runtime, controller.get_robot_info(args.startup_timeout), params)
-    inputs, guard = Inputs(runtime, controller, pico, clock), StatusGuard(clock)
+    manual = bool(getattr(args, 'manual_pico', False))
+    requires_pico = not args.stand_only and not manual
+    inputs, guard = Inputs(runtime, controller, pico if requires_pico else None, clock), StatusGuard(clock)
+    if manual and manual_pico is None:
+        raise ValueError('Manual Pico mode requires an idle capture worker')
     runtime.reset_inputs()
     # Warm actual inference before taking ownership; erase its action history.
     runtime.infer_motion(runtime.math.Motion.hold(runtime.model.contract.default),
@@ -284,7 +325,7 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
     runtime.reset_inputs()
     preflight_deadline = clock.monotonic()+args.startup_timeout
     while not stop.is_set():
-        if not service_alive():
+        if requires_pico and not service_alive():
             raise RuntimeError('Pico service exited during preflight')
         if clock.monotonic() >= preflight_deadline:
             raise TimeoutError('Preflight did not receive fresh status, Body31 and complete Pico window')
@@ -296,12 +337,17 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
         status = controller.status
         if status is not None:
             guard.check(status)
-        if runtime.reference.ready() and status is not None:
-            inputs.require_pico()
+        if (not requires_pico or runtime.reference.ready()) and status is not None:
+            if requires_pico:
+                inputs.require_pico()
             envelope.check_entry_pose(runtime, state, q)
             started = clock.monotonic()
-            command, obs, row = runtime.infer_command(q=q, dq=dq, root=root, gyro=gyro,
-                now_monotonic=started, maximum_pico_age=PICO_AGE)
+            if requires_pico:
+                command, obs, row = runtime.infer_command(q=q, dq=dq, root=root, gyro=gyro,
+                    now_monotonic=started, maximum_pico_age=PICO_AGE)
+            else:
+                command, obs, row = runtime.infer_motion_command(runtime.math.Motion.hold(
+                    runtime.model.contract.default), q=q, dq=dq, root=root, gyro=gyro)
             envelope.check(command)
             if clock.monotonic()-started > COMPUTE_BUDGET:
                 raise TimeoutError('Preflight inference exceeds 20 ms budget')
@@ -315,6 +361,7 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
     print('ACTOR_LIVE_REVIEW '+json.dumps(dict(robot_id=args.robot_id,
         model=runtime.config['artifacts']['model'], config=receipt,
         stand_only=args.stand_only, seconds=args.seconds,
+        manual_pico=manual,
         default_pose=dict(zip(runtime.model.contract.names, runtime.model.contract.default.tolist())),
         kp=dict(zip(runtime.model.contract.names, runtime.model.contract.kp.tolist())),
         kd=dict(zip(runtime.model.contract.names, runtime.model.contract.kd.tolist())),
@@ -328,7 +375,8 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
     runtime.reset_inputs()
     state, q, _, _, _ = inputs.read(STATE_AGE)
     envelope.check_entry_pose(runtime, state, q)
-    inputs.require_pico()
+    if requires_pico:
+        inputs.require_pico()
     guard = StatusGuard(clock)
     guard.check(controller.status)
     attempted, sent_count = False, 0
@@ -347,7 +395,8 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
         write(dict(record_type='external_entered', status=status_row(entered), actions_sent=0))
         runtime.reset_inputs()
         state, q, dq, root, gyro = inputs.read(0)
-        inputs.require_pico()
+        if requires_pico:
+            inputs.require_pico()
         envelope.check_entry_pose(runtime, state, q)
         lead = runtime.math.Motion.hold(runtime.model.contract.default).lead_in(
             q, root, runtime.config['body_profile']['lead_in'])
@@ -357,8 +406,12 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
         preparation = max(3., (len(lead.q)-1)*runtime.model.contract.period)
         start = deadline = clock.monotonic()
         tracking = False
+        if manual:
+            print(f'ONNX_STAND: no Pico required. After preparation: CONNECT {args.robot_id}; '
+                  f'keep wearer neutral, then PICO {args.robot_id}. STOP or Ctrl-C cancels.', flush=True)
+        previous_pico_state = None
         while not stop.is_set() and clock.monotonic()-start < args.seconds:
-            if not service_alive():
+            if requires_pico and not service_alive():
                 raise RuntimeError('Pico service exited')
             clock.sleep(max(0., deadline-clock.monotonic()))
             if stop.is_set() or clock.monotonic()-start >= args.seconds:
@@ -366,9 +419,42 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
             cycle = clock.monotonic()
             guard.check(controller.status, entered)
             state, q, dq, root, gyro = inputs.read(0)
-            inputs.require_pico()
+            if requires_pico:
+                inputs.require_pico()
             elapsed = cycle-start
-            if not args.stand_only and elapsed >= preparation:
+            snapshot = None
+            if manual:
+                request = poll_command()
+                if request == 'connect':
+                    if manual_pico.connect(root):
+                        print('PICO_CONNECTING: ONNX stand continues; stand neutral for calibration.', flush=True)
+                        write(dict(record_type='pico_connect_requested', actions_sent=sent_count))
+                snapshot = manual_pico.snapshot()
+                state_name = snapshot.get('state')
+                if state_name != previous_pico_state:
+                    previous_pico_state = state_name
+                    print(f'PICO_INPUT: {state_name}; ONNX '+('tracking' if tracking else 'stand'), flush=True)
+                    write(dict(record_type='pico_input_state', state=state_name,
+                               error=snapshot.get('error'), actions_sent=sent_count))
+                if request == 'track' and not tracking:
+                    try:
+                        if elapsed < preparation:
+                            raise ValueError('Stand preparation has not completed')
+                        motion, _ = manual_reference(runtime, snapshot, clock.monotonic())
+                        if np.max(np.abs(motion.q-runtime.model.contract.default)) > NEUTRAL_TOLERANCE:
+                            raise ValueError('Pico wearer must be neutral across the complete reference window')
+                    except (ValueError, TimeoutError) as error:
+                        print(f'PICO_SWITCH_REJECTED: {error}; ONNX stand continues. No switch is queued.', flush=True)
+                        write(dict(record_type='pico_switch_rejected', error=str(error), actions_sent=sent_count))
+                    else:
+                        tracking = True
+                        print('PICO_TRACKING: same EXTERNAL session and policy history.', flush=True)
+                        write(dict(record_type='tracking_started', actions_sent=sent_count))
+            if manual and tracking:
+                motion, diagnostics = manual_reference(runtime, snapshot, clock.monotonic())
+                command, obs, row = runtime.infer_motion_command(motion, q=q, dq=dq,
+                    root=root, gyro=gyro, diagnostics=diagnostics)
+            elif requires_pico and elapsed >= preparation:
                 if not tracking:
                     if not runtime.reference.ready():
                         raise TimeoutError('Pico reference window not ready after preparation')
@@ -393,7 +479,14 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
             if clock.monotonic()-cycle > COMPUTE_BUDGET:
                 raise TimeoutError('State/retarget/inference exceeds 20 ms; target not published')
             inputs.fresh(state)
-            inputs.require_pico()
+            if requires_pico:
+                inputs.require_pico()
+            if manual and tracking:
+                # Recheck source age immediately before publishing; do not
+                # continue stand or reconnect automatically after tracking loss.
+                age = clock.monotonic()-float(snapshot['received_monotonic'])
+                if not 0 <= age <= PICO_AGE:
+                    raise TimeoutError('Pico reference expired before publication')
             guard.check(controller.status, entered)
             if stop.is_set():
                 break
@@ -410,6 +503,8 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
                 session_id=sent.session_id, sequence=sent.sequence,
                 publish_ms=(clock.monotonic()-before)*1000,
                 sent_body_targets=[dict(q=j.q, dq=j.dq, tau=j.tau, kp=j.kp, kd=j.kd) for j in sent.joints]), obs)
+            if sent_count % 50 == 0:
+                print(f'ONNX_LIVE steps={sent_count} stage='+('pico_tracking' if tracking else 'stand'), flush=True)
             deadline += runtime.model.contract.period
             if clock.monotonic() > deadline+1e-9:
                 raise TimeoutError('Complete policy cycle including publish/log exceeded 20 ms; no catch-up/retry')

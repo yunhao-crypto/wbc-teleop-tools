@@ -29,7 +29,8 @@ def main():
     actor['files'] = [item for item in actor['files'] if item['path'] != model['path']]
     actor['external_resources'] = [external]
     actor['scope'] = 'inference checks and explicitly armed supported EXTERNAL trials; hardware not_measured'
-    for name in ('src/deployment/vita_s100_aorta_30dof/actor_pico_live.py', 'tests/test_actor_pico_live.py'):
+    for name in ('src/deployment/vita_s100_aorta_30dof/actor_pico_live.py',
+                 'src/deployment/vita_s100_aorta_30dof/actor_pico_worker.py', 'tests/test_actor_pico_live.py'):
         if not any(item['path'] == name for item in actor['files']):
             actor['files'].append(dict(path=name))
     for item in actor['files']:
@@ -44,6 +45,7 @@ def main():
                 'config/actor_pico.json', 'config/sdk021-wheel-guard.json',
                 'scripts/bootstrap_actor_s100.py', 'scripts/start_actor_pico.sh',
                 'src/deployment/vita_s100_aorta_30dof/actor_pico_live.py',
+                'src/deployment/vita_s100_aorta_30dof/actor_pico_worker.py',
                 'tests/test_actor_pico_live.py',
                 'third_party/pico_binding/bindings/py_bindings.cpp',
                 'third_party/pico_binding/bindings/body_pose_snapshot.h',
@@ -63,7 +65,7 @@ def main():
     missing = set(required)-set(names)
     if missing:
         raise RuntimeError('Stage these required delivery files first: '+', '.join(sorted(missing)))
-    record = dict(schema='vita_actor_s100_delivery_v1', version='2026.10.27-actor3',
+    record = dict(schema='vita_actor_s100_delivery_v1', version='2026.10.27-actor4',
                   target=dict(os='Linux', architecture='aarch64', python='3.10', glibc_min='2.35'),
                   scope='offline/shadow checks and explicitly armed supported EXTERNAL trials; hardware not_measured',
                   required_inputs=required, external_resources=[external], archives=archives,
