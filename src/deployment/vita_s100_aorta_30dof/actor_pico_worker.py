@@ -38,6 +38,8 @@ def _capture(root, config, contract, lower, upper, commands, output, stop, contr
     # All descendants (including the owned vendor service) belong to this
     # process group so the parent can clean up even if vendor init blocks.
     os.setsid()
+    from .actor_pico_scheduling import input_worker_scheduler
+    input_worker_scheduler()
     service = pico = log = buttons = source_log = None
     last_source_stamp = 0
     try:

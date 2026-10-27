@@ -6,8 +6,8 @@
   "files": [
     {
       "path": "README_ACTOR_PICO.md",
-      "sha256": "45aa0b3f30d0eede975ef9593955a873d15789646dbfa087c64951c213176e94",
-      "bytes": 27408,
+      "sha256": "6c13e4c63e03ba7bbe4893c85b0ed75a5177e52d3919cead014e443f7e444a41",
+      "bytes": 28216,
       "mode": "0o644"
     },
     {
@@ -18,8 +18,8 @@
     },
     {
       "path": "scripts/actor_pico.py",
-      "sha256": "40b62d65b1f2780268f4f72d4c59a46e7e3e5511f68fd2624ba488645a9cb691",
-      "bytes": 22575,
+      "sha256": "fff1ce68f78955bd0e9d66c87d507c9750cdaa6545eaa7bcab5db9403d7c4311",
+      "bytes": 22736,
       "mode": "0o755"
     },
     {
@@ -72,20 +72,20 @@
     },
     {
       "path": "src/deployment/vita_s100_aorta_30dof/actor_pico_live.py",
-      "sha256": "06dacd4608a640d34526f91d18f8ce3292be46fae5ed084dcb9dd4cc72d4d84d",
-      "bytes": 40397,
+      "sha256": "0dd2e8abd10254a7f4c1cdc935e3a2bdc2267a61ddb3602483b81b4db60c035d",
+      "bytes": 41421,
       "mode": "0o644"
     },
     {
       "path": "tests/test_actor_pico_live.py",
-      "sha256": "28ebab5083aa047bf0ceb4348d8061bff81e50c5a73c17ac46eadd16dcc204b7",
-      "bytes": 72325,
+      "sha256": "42fa4fb01d0204b4a777035455740abd6ed887d9df038324aea5b75f54127a33",
+      "bytes": 75426,
       "mode": "0o644"
     },
     {
       "path": "src/deployment/vita_s100_aorta_30dof/actor_pico_worker.py",
-      "sha256": "6367f2b93725da66e0ea873df0037e3bd14e63c71f0994b5c9e2657d072d54f4",
-      "bytes": 7882,
+      "sha256": "ecf7d6a0510e276335cac613b1832917463d67bc5edbf5c452bc62d6438c2215",
+      "bytes": 7973,
       "mode": "0o644"
     },
     {
@@ -194,6 +194,12 @@
       "path": "third_party/motion_stream_bridge/motion_stream_bridge/gmr_lite/robots/vita02a/vita02a_nomesh.xml",
       "sha256": "53e87f274a726e64fe36403be7b24aacb283fb954a4b7c71d877b08f3124769b",
       "bytes": 35827,
+      "mode": "0o644"
+    },
+    {
+      "path": "src/deployment/vita_s100_aorta_30dof/actor_pico_scheduling.py",
+      "sha256": "eecfcc1ee5e70cf67edf8faeb2b8dc8c6d46370bbe31356c0ee723a1eb21c68b",
+      "bytes": 857,
       "mode": "0o644"
     }
   ],

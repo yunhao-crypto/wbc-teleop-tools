@@ -209,6 +209,19 @@ The sequence is:
    are rejected and not queued; source loss after handoff cancels without
    automatic motion retry/reconnection.
 
+The live control thread uses the original onboard HoloMotion entry's
+`SCHED_RR` priority 1. This is process-local; no robot service priorities or
+persistent motor/network settings are changed. The isolated GMR input process
+explicitly uses `SCHED_OTHER`, so it and the vendor service do not inherit the
+control priority. Linux scheduling permission is required before any control
+handle is created; failure stops startup rather than silently falling back.
+
+Body31 remains limited to 100 ms at read and again before publication. Fault
+messages include source, publication and local receipt ages. A
+`body_state_age_failure` record captures ages at read and at failure, plus
+compute/policy time; the stale command is never published. No stale-command
+retry, automatic re-entry or threshold extension is added.
+
 Input checks follow the original HoloMotion deployment's
 `config/vita02a_s100.yaml`: robot feedback age is 100 ms; Pico source/reference
 age is 600 ms (`config/actor_pico.json:pico_max_age_s`), also used for controller

@@ -237,6 +237,8 @@ def live(runtime, args, write):
     load_robot_config(args.robot_config)  # Fail before any control/Pico handle.
     verify_vendor_sources()
     verify_state_decoder()
+    from deployment.vita_s100_aorta_30dof.actor_pico_scheduling import control_scheduler
+    write(dict(record_type='control_scheduler', **control_scheduler()))
     stop = threading.Event()
     previous = {n:signal.signal(n, lambda *_:stop.set()) for n in (signal.SIGINT, signal.SIGTERM)}
     sdk = runtime.root/'vendor_packages/xrobotoolkit-arm64/opt/apps/roboticsservice'

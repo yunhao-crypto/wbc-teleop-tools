@@ -457,6 +457,7 @@ class LiveTests(unittest.TestCase):
               patch.object(cli.platform,'machine',return_value='aarch64'),
               patch.object(sdk021_guard,'verify_vendor_sources',return_value={}),
               patch.object(sdkmain_adapter,'verify_state_decoder'),
+              patch('deployment.vita_s100_aorta_30dof.actor_pico_scheduling.control_scheduler',return_value={'policy':'SCHED_RR','priority':1}),
               patch.object(sdkmain_adapter,'RealtimeBodyTransport',return_value=self.transport),
               patch('locomotion_aorta.pull.PullController',return_value=self.controller),
               patch.object(pico_input,'create_pico_source',side_effect=AssertionError('Pico reader forbidden')),
@@ -517,6 +518,34 @@ class LiveTests(unittest.TestCase):
         with self.assertRaisesRegex(TimeoutError, 'source is stale'): self.run_trial()
         self.assertEqual(len(self.transport.commands), 1)
         self.assert_cancelled()
+
+    def test_feedback_that_expires_during_inference_is_not_published(self):
+        self.args.stand_only = True
+        original = self.runtime.model.infer
+        def delayed(observation):
+            action = original(observation)
+            if self.transport.commands:
+                self.clock.sleep(.085)
+            return action
+        self.transport.state_fault = lambda state: replace(state,
+            ts_state_real_us=state.ts_state_real_us-20_000) if self.transport.commands else state
+        with patch.object(self.runtime.model,'infer',delayed):
+            with self.assertRaisesRegex(TimeoutError,'source_age_ms=105.000'):
+                self.run_trial()
+        self.assertEqual(len(self.transport.commands),1)
+        failure = next(r for r in self.rows if r.get('record_type')=='body_state_age_failure')
+        self.assertEqual(failure['at_read']['source_age_ms'],20.)
+        self.assertEqual(failure['at_failure']['source_age_ms'],105.)
+        self.assertEqual(failure['at_failure']['receipt_age_ms'],85.)
+        self.assert_cancelled()
+
+    def test_feedback_future_clock_error_reports_signed_age(self):
+        from deployment.vita_s100_aorta_30dof.actor_pico_live import Inputs
+        inputs = Inputs(self.runtime,self.controller,None,self.clock)
+        state = self.transport.wait_state()
+        with self.assertRaisesRegex(TimeoutError,'source_age_ms=-6.000'):
+            inputs.fresh(replace(state,ts_state_real_us=state.ts_state_real_us+6000))
+        self.assertEqual(self.transport.commands,[])
 
     def test_stale_pico_after_entry_cancels_without_retry(self):
         self.transport.after_publish = lambda c:setattr(self.pico, 'fault', lambda:None)
@@ -1357,6 +1386,29 @@ class LocalStartTests(unittest.TestCase):
                       '--confirm-motion','--root',str(self.root),*tail])):
                 cli.main()
             self.assertEqual(captured[0].seconds,expected)
+
+
+class SchedulingTests(unittest.TestCase):
+    def test_control_priority_matches_original_operator(self):
+        from deployment.vita_s100_aorta_30dof import actor_pico_scheduling as sched
+        with (patch.object(sched.os,'sched_setscheduler') as set_policy,
+              patch.object(sched.os,'sched_getscheduler',return_value=os.SCHED_RR),
+              patch.object(sched.os,'sched_getparam',return_value=os.sched_param(1))):
+            self.assertEqual(sched.control_scheduler(),{'policy':'SCHED_RR','priority':1})
+        self.assertEqual(set_policy.call_args.args[0:2],(0,os.SCHED_RR))
+        self.assertEqual(set_policy.call_args.args[2].sched_priority,1)
+
+    def test_gmr_worker_does_not_inherit_control_priority(self):
+        from deployment.vita_s100_aorta_30dof import actor_pico_scheduling as sched
+        with patch.object(sched.os,'sched_setscheduler') as set_policy:
+            sched.input_worker_scheduler()
+        self.assertEqual(set_policy.call_args.args[0:2],(0,os.SCHED_OTHER))
+        self.assertEqual(set_policy.call_args.args[2].sched_priority,0)
+
+    def test_missing_realtime_permission_is_a_startup_error(self):
+        from deployment.vita_s100_aorta_30dof import actor_pico_scheduling as sched
+        with patch.object(sched.os,'sched_setscheduler',side_effect=PermissionError('not permitted')):
+            with self.assertRaises(PermissionError):sched.control_scheduler()
 
 
 if __name__ == '__main__': unittest.main()

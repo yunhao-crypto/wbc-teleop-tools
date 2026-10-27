@@ -210,14 +210,22 @@ class Inputs:
         self.previous_stamp = state.ts_state_real_us
         return self.runtime.policy.state(state)
 
+    def ages(self, state):
+        now_ns, wall_ns = round(self.clock.monotonic()*1e9), self.clock.time_ns()
+        return dict(receipt_age_ms=(now_ns-state.received_monotonic_ns)/1e6,
+                    source_age_ms=(wall_ns-state.ts_state_real_us*1000)/1e6,
+                    publication_age_ms=(wall_ns-state.ts_state_pub_us*1000)/1e6)
+
     def fresh(self, state):
-        now, wall = self.clock.monotonic(), self.clock.time_ns()/1e9
-        age = now-state.received_monotonic_ns/1e9
-        if not 0 <= age <= STATE_AGE:
-            raise TimeoutError('BodyState local receipt is stale/future')
-        for stamp in (state.ts_state_real_us, state.ts_state_pub_us):
-            if stamp <= 0 or not -.005 <= wall-stamp/1e6 <= STATE_AGE:
-                raise TimeoutError('BodyState source is stale or S100 clock contract differs')
+        ages = self.ages(state)
+        detail = ', '.join(f'{k}={v:.3f}' for k,v in ages.items())
+        detail += f', state_id={state.state_id}, limit_ms={STATE_AGE*1000:g}'
+        if not 0 <= ages['receipt_age_ms'] <= STATE_AGE*1000:
+            raise TimeoutError('BodyState local receipt is stale/future: '+detail)
+        for stamp, age in ((state.ts_state_real_us, ages['source_age_ms']),
+                           (state.ts_state_pub_us, ages['publication_age_ms'])):
+            if stamp <= 0 or not -5 <= age <= STATE_AGE*1000:
+                raise TimeoutError('BodyState source is stale or S100 clock contract differs: '+detail)
 
     def read(self, timeout=0):
         state = self.controller.wait_state(timeout)
@@ -526,6 +534,7 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
             guard.check(controller.status, entered)
             status_end = clock.monotonic()
             state, q, dq, root, gyro = inputs.read(0)
+            state_age_at_read = inputs.ages(state)
             state_end = clock.monotonic()
             if requires_pico:
                 inputs.require_pico()
@@ -638,7 +647,15 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
                 status_ms=(status_end-cycle)*1000,state_ms=(state_end-status_end)*1000,
                 policy_ms=row.get('total_ms'),
                 thread_cpu_ms=(cpu_clock()-cpu_start)*1000 if cpu_start is not None else None)
-            inputs.fresh(state)
+            try:
+                inputs.fresh(state)
+            except TimeoutError as error:
+                write(dict(record_type='body_state_age_failure',phase='before_publish',
+                    state_id=int(state.state_id),actions_sent=sent_count,
+                    at_read=state_age_at_read,at_failure=inputs.ages(state),
+                    compute_ms=(compute_end-cycle)*1000,
+                    policy_ms=row.get('total_ms'),error=str(error)))
+                raise
             if requires_pico:
                 inputs.require_pico()
             if manual and tracking:
