@@ -23,3 +23,10 @@ The prebuilt Python 3.10 ARM64 binding is also delivered, so a normal deployment
 does not require a compiler. `bootstrap_actor_s100.py --build-pico` rebuilds the
 binding and double-conversion on S100 from these tracked sources; it requires
 `g++` and the matching Python development headers on the target OS.
+
+`motion_stream_bridge/` contains the unchanged Vita02A GMR solver, geometry
+helpers, coordinate transform, JSON tuning and mesh-free robot XML from commit
+`763f5607c3f0accb61a415cfd676af54b72e1232`. `SOURCE.json` records every original
+file hash. No Aorta transport, action requester or bridge service is included.
+GMR's upstream MIT license is retained as `GMR-LICENSE`; original file comments
+retain the bridge modifications' provenance.

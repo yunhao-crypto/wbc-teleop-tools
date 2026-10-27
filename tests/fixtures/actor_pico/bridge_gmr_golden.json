@@ -1,0 +1,8 @@
+{
+  "source_commit": "763f5607c3f0accb61a415cfd676af54b72e1232",
+  "source_path": "/host/motion-stream-bridge",
+  "frames": 48,
+  "human_height_m": 1.6,
+  "sha256": "cc59d71d66cc6ff632ed7933099320aaea07b4c11178d3f764f773edf647c193",
+  "scope": "Synthetic original bridge raw Pico -> GMR qpos oracle; does not measure live Pico accuracy or physical stability"
+}

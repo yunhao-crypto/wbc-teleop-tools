@@ -1,41 +1,62 @@
 {
   "schema": "vita_actor_s100_delivery_v1",
-  "version": "2026.10.23-actor1",
+  "version": "2026.10.27-actor21-delivery",
   "target": {
     "os": "Linux",
     "architecture": "aarch64",
     "python": "3.10",
     "glibc_min": "2.35"
   },
-  "scope": "offline model check and live-input shadow inference; no actuation",
+  "scope": "offline/shadow checks and explicitly armed supported EXTERNAL trials; hardware not_measured",
   "required_inputs": [
     "artifacts/output_envelopes.motion.urdf",
     "config/actor_pico.json",
     "config/sdk021-wheel-guard.json",
     "scripts/bootstrap_actor_s100.py",
+    "scripts/configure_actor_s100.py",
     "scripts/start_actor_pico.sh",
+    "src/deployment/vita_s100_aorta_30dof/actor_pico_live.py",
+    "src/deployment/vita_s100_aorta_30dof/actor_pico_local.py",
+    "src/deployment/vita_s100_aorta_30dof/actor_pico_startup.py",
+    "src/deployment/vita_s100_aorta_30dof/actor_pico_worker.py",
+    "src/deployment/vita_s100_aorta_30dof/actor_pico_buttons.py",
+    "tests/test_actor_pico_live.py",
     "third_party/pico_binding/bindings/py_bindings.cpp",
     "third_party/pico_binding/bindings/body_pose_snapshot.h",
+    "third_party/pico_binding/bindings/controller_trigger_snapshot.h",
     "third_party/pico_binding/include/PXREARobotSDK.h",
     "third_party/double-conversion/double-conversion/double-to-string.cc",
     "tests/fixtures/actor_pico/pico_replay.npz",
     "deploy/actor_s100/requirements.txt",
+    "deploy/actor_s100/wheelhouse/absl_py-2.5.1-py3-none-any.whl",
     "deploy/actor_s100/wheelhouse/aorta_msgs-2026.10.20-py3-none-any.whl",
     "deploy/actor_s100/wheelhouse/aorta_sdk-2026.10.20-py3-none-linux_aarch64.whl",
+    "deploy/actor_s100/wheelhouse/daqp-0.10.3-cp310-cp310-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl",
+    "deploy/actor_s100/wheelhouse/etils-1.13.0-py3-none-any.whl",
     "deploy/actor_s100/wheelhouse/flatbuffers-25.12.19-py2.py3-none-any.whl",
+    "deploy/actor_s100/wheelhouse/fsspec-2026.9.0-py3-none-any.whl",
+    "deploy/actor_s100/wheelhouse/glfw-2.11.0-py2.py3-none-manylinux_2_28_aarch64.whl",
+    "deploy/actor_s100/wheelhouse/importlib_resources-7.1.0-py3-none-any.whl",
     "deploy/actor_s100/wheelhouse/locomotion_aorta-0.2.1-cp310-cp310-manylinux_2_35_aarch64.whl",
+    "deploy/actor_s100/wheelhouse/mink-1.3.0-cp310-cp310-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl",
+    "deploy/actor_s100/wheelhouse/mujoco-3.11.0-cp310-cp310-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl",
     "deploy/actor_s100/wheelhouse/numpy-1.26.4-cp310-cp310-manylinux_2_17_aarch64.manylinux2014_aarch64.whl",
     "deploy/actor_s100/wheelhouse/pybind11-2.13.6-py3-none-any.whl",
+    "deploy/actor_s100/wheelhouse/pyopengl-3.1.10-py3-none-any.whl",
     "deploy/actor_s100/wheelhouse/pyyaml-6.0.3-py3-none-any.whl",
+    "deploy/actor_s100/wheelhouse/qpsolvers-4.13.0-py3-none-any.whl",
+    "deploy/actor_s100/wheelhouse/scipy-1.15.3-cp310-cp310-manylinux_2_17_aarch64.manylinux2014_aarch64.whl",
+    "deploy/actor_s100/wheelhouse/typing_extensions-4.16.0-py3-none-any.whl",
     "deploy/actor_s100/wheelhouse/vbot_humanoid_msgs-0.1.5-py3-none-any.whl",
+    "deploy/actor_s100/wheelhouse/zipp-4.1.2-py3-none-any.whl",
     "deploy/actor_s100/runtime/pico_service_arm64.tar.gz",
     "deploy/actor_s100/runtime/pico_binding_cp310_aarch64.tar.gz"
   ],
   "external_resources": [
     {
       "path": "artifacts/actor_g1/actor_g1.onnx",
-      "sha256": "f0dfa04684b4f8967623ddbcf8ede8ef3d862d0b403e9e3659e2a519eade6fae",
-      "bytes": 57754800,
+      "sha256": "a341391a346e050caf11c40c6989336c658c445e3e124f12dcbe292d91324474",
+      "bytes": 57652911,
       "provision": "Supply separately using bootstrap_actor_s100.py --model"
     }
   ],
@@ -70,23 +91,23 @@
     },
     {
       "path": ".gitignore",
-      "bytes": 1242,
-      "sha256": "e58a4385d0a4110b856640d3832d8d3d976cc013b366cb27fb5d8c25cbb5563b"
+      "bytes": 1292,
+      "sha256": "d9f41fa0d108bc7e13ab0af698b59fc6e82c51a61950b018ede9d402f64aaa30"
     },
     {
       "path": "ACTOR-PICO-MANIFEST.json",
-      "bytes": 3166,
-      "sha256": "71d963bfa34d62a198b568e38213f151a521ac22073238f964d5507d7bc57955"
+      "bytes": 8396,
+      "sha256": "6c16a1d5bcbda256041f549c24cc4055149093c511a8f5fa6a24b5c35f2334c3"
     },
     {
       "path": "README.md",
-      "bytes": 4947,
-      "sha256": "5182739bf29d7290826e9cfe564f58a56e38277d9477590cbbc287585214aa1e"
+      "bytes": 6131,
+      "sha256": "eea362831ae6abe6ecb364c6f20309ccd1ac13e215dbed9df9232168095ec021"
     },
     {
       "path": "README_ACTOR_PICO.md",
-      "bytes": 8986,
-      "sha256": "81cd14e2cd56ef08d6520849d205d8b4bedbafe4a82cd319e90fb22d86945ef6"
+      "bytes": 28893,
+      "sha256": "70175712253bc8a8cdaf5852b6de8e1d812f551cce886879b453e87f4bf1469a"
     },
     {
       "path": "artifacts/model_motion/pools_nk/manifest.json",
@@ -130,8 +151,8 @@
     },
     {
       "path": "config/actor_pico.json",
-      "bytes": 6081,
-      "sha256": "9f339c047248e60f9b2c2192bb1446b2760a73df9a03b18590292159d3208b88"
+      "bytes": 6549,
+      "sha256": "3398a2e4b5669ffd957221061c03652b34e7ead536a46163087d3858b5deef47"
     },
     {
       "path": "config/motion_groups.json",
@@ -145,23 +166,33 @@
     },
     {
       "path": "deploy/actor_s100/README.md",
-      "bytes": 5471,
-      "sha256": "adf5b8a2d3f1d3e3e60dc321f29a24c1c183eb2381819a707484d00340bf6c57"
+      "bytes": 9705,
+      "sha256": "5d58586010cabb905cf53257159c541e295eecb55061ce32a634d451ea3924fb"
+    },
+    {
+      "path": "deploy/actor_s100/requirements-host-check.txt",
+      "bytes": 220,
+      "sha256": "11f919829b6b4560f51842bd14a9bb464d27829ecab04f9682194fb45fb8d046"
     },
     {
       "path": "deploy/actor_s100/requirements.txt",
-      "bytes": 162,
-      "sha256": "e26b770bc7a776a651469e288b21d981cb779dfbca1f2dd210bfcab3d422622e"
+      "bytes": 303,
+      "sha256": "0ce288931f91965bb09fb001ff0ed8850823c0ff49589d12b486aae2fd9ae654"
     },
     {
       "path": "deploy/actor_s100/runtime/pico_binding_cp310_aarch64.tar.gz",
-      "bytes": 183245,
-      "sha256": "23ee283dbf4786729d483a0ac3807d78cd4ab326b0584f52fdf9bc426ba96bdc"
+      "bytes": 185640,
+      "sha256": "8a96227fbc14ebe2bb36ea5999a13e6bd24b8b59d940fadd1f2883581d76bea7"
     },
     {
       "path": "deploy/actor_s100/runtime/pico_service_arm64.tar.gz",
       "bytes": 59039511,
       "sha256": "b2ea3d47fecd6e988427c0e1a9d56cba47b58aae0d1cccd20aaff55a778401b1"
+    },
+    {
+      "path": "deploy/actor_s100/wheelhouse/absl_py-2.5.1-py3-none-any.whl",
+      "bytes": 137673,
+      "sha256": "721200f2f0e9960f2ca9dc3a2a706b201f5f75d812c158f059cbbe29eeafbdb8"
     },
     {
       "path": "deploy/actor_s100/wheelhouse/aorta_msgs-2026.10.20-py3-none-any.whl",
@@ -174,14 +205,49 @@
       "sha256": "559f8c22871fda131e6d706fa9dd5edc4b07fa3297cf42f51a844318bf9ff7ba"
     },
     {
+      "path": "deploy/actor_s100/wheelhouse/daqp-0.10.3-cp310-cp310-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl",
+      "bytes": 1024160,
+      "sha256": "1f215319aca97cda3f484bb08fb5f6ff74c1ade80b68a52df31060a9a9964a5e"
+    },
+    {
+      "path": "deploy/actor_s100/wheelhouse/etils-1.13.0-py3-none-any.whl",
+      "bytes": 170603,
+      "sha256": "d9cd4f40fbe77ad6613b7348a18132cc511237b6c076dbb89105c0b520a4c6bb"
+    },
+    {
       "path": "deploy/actor_s100/wheelhouse/flatbuffers-25.12.19-py2.py3-none-any.whl",
       "bytes": 26661,
       "sha256": "7634f50c427838bb021c2d66a3d1168e9d199b0607e6329399f04846d42e20b4"
     },
     {
+      "path": "deploy/actor_s100/wheelhouse/fsspec-2026.9.0-py3-none-any.whl",
+      "bytes": 221738,
+      "sha256": "8dd6e646e99ea382bd85f97a45e6b526a442d79423a7dc673f1e2756d05fcb5f"
+    },
+    {
+      "path": "deploy/actor_s100/wheelhouse/glfw-2.11.0-py2.py3-none-manylinux_2_28_aarch64.whl",
+      "bytes": 236068,
+      "sha256": "e2f6be6bb463f98b7468386ec2e5328ee5975800580c28816ec549b4c62825c4"
+    },
+    {
+      "path": "deploy/actor_s100/wheelhouse/importlib_resources-7.1.0-py3-none-any.whl",
+      "bytes": 37232,
+      "sha256": "1bd7b48b4088eddb2cd16382150bb515af0bd2c70128194392725f82ad2c96a1"
+    },
+    {
       "path": "deploy/actor_s100/wheelhouse/locomotion_aorta-0.2.1-cp310-cp310-manylinux_2_35_aarch64.whl",
       "bytes": 8499176,
       "sha256": "5671d88680ae2f47dd39b50e9a650f4cb51b7a53bd7dc76b39f512adba81f66b"
+    },
+    {
+      "path": "deploy/actor_s100/wheelhouse/mink-1.3.0-cp310-cp310-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl",
+      "bytes": 82319,
+      "sha256": "13d7f139d740aad82ae86ad24059ffd8d38bb566c71fd74a3d15ea6f8a2c45fd"
+    },
+    {
+      "path": "deploy/actor_s100/wheelhouse/mujoco-3.11.0-cp310-cp310-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl",
+      "bytes": 17632593,
+      "sha256": "aac0102660762fad316cea63b81765593c97bdda0e22251eb64ff561f78e6853"
     },
     {
       "path": "deploy/actor_s100/wheelhouse/numpy-1.26.4-cp310-cp310-manylinux_2_17_aarch64.manylinux2014_aarch64.whl",
@@ -194,14 +260,39 @@
       "sha256": "237c41e29157b962835d356b370ededd57594a26d5894a795960f0047cb5caf5"
     },
     {
+      "path": "deploy/actor_s100/wheelhouse/pyopengl-3.1.10-py3-none-any.whl",
+      "bytes": 3194996,
+      "sha256": "794a943daced39300879e4e47bd94525280685f42dbb5a998d336cfff151d74f"
+    },
+    {
       "path": "deploy/actor_s100/wheelhouse/pyyaml-6.0.3-py3-none-any.whl",
       "bytes": 44351,
       "sha256": "bdd13d739ade46ddf6a6cca1e81ff2c254db70cca8d58ed3da22509d0dd73926"
     },
     {
+      "path": "deploy/actor_s100/wheelhouse/qpsolvers-4.13.0-py3-none-any.whl",
+      "bytes": 107113,
+      "sha256": "7f23759a3d8835fa14b2c9eb4ba971188fde0c1460589f45897b00a75776eef7"
+    },
+    {
+      "path": "deploy/actor_s100/wheelhouse/scipy-1.15.3-cp310-cp310-manylinux_2_17_aarch64.manylinux2014_aarch64.whl",
+      "bytes": 35547617,
+      "sha256": "263961f658ce2165bbd7b99fa5135195c3a12d9bef045345016b8b50c315cb82"
+    },
+    {
+      "path": "deploy/actor_s100/wheelhouse/typing_extensions-4.16.0-py3-none-any.whl",
+      "bytes": 45571,
+      "sha256": "481caa481374e813c1b176ada14e97f1f67a4539ce9cfeb3f350d78d6370c2e8"
+    },
+    {
       "path": "deploy/actor_s100/wheelhouse/vbot_humanoid_msgs-0.1.5-py3-none-any.whl",
       "bytes": 154176,
       "sha256": "371a06baefebaa4ceff88dd430784ea47c960e372fe4abe1e3be2c31c1f79646"
+    },
+    {
+      "path": "deploy/actor_s100/wheelhouse/zipp-4.1.2-py3-none-any.whl",
+      "bytes": 10581,
+      "sha256": "b30cb6cd253122169c47de245ca24a86bac2a5d3802ba15bf7ba6414eb9e144d"
     },
     {
       "path": "model_groups/P1/model_runtime_manifest.json",
@@ -280,8 +371,8 @@
     },
     {
       "path": "scripts/actor_pico.py",
-      "bytes": 11453,
-      "sha256": "52a70baf26df7b07506f6d353ef90b7414316d152fc4b55ff514d088931a2d31"
+      "bytes": 22737,
+      "sha256": "c584ddba9ec79740dd3113be32aafca8175789ee4704bfbf7561c44a841c47b6"
     },
     {
       "path": "scripts/analyze_latest_live_logs.py",
@@ -310,8 +401,8 @@
     },
     {
       "path": "scripts/bootstrap_actor_s100.py",
-      "bytes": 11792,
-      "sha256": "357290643ab71305e171245e4b7014f2cbf1a5dfac44ddacc2416ce5d65f0f47"
+      "bytes": 12258,
+      "sha256": "c0a48c74d20171493ec80df7fb843b57c9719940f8aeb62da9c5223a3e1198d7"
     },
     {
       "path": "scripts/build_onboard_backend.sh",
@@ -320,8 +411,13 @@
     },
     {
       "path": "scripts/build_pico_arm64.sh",
-      "bytes": 1633,
-      "sha256": "cbfe8a9d6e26b36f63d3b7923eaa36ae56eca010b9be00763390d27cede59027"
+      "bytes": 1700,
+      "sha256": "b83948102b772ee83bb2e140f00d0dc0556b84823253090dc9274dabdb05824d"
+    },
+    {
+      "path": "scripts/configure_actor_s100.py",
+      "bytes": 1776,
+      "sha256": "269a6e03892d6a4f88f79205b0f80a90d8547e8148a48a7486d06610060aab36"
     },
     {
       "path": "scripts/decode_incident_cdr.py",
@@ -614,6 +710,11 @@
       "sha256": "5aeae413b09fa877b76bb9a76be93c18e9696a441cfc4b4986e86185f3b7cbdc"
     },
     {
+      "path": "scripts/replay_actor_candidate.py",
+      "bytes": 2450,
+      "sha256": "1ec2884096853e496b76206e31215b23f3fd939b10bc3a995cc6b6d89490e59f"
+    },
+    {
       "path": "scripts/report_shadow_metrics.py",
       "bytes": 11158,
       "sha256": "22103dc5df6ee364087da351fe1b32234a34724f87547a85af4bdb365b24d309"
@@ -630,8 +731,8 @@
     },
     {
       "path": "scripts/seal_actor_delivery.py",
-      "bytes": 3992,
-      "sha256": "63639b22a7243eb201d635f924e3e15b2dbd3bba875e75fc9b8a8ba847056818"
+      "bytes": 6265,
+      "sha256": "5ed6d53ac273dd980ce1d3b4b92596bf59403fe4b20be4b31469f385cf31742b"
     },
     {
       "path": "scripts/send_fake_pico_via_robot_ssh.py",
@@ -650,8 +751,8 @@
     },
     {
       "path": "scripts/start_actor_pico.sh",
-      "bytes": 1763,
-      "sha256": "b5009394a3ed1f65698fb5a36dcc3290aeb973e093fe2c1d191c910bcbbe104f"
+      "bytes": 2364,
+      "sha256": "6916057605a256e30f2e22eec416a1eb97e5c198a6223db67667dc537bc62557"
     },
     {
       "path": "scripts/start_onboard_vita.sh",
@@ -665,8 +766,8 @@
     },
     {
       "path": "scripts/state_test_pico_snapshot.py",
-      "bytes": 3342,
-      "sha256": "4d033865b2f38f9025fef122eddebca7d51f2a955dc404db70ced1b9ba99734d"
+      "bytes": 4615,
+      "sha256": "b6ab0a150676e4a2d3fdf4f1ae1edfc24650faed46c9ad5a7ad52afd9e38f933"
     },
     {
       "path": "scripts/state_validate_guards.py",
@@ -704,9 +805,14 @@
       "sha256": "509d9afa5842f3b4a44f3b905cba093e6a27505f5854c2d43576fe8b17d3bfca"
     },
     {
+      "path": "scripts/validate_actor_stand_mujoco.py",
+      "bytes": 5507,
+      "sha256": "29170c78a47bdf52991ea5a0a3a95d6a0bd74c8b379442ea3bb0a9d92f4bffec"
+    },
+    {
       "path": "scripts/verify_actor_delivery.py",
-      "bytes": 5698,
-      "sha256": "b25af1d253a91a51caa183432b43b8fb888438cf667d7558fccddd0316b1653b"
+      "bytes": 8314,
+      "sha256": "fad2f8c561688fbbe5c32245515e6da4c174701fdc3cbeca49f9e9c81092855e"
     },
     {
       "path": "scripts/vita_wifi.sh",
@@ -1064,14 +1170,49 @@
       "sha256": "629d1d30a4f3ccf264355907f63070fc40b6f6b30ed633b8ed6f866a63413542"
     },
     {
+      "path": "src/deployment/vita_s100_aorta_30dof/actor_pico_buttons.py",
+      "bytes": 2830,
+      "sha256": "2eaab3793cd3f292bc366cecacb298eb47953a0e88807ee8e4374836ceb3981a"
+    },
+    {
+      "path": "src/deployment/vita_s100_aorta_30dof/actor_pico_gmr.py",
+      "bytes": 3660,
+      "sha256": "253dd60f3b3d46208cb13ac3077c17dc9328ef35b08ba735f0a30cd0100712c5"
+    },
+    {
+      "path": "src/deployment/vita_s100_aorta_30dof/actor_pico_live.py",
+      "bytes": 41421,
+      "sha256": "0dd2e8abd10254a7f4c1cdc935e3a2bdc2267a61ddb3602483b81b4db60c035d"
+    },
+    {
+      "path": "src/deployment/vita_s100_aorta_30dof/actor_pico_local.py",
+      "bytes": 6013,
+      "sha256": "2936bab7aa6c857a1686af0d84e0b7d55811463d7e434767156c3aa793f71fe0"
+    },
+    {
       "path": "src/deployment/vita_s100_aorta_30dof/actor_pico_reference.py",
-      "bytes": 12187,
-      "sha256": "b6e0ea64c192730ea435bf259d64e631ef1ffb5b2e3539932c5cf404b5179ee9"
+      "bytes": 3190,
+      "sha256": "7a927e9c9cf8150e56f7b196834ab518a8641ac5640c88a234f03e54d45f019a"
     },
     {
       "path": "src/deployment/vita_s100_aorta_30dof/actor_pico_runtime.py",
-      "bytes": 7655,
-      "sha256": "7b2e4df9af48da6ae22eaef131d313b0a5934f4a66221b0ad4d3a7dc0e84947c"
+      "bytes": 9094,
+      "sha256": "e8caa9abf36f26384b8858e5c507f3c388b4cae62d8ae8110e1061f61d6714b0"
+    },
+    {
+      "path": "src/deployment/vita_s100_aorta_30dof/actor_pico_scheduling.py",
+      "bytes": 857,
+      "sha256": "eecfcc1ee5e70cf67edf8faeb2b8dc8c6d46370bbe31356c0ee723a1eb21c68b"
+    },
+    {
+      "path": "src/deployment/vita_s100_aorta_30dof/actor_pico_startup.py",
+      "bytes": 12813,
+      "sha256": "a850b9d96c231b8b9ccdcc9b09c4316a196a58ef8c5731a06074ca28ed57d19a"
+    },
+    {
+      "path": "src/deployment/vita_s100_aorta_30dof/actor_pico_worker.py",
+      "bytes": 7973,
+      "sha256": "ecf7d6a0510e276335cac613b1832917463d67bc5edbf5c452bc62d6438c2215"
     },
     {
       "path": "src/deployment/vita_s100_aorta_30dof/aorta_adapter.py",
@@ -1315,8 +1456,8 @@
     },
     {
       "path": "src/deployment/vita_s100_aorta_30dof/sdkmain_adapter.py",
-      "bytes": 10545,
-      "sha256": "73f2a7593acb1e282a005c216a842ed1182713eb7a425db16cc5ee09bd2e1f46"
+      "bytes": 11094,
+      "sha256": "15eeafa88afca3f0ca9c3786c3a8dee8beb424103eab61f9a9fb63ecf207463f"
     },
     {
       "path": "src/deployment/vita_s100_aorta_30dof/shadow_adapter.py",
@@ -3135,8 +3276,18 @@
     },
     {
       "path": "tests/fixtures/actor_pico/actor_g1_contract.json",
-      "bytes": 7620,
-      "sha256": "944add9a65208170bcc69cf89290ed6ed20e47255eb48ee97063d60cbd953152"
+      "bytes": 7596,
+      "sha256": "e9ea9040a09e348627792e603f403f8de2570ed91855c023de23ca74ec3367b1"
+    },
+    {
+      "path": "tests/fixtures/actor_pico/bridge_gmr_golden.json",
+      "bytes": 361,
+      "sha256": "48f89435103c60804ffe81f4c150f7e1fa798fd925683a0694ead77071ab09c5"
+    },
+    {
+      "path": "tests/fixtures/actor_pico/bridge_gmr_golden.npz",
+      "bytes": 31058,
+      "sha256": "cc59d71d66cc6ff632ed7933099320aaea07b4c11178d3f764f773edf647c193"
     },
     {
       "path": "tests/fixtures/actor_pico/groot_observation_golden.json",
@@ -3150,8 +3301,8 @@
     },
     {
       "path": "tests/fixtures/actor_pico/tracking_fixture_provenance.json",
-      "bytes": 746,
-      "sha256": "1d0c34d5fae04f3b6bee7b59e8c541b8a9f4a8526bc6e164b20ac5fbd1979c2b"
+      "bytes": 787,
+      "sha256": "5c7364f471773e1b59659179b3bfd2ba40baa1aac71043f7c8794d9eaad6b67b"
     },
     {
       "path": "tests/live_protocol_offline.py",
@@ -3190,13 +3341,23 @@
     },
     {
       "path": "tests/test_actor_delivery.py",
-      "bytes": 7019,
-      "sha256": "98ed55105c00825407e8b5376582eae359ce71a9808ff4d3f5ba14aebaaeb5b5"
+      "bytes": 7702,
+      "sha256": "3728f42f457e7543559a1dddb4040286584b6b22a33131136a897842a8318ee7"
+    },
+    {
+      "path": "tests/test_actor_local_provision.py",
+      "bytes": 4472,
+      "sha256": "4cb5388e2da1c9fe039c3bcb421594b9ef85e0c9e7ca7efa23e4037da68e9364"
     },
     {
       "path": "tests/test_actor_pico.py",
-      "bytes": 10389,
-      "sha256": "b0a14e92134b521bf6da89d533b6cb3d2e44920f17d38ea872340fa9667c1120"
+      "bytes": 10914,
+      "sha256": "f900efbd8add0d48e5ebe8ec22b33e3bdc11d4b215347aa223654e528a53a9f8"
+    },
+    {
+      "path": "tests/test_actor_pico_live.py",
+      "bytes": 76023,
+      "sha256": "25a792daf9d025f14275684729b2ecd117d0db2ce19fa22f13ae6fc0f217ad58"
     },
     {
       "path": "tests/wifi_offline_test.py",
@@ -3205,8 +3366,8 @@
     },
     {
       "path": "third_party/README.md",
-      "bytes": 1570,
-      "sha256": "b7cc190fa1434b100171dbe4121603ef94186aa99fdfe36f13b92485400d9224"
+      "bytes": 2011,
+      "sha256": "cf1ca8259eecd3ff87735f491afc20d160b1978be85da2085c0c6ae585718d5e"
     },
     {
       "path": "third_party/double-conversion/LICENSE",
@@ -3314,6 +3475,51 @@
       "sha256": "fa58034b0627e5775aef87353b49ee0f006521feaf87202034471daf0ba6ad5c"
     },
     {
+      "path": "third_party/motion_stream_bridge/GMR-LICENSE",
+      "bytes": 1055,
+      "sha256": "c5a85c0b0012230739a0ab8f30eafba7f8ee7a1b29e025d01e27fa330298e522"
+    },
+    {
+      "path": "third_party/motion_stream_bridge/SOURCE.json",
+      "bytes": 1345,
+      "sha256": "a5aa5da297048ba46d52a5c21978e93ec8d8189a6701d475de8e1668b1854dcd"
+    },
+    {
+      "path": "third_party/motion_stream_bridge/motion_stream_bridge/__init__.py",
+      "bytes": 68,
+      "sha256": "4f68dc48fe89bbc6b8afdc12c94c8a208f6684fd7f5589e29a0640cc1a1f0aaa"
+    },
+    {
+      "path": "third_party/motion_stream_bridge/motion_stream_bridge/gmr_lite/__init__.py",
+      "bytes": 1639,
+      "sha256": "87292d7465ed4e1568c3e3dc1d09679558204edc59f59429c17ff733eacf1f13"
+    },
+    {
+      "path": "third_party/motion_stream_bridge/motion_stream_bridge/gmr_lite/configs/xrobot_to_vita02a.json",
+      "bytes": 27067,
+      "sha256": "5116a7ea3aabd8703c793f6143cbbba73f3bad5bd5c808b605f13b85048949b1"
+    },
+    {
+      "path": "third_party/motion_stream_bridge/motion_stream_bridge/gmr_lite/geom_utils.py",
+      "bytes": 2796,
+      "sha256": "cdd7e6c0a3f4d1ef6170864f152f5963e8918d30259e995d13bab1f43d6abf05"
+    },
+    {
+      "path": "third_party/motion_stream_bridge/motion_stream_bridge/gmr_lite/retarget.py",
+      "bytes": 46453,
+      "sha256": "20df57d111055b9a2de0fcaaac115ca8acb8a6659d1d0d989f34f0ca51056d0d"
+    },
+    {
+      "path": "third_party/motion_stream_bridge/motion_stream_bridge/gmr_lite/robots/vita02a/vita02a_nomesh.xml",
+      "bytes": 35827,
+      "sha256": "53e87f274a726e64fe36403be7b24aacb283fb954a4b7c71d877b08f3124769b"
+    },
+    {
+      "path": "third_party/motion_stream_bridge/motion_stream_bridge/gmr_lite/streamer.py",
+      "bytes": 5703,
+      "sha256": "b61e4b5b3d33ece5b01d3c9254bc1274cf6afb6f78f27a6e354740c64f525f18"
+    },
+    {
       "path": "third_party/pico_binding/LICENSE",
       "bytes": 1068,
       "sha256": "d5f3ff3a0bfd3d623c27003f3b9280fab5516365d7347f648f8046847b768edb"
@@ -3329,9 +3535,14 @@
       "sha256": "e96040f2232b8233ecc594f123776a219071d08d6c91053fad3c98569e3240b3"
     },
     {
+      "path": "third_party/pico_binding/bindings/controller_trigger_snapshot.h",
+      "bytes": 1494,
+      "sha256": "d767af3cdcb1295f23ccf70aebb7583a84aa3393046a6d4bbf021c0983c29d2c"
+    },
+    {
       "path": "third_party/pico_binding/bindings/py_bindings.cpp",
-      "bytes": 22816,
-      "sha256": "911b784d72da99261d7ecd17e6786fdd8675ee35888e038ad72a4c9ea65cc7b8"
+      "bytes": 24228,
+      "sha256": "4803b705ef1162b12313bbaf089d5fcf3a248ec806c6fd060adbb8194c5b7820"
     },
     {
       "path": "third_party/pico_binding/include/PXREARobotSDK.h",

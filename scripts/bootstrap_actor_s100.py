@@ -134,6 +134,8 @@ def provision_model(root, manifest, source=None):
 
 def environment(root):
     env = os.environ.copy()
+    env.pop('PYTHONHOME', None)
+    env['MUJOCO_GL'] = 'disable'
     for name in list(env):
         if name.startswith('PIP_'):
             env.pop(name)
@@ -181,8 +183,9 @@ def install(root, manifest, *, build_pico=False):
         subprocess.run(['bash', str(root/'scripts/build_pico_arm64.sh')], env=env, check=True)
     # Validate actual installed SDK bytes/ABI and binding API without calling init().
     code = ('from deployment.vita_s100_aorta_30dof.sdk021_guard import verify_vendor_sources; '
-            'verify_vendor_sources(); import xrobotoolkit_sdk as x; '
-            'assert callable(x.get_body_pose_snapshot); print("SDK and Pico binding verification passed")')
+            'verify_vendor_sources(); import aorta, flatbuffers; '
+            'from locomotion_aorta import _body_cmd_native; import xrobotoolkit_sdk as x; '
+            'assert callable(x.get_body_pose_snapshot); assert callable(x.get_controller_trigger_snapshot); print("SDK and Pico binding verification passed")')
     subprocess.run([str(python), '-c', code], cwd=root, env=env, check=True)
     service = root/'vendor_packages/xrobotoolkit-arm64/opt/apps/roboticsservice/RoboticsServiceProcess'
     for executable in [service, root/'build/pico'/f'xrobotoolkit_sdk.cpython-310-aarch64-linux-gnu.so']:
@@ -195,7 +198,10 @@ def install(root, manifest, *, build_pico=False):
     receipt = dict(status='PASS_S100_OFFLINE_INSTALL_AND_MODEL_CHECK',
                    delivery_version=manifest['version'], build_pico=build_pico,
                    binding_sha256=sha(root/'build/pico/xrobotoolkit_sdk.cpython-310-aarch64-linux-gnu.so'),
-                   actions_sent=0, hardware_inputs_checked=False)
+                   model_sha256=sha(root/'artifacts/actor_g1/actor_g1.onnx'),
+                   python=str(python), pip_check='PASS', real_binding_import='PASS',
+                   model_check_steps=10, actions_sent=0, control_handles_created=0,
+                   hardware_inputs_checked=False, robot_motion='not_measured')
     (root/'build/actor_s100_install.json').write_text(json.dumps(receipt, indent=2)+'\n')
     return receipt
 

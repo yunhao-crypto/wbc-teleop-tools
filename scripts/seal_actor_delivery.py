@@ -24,10 +24,32 @@ def main():
     model = json.loads((root/'config/actor_pico.json').read_text())['artifacts']['model']
     previous = next(item for item in actor['files']+actor.get('external_resources', [])
                     if item['path'] == model['path'])
-    external = dict(path=model['path'], sha256=model['sha256'], bytes=previous['bytes'],
+    external = dict(path=model['path'], sha256=model['sha256'], bytes=model.get('bytes', previous['bytes']),
                     provision='Supply separately using bootstrap_actor_s100.py --model')
     actor['files'] = [item for item in actor['files'] if item['path'] != model['path']]
     actor['external_resources'] = [external]
+    actor['scope'] = 'inference checks and explicitly armed supported EXTERNAL trials; hardware not_measured'
+    for name in ('scripts/replay_actor_candidate.py', 'scripts/validate_actor_stand_mujoco.py',
+                 'src/deployment/vita_s100_aorta_30dof/actor_pico_live.py',
+                 'src/deployment/vita_s100_aorta_30dof/actor_pico_local.py',
+                 'src/deployment/vita_s100_aorta_30dof/actor_pico_startup.py',
+                 'src/deployment/vita_s100_aorta_30dof/actor_pico_worker.py', 'tests/test_actor_pico_live.py'):
+        if not any(item['path'] == name for item in actor['files']):
+            actor['files'].append(dict(path=name))
+    for name in ('src/deployment/vita_s100_aorta_30dof/actor_pico_buttons.py',
+                 'third_party/pico_binding/bindings/controller_trigger_snapshot.h'):
+        if not any(item['path'] == name for item in actor['files']):
+            actor['files'].append(dict(path=name))
+    additional = ['scripts/configure_actor_s100.py', 'tests/test_actor_local_provision.py',
+                  'src/deployment/vita_s100_aorta_30dof/actor_pico_scheduling.py',
+                  'src/deployment/vita_s100_aorta_30dof/actor_pico_gmr.py',
+                  'tests/fixtures/actor_pico/bridge_gmr_golden.npz',
+                  'tests/fixtures/actor_pico/bridge_gmr_golden.json']
+    additional += [str(p.relative_to(root)) for p in (root/'third_party/motion_stream_bridge').rglob('*')
+                   if p.is_file() and '__pycache__' not in p.parts]
+    for name in additional:
+        if not any(item['path'] == name for item in actor['files']):
+            actor['files'].append(dict(path=name))
     for item in actor['files']:
         p = root/item['path']
         item.update(sha256=sha(p), bytes=p.stat().st_size, mode=oct(p.stat().st_mode & 0o777))
@@ -38,9 +60,16 @@ def main():
         raise RuntimeError('Remove the external model from the Git index before sealing')
     required = ['artifacts/output_envelopes.motion.urdf',
                 'config/actor_pico.json', 'config/sdk021-wheel-guard.json',
-                'scripts/bootstrap_actor_s100.py', 'scripts/start_actor_pico.sh',
+                'scripts/bootstrap_actor_s100.py', 'scripts/configure_actor_s100.py', 'scripts/start_actor_pico.sh',
+                'src/deployment/vita_s100_aorta_30dof/actor_pico_live.py',
+                'src/deployment/vita_s100_aorta_30dof/actor_pico_local.py',
+                'src/deployment/vita_s100_aorta_30dof/actor_pico_startup.py',
+                'src/deployment/vita_s100_aorta_30dof/actor_pico_worker.py',
+                'src/deployment/vita_s100_aorta_30dof/actor_pico_buttons.py',
+                'tests/test_actor_pico_live.py',
                 'third_party/pico_binding/bindings/py_bindings.cpp',
                 'third_party/pico_binding/bindings/body_pose_snapshot.h',
+                'third_party/pico_binding/bindings/controller_trigger_snapshot.h',
                 'third_party/pico_binding/include/PXREARobotSDK.h',
                 'third_party/double-conversion/double-conversion/double-to-string.cc',
                 'tests/fixtures/actor_pico/pico_replay.npz', 'deploy/actor_s100/requirements.txt']
@@ -57,9 +86,9 @@ def main():
     missing = set(required)-set(names)
     if missing:
         raise RuntimeError('Stage these required delivery files first: '+', '.join(sorted(missing)))
-    record = dict(schema='vita_actor_s100_delivery_v1', version='2026.10.23-actor1',
+    record = dict(schema='vita_actor_s100_delivery_v1', version='2026.10.27-actor21-delivery',
                   target=dict(os='Linux', architecture='aarch64', python='3.10', glibc_min='2.35'),
-                  scope='offline model check and live-input shadow inference; no actuation',
+                  scope='offline/shadow checks and explicitly armed supported EXTERNAL trials; hardware not_measured',
                   required_inputs=required, external_resources=[external], archives=archives,
                   files=[dict(path=n, bytes=(root/n).stat().st_size, sha256=sha(root/n)) for n in names])
     (root/output).write_text(json.dumps(record, indent=2)+'\n')

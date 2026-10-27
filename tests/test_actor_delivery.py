@@ -27,6 +27,19 @@ def archive(root, entries):
 
 
 class InstallerTests(unittest.TestCase):
+    def test_environment_uses_isolated_python_and_offline_pip(self):
+        import os
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            with patch.dict(os.environ, PYTHONHOME='/wrong/python', PYTHONPATH='/unrelated/modules',
+                            PIP_INDEX_URL='https://example.invalid/'):
+                env = bootstrap.environment(root)
+            self.assertNotIn('PYTHONHOME', env)
+            self.assertNotIn('/unrelated/modules', env['PYTHONPATH'])
+            self.assertEqual(env['PYTHONNOUSERSITE'], '1')
+            self.assertEqual(env['PIP_CONFIG_FILE'], os.devnull)
+            self.assertNotIn('PIP_INDEX_URL', env)
+
     def model_manifest(self, root):
         item = dict(path='artifacts/actor_g1/actor_g1.onnx', bytes=4,
                     sha256=hashlib.sha256(b'good').hexdigest())
