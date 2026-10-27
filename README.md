@@ -6,8 +6,9 @@
 部署者需要提供指定版本的 `actor_g1.onnx`，安装脚本校验 SHA256 后复制到本地模型目录。
 无需复制原开发目录的虚拟环境。
 
-当前提供模型检查、离线回放、实时输入影子推理。影子入口接收真实 Pico 和
-Body31 反馈，完成重定向与推理并记录结果；不申请 EXTERNAL，不发布动作命令。
+当前提供模型检查、离线回放、实时输入影子推理，以及需现场确认的 EXTERNAL
+支撑测试入口。影子入口不申请控制权；`live` 会运动全身，先运行准备站姿参考，
+再跟踪 Pico。首次上机步骤与限制见 [actor/Pico 运行说明](README_ACTOR_PICO.md#supported-external-trial)。
 
 ## 在 Vita02A / S100 上部署
 
@@ -70,7 +71,7 @@ python3 scripts/verify_actor_delivery.py --host-inference --model /path/to/actor
 检查只接收显式指定的外部模型，不借用工作目录的 `venv`、`vendor_packages`、`reference` 或 `build`。
 它会验证全部文件/归档哈希、离线解析完整 ARM wheel 依赖、从交付归档解包运行文件，
 编译实际 Pico 原子快照 C++ 回归，并使用宿主 ONNX Runtime 运行 14 项 actor 测试、
-3 项 Pico 读取测试、100 步模型检查和 100 步合成 Pico 回放。
+3 项 Pico 读取测试、EXTERNAL 离线故障回归、100 步模型检查和 100 步合成 Pico 回放。
 宿主模式需已有 NumPy、ONNX Runtime、pip 和 C++ 编译器；它不执行 ARM 二进制。
 
 S100 实际安装、推理性能、真实 Pico 输入质量和动作控制仍需分别在目标机验收。

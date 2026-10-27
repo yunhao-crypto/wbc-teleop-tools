@@ -3,10 +3,10 @@ set -euo pipefail
 ROOT=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 MODE=${1:-check}
 case "$MODE" in
-  check|replay|shadow) shift "$(( $# > 0 ? 1 : 0 ))" ;;
-  *) echo 'Usage: start_actor_pico.sh {check|replay|shadow} [options]' >&2; exit 2 ;;
+  check|replay|shadow|live) shift "$(( $# > 0 ? 1 : 0 ))" ;;
+  *) echo 'Usage: start_actor_pico.sh {check|replay|shadow|live} [options]' >&2; exit 2 ;;
 esac
-if [[ "$MODE" == shadow ]]; then
+if [[ "$MODE" == shadow || "$MODE" == live ]]; then
   set +u
   source /app/script/env.sh >/dev/null
   set -u
@@ -23,7 +23,7 @@ mkdir -p "$ROOT/outputs" "$ROOT/build/pico/actor_xdg"
 chmod 700 "$ROOT/build/pico/actor_xdg"
 export XDG_RUNTIME_DIR="$ROOT/build/pico/actor_xdg"
 PYTHON=${VITA_ACTOR_PYTHON:-$ROOT/venv/bin/python}
-if [[ "$MODE" == shadow ]]; then
+if [[ "$MODE" == shadow || "$MODE" == live ]]; then
   # Use the same operator lock as the existing P1/P2/P3 entry.
   exec 9>"$ROOT/build/operator.lock"
   flock -n 9 || { echo 'Another onboard operator is running.' >&2; exit 1; }

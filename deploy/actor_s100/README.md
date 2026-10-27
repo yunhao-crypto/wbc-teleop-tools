@@ -1,6 +1,9 @@
 # S100 actor/Pico offline delivery
 
-This directory versions the actor dependencies. Model weights are supplied
+This directory versions the actor dependencies. The separate `live` entry can
+move the robot only after explicit on-site confirmation; see
+[supported trial instructions](../../README_ACTOR_PICO.md#supported-external-trial).
+Installation and validation never run that entry. Model weights are supplied
 separately and are excluded from Git. Their required SHA256 is pinned in
 `config/actor_pico.json` and `manifest.json` under `external_resources`:
 `f0dfa04684b4f8967623ddbcf8ede8ef3d862d0b403e9e3659e2a519eade6fae`.

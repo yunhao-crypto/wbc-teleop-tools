@@ -7,10 +7,10 @@ and SHA256 pinned in `config/actor_pico.json`. Its metadata identifies
 `vita02a_pd40_aniso_dr`, input `[1,1520]`, output `[1,28]`, and 50 Hz.
 It is the Vita28 tracking actor, regardless of the `g1` filename.
 
-The new entry supports model checks, offline Pico replay, and live-input shadow
-inference. Shadow subscribes to Body31 feedback and reads the existing Pico
+The entry supports model checks, offline Pico replay, live-input shadow
+inference, and a separately armed supported EXTERNAL trial. Shadow subscribes to Body31 feedback and reads the existing Pico
 service. It writes computed targets to JSONL; it never creates a controller,
-requests EXTERNAL or publishes a robot command. The existing P1/P2/P3 runtime,
+requests EXTERNAL or publishes a robot command. Only `live` requests control and moves joints. The existing P1/P2/P3 runtime,
 launchers, SDK installation and protocol guards are not replaced.
 
 ## Data path and calibration
@@ -39,8 +39,8 @@ SMPL pickle, Torch, SciPy, CUDA, GMR or planner on S100. Segment mappings,
 iterations and a maximum segment orientation residual are explicit in config.
 Excess residual, malformed poses, regressing timestamps or input gaps stop the
 run with a recorded error. This retargeter does not enforce contacts, foot
-placement, collision avoidance or dynamic balance, and has not been accepted
-for robot actuation. Its kinematic checks are separate from training-distribution
+placement, collision avoidance or dynamic balance, and has no hardware motion
+acceptance. Its kinematic checks are separate from training-distribution
 or real-human motion quality validation.
 
 The actor requests 10 reference frames spaced 100 ms apart. The causal input
@@ -142,6 +142,73 @@ The bootstrap creates the interpreter with the proper permissions and restores
 executable mode on the service from the sealed archive. The actor shadow entry
 requires no Xbox configuration or Wi-Fi controller key.
 
+## Supported EXTERNAL trial
+
+`live` is an experimental, bounded **supported** trial. It is not acceptance
+for unsupported standing/walking. Obtain authorization for the actual robot
+and motion; keep reliable support, clear motion/pinch zones, an attendant and
+a usable hardware emergency stop. The Pico wearer must stay neutral during
+preflight and the first three seconds after entry, then use small movements.
+The 920 ms reference delay remains. `--stand-only` still moves the whole body:
+it runs the online actor with a default-stand reference, not a fixed pose.
+
+After installing into a new S100 directory, run the existing `check` and
+bounded `shadow` commands first. Verify the matching robot release/schema,
+the full A-sample hardware configuration and the **running effective** YAML.
+Supply its absolute path below; do not use an old checkout/config snapshot.
+This program reads that file but cannot prove which file a running service
+loaded. Missing/disabled `parallel_ankle.pd.strategy=virtual_pd` or
+`actions.EXTERNAL.params.ankle_virtual_pd_intent=true` stops the trial.
+It never edits the file, restarts services or activates an OTA slot.
+
+From the actual deployment root, for a separately authorized preparation test:
+
+```bash
+bash scripts/start_actor_pico.sh live --stand-only --seconds 5 \
+  --robot-id '<actual robot identity>' --confirm-motion \
+  --robot-config /absolute/path/to/running/locomotion.yaml
+```
+
+After reviewing that test and authorizing Pico following, omit `--stand-only`:
+
+```bash
+bash scripts/start_actor_pico.sh live --seconds 10 \
+  --robot-id '<actual robot identity>' --confirm-motion \
+  --robot-config /absolute/path/to/running/locomotion.yaml
+```
+
+Both commands create SDK control handles but send no control request until
+fresh inputs, live RobotInfo, physical body actuators, gains and command limits
+pass preflight. The terminal displays the named model defaults and KP/KD,
+fixed neck targets and config hash, then requires `MOVE <actual robot identity>`
+within 60 seconds as current on-site confirmation. No unattended confirmation
+flag is provided. The CLI identity is an operator label, not discovered robot
+serial evidence. Confirm the actual device/connection and effective config.
+
+Entry uses the SDK's PREPARE/COMMIT and verifies owned EXTERNAL/RUNNING.
+It discards preflight policy/reference history, leads the reference from the
+measured body pose to actor defaults, and ramps neck positions to zero over
+at least three seconds. At the handoff, the entire buffered Pico reference
+must remain within 0.10 rad of defaults; otherwise the trial cancels.
+The complete decoded BodyCmd is sent, including ankle compensation torque.
+The unpopulated waist-roll slot remains inert; no hand command is sent.
+
+Trials are limited to 120 seconds. Body feedback and Pico age must stay within
+100 ms, advancing ControlStatus within 500 ms, and the complete 50 Hz cycle
+(including publication/logging) within 20 ms. Faults, timeouts, command
+rejections/drops, ownership changes and SIGINT/SIGTERM stop the trial without
+automatic retry. Logging records requested commands, session/sequence and
+input state IDs; publication alone is not proof of actuator execution.
+
+Every attempted entry exits through SDK CANCEL and requires PASSIVE/IDLE.
+An incomplete exit is reported with the actual available status. **PASSIVE
+can let loaded limbs fall**; keep support through exit. EXTERNAL has no automatic
+expiry: the application duration is not a server lease, and a killed/crashed
+client may retain ownership. Ctrl-C/software CANCEL is not an emergency stop
+and cannot restore an action cleared on entry. Use the hardware emergency stop
+if safety is uncertain. Do not retry a fault until its actual cause/state has
+been reviewed. The historical P1/P2/P3 `7200` config is not used by this entry.
+
 ## Replay NPZ schema
 
 `body_poses [T,24,7]` contains Pico world XYZ/XYZW.
@@ -157,6 +224,8 @@ starts only after the full 920 ms window is available.
 
 Host CPU inference and synthetic Pico replay are exercised. S100 inference
 latency, live Pico/tracker quality, real robot feedback, and robot actuation
-are **not_measured**. Moving the robot would additionally require validating
-the retargeted reference distribution, control transitions and the actor's
-robot-side virtual-ankle PD contract; this shadow entry has no actuation mode.
+are **not_measured**. The new live runner's offline tests exercise real SDK
+session/math against simulated I/O, not real transport or hardware. Moving
+the robot additionally requires per-device review of the retargeted reference
+distribution, control transitions and the robot-side virtual-ankle PD contract.
+The shadow mode remains incapable of actuation.

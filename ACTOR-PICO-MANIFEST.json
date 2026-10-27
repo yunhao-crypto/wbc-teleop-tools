@@ -2,12 +2,12 @@
   "schema": "vita_actor_pico_change_manifest_v1",
   "base_deploy_payload": "packages/W1019-139-deploy/final-readback.json",
   "validation": "outputs/actor_pico_validation.json",
-  "scope": "inference_only",
+  "scope": "inference checks and explicitly armed supported EXTERNAL trials; hardware not_measured",
   "files": [
     {
       "path": "README_ACTOR_PICO.md",
-      "sha256": "81cd14e2cd56ef08d6520849d205d8b4bedbafe4a82cd319e90fb22d86945ef6",
-      "bytes": 8986,
+      "sha256": "179d347a0c420381d8cb2a35f774a1c37c59edae934a7145e031ff09caf807f8",
+      "bytes": 13019,
       "mode": "0o644"
     },
     {
@@ -18,8 +18,8 @@
     },
     {
       "path": "scripts/actor_pico.py",
-      "sha256": "52a70baf26df7b07506f6d353ef90b7414316d152fc4b55ff514d088931a2d31",
-      "bytes": 11453,
+      "sha256": "93bc4a89076391e8b1c0d386543e718ffc2cc3571c59e101e617d9c22e33d3da",
+      "bytes": 16339,
       "mode": "0o755"
     },
     {
@@ -30,8 +30,8 @@
     },
     {
       "path": "scripts/start_actor_pico.sh",
-      "sha256": "b5009394a3ed1f65698fb5a36dcc3290aeb973e093fe2c1d191c910bcbbe104f",
-      "bytes": 1763,
+      "sha256": "f5d47916fb911da218f0b32bac8b2b1f630f4b71fff186a476e4975e9fc7a835",
+      "bytes": 1811,
       "mode": "0o755"
     },
     {
@@ -42,8 +42,8 @@
     },
     {
       "path": "src/deployment/vita_s100_aorta_30dof/actor_pico_runtime.py",
-      "sha256": "7b2e4df9af48da6ae22eaef131d313b0a5934f4a66221b0ad4d3a7dc0e84947c",
-      "bytes": 7655,
+      "sha256": "38b8bcd0eda163a1a1e3db372779cb790192cf5c66bd232926641b91672830e7",
+      "bytes": 8689,
       "mode": "0o644"
     },
     {
@@ -68,6 +68,18 @@
       "path": "tests/test_actor_pico.py",
       "sha256": "b0a14e92134b521bf6da89d533b6cb3d2e44920f17d38ea872340fa9667c1120",
       "bytes": 10389,
+      "mode": "0o644"
+    },
+    {
+      "path": "src/deployment/vita_s100_aorta_30dof/actor_pico_live.py",
+      "sha256": "34a49342e9eea65f9737433f19ca810beacd46f207d6fd04d491c39c7210d50a",
+      "bytes": 23456,
+      "mode": "0o644"
+    },
+    {
+      "path": "tests/test_actor_pico_live.py",
+      "sha256": "9e3fb7875c1aa886e448676ef57c380d16d8fb3307f1f5d97e75011652f52ce0",
+      "bytes": 16904,
       "mode": "0o644"
     }
   ],

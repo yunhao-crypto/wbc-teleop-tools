@@ -100,6 +100,11 @@ class ActorPicoRuntime:
         self.model = ActorModel(self.root/self.config['artifacts']['model']['path'],
                                 self.math, backend=backend, threads=threads)
         self.policy = self.math.WbcTrackingPolicy(self.model.contract, self.config['body_profile'])
+        self.reset_inputs()
+
+    def reset_inputs(self):
+        """Discard shadow history, calibration and references before a new trial."""
+        self.policy.reset()
         self.reference = CausalActorReference(self.model.contract, self.math,
                                               maximum_gap=self.config['reference_maximum_gap_s'])
         self.retarget = PicoOrientationRetargeter(
@@ -120,20 +125,36 @@ class ActorPicoRuntime:
         self.last_retarget_ms = (time.perf_counter()-start)*1000
 
     def infer(self, *, q, dq, root, gyro, now_monotonic, maximum_pico_age=.6):
+        _, observation, row = self.infer_command(q=q, dq=dq, root=root, gyro=gyro,
+            now_monotonic=now_monotonic, maximum_pico_age=maximum_pico_age)
+        return observation, row
+
+    def infer_command(self, *, q, dq, root, gyro, now_monotonic, maximum_pico_age=.6):
         age = (float('inf') if self.reference.last_receive_monotonic is None else
                now_monotonic-self.reference.last_receive_monotonic)
         if not 0 <= age <= maximum_pico_age:
             raise TimeoutError('Pico input is stale')
         motion = self.reference.motion()
-        return self.infer_motion(motion, q=q, dq=dq, root=root, gyro=gyro,
+        return self.infer_motion_command(motion, q=q, dq=dq, root=root, gyro=gyro,
                                  diagnostics={'reference_delay_s': self.reference.delay,
                                               'pico_age_s': age, 'ik_max_residual_rad': self.last_residual,
                                               'ik_iterations': self.retarget.last_iterations,
                                               'retarget_ms': self.last_retarget_ms})
 
     def infer_motion(self, motion, *, q, dq, root, gyro, diagnostics=None):
+        _, observation, row = self.infer_motion_command(motion, q=q, dq=dq,
+            root=root, gyro=gyro, diagnostics=diagnostics)
+        return observation, row
+
+    def infer_motion_command(self, motion, *, q, dq, root, gyro,
+                             diagnostics=None, ref_time=0., yaw_offset=0.):
+        """Return the complete inert SDK command, including ankle feedforward.
+
+        Only the explicit live runner may publish it. Offline/shadow callers
+        retain their two-value API and never construct control handles.
+        """
         begin = time.perf_counter()
-        observation = self.policy.observe(motion, 0., q, dq, root, gyro)
+        observation = self.policy.observe(motion, ref_time, q, dq, root, gyro, yaw_offset)
         before_infer = time.perf_counter()
         action = self.model.infer(observation)
         after_infer = time.perf_counter()
@@ -150,4 +171,4 @@ class ActorPicoRuntime:
                                  for j in command.joints],
                    actions_sent=0, control_handles_created=0,
                    **(diagnostics or {}))
-        return observation, row
+        return command, observation, row

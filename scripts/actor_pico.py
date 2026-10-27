@@ -1,16 +1,18 @@
 #!/usr/bin/env python3
-"""Pinned actor_g1 check/replay or Pico + Body31 read-only shadow inference."""
+"""Pinned actor_g1 offline/shadow checks and an explicitly armed EXTERNAL trial."""
 import argparse
 from contextlib import ExitStack
 import json
 import logging
 import math
 import os
+import platform
 from pathlib import Path
 import signal
 import subprocess
 import sys
 import time
+import threading
 
 import numpy as np
 
@@ -169,9 +171,68 @@ def shadow(runtime, args, write):
                 reference_delay_s=runtime.reference.delay, hardware_inputs_checked=steps > 0)
 
 
+def live(runtime, args, write):
+    import fcntl
+    from deployment.vita_s100_aorta_30dof.actor_pico_live import run_live, load_robot_config, require_peer_profile
+    from deployment.vita_s100_aorta_30dof.pico_input import create_pico_source
+    from deployment.vita_s100_aorta_30dof.sdk021_guard import verify_vendor_sources
+    from deployment.vita_s100_aorta_30dof.sdkmain_adapter import RealtimeBodyTransport, verify_state_decoder
+    from locomotion_aorta.pull import PullController
+    if platform.machine() != 'aarch64' or runtime.model.backend != 'sdk':
+        raise RuntimeError('live requires S100 ARM64 and the sealed native SDK inference backend')
+    if not os.environ.get('ZENOH_SESSION_CONFIG_URI'):
+        raise RuntimeError('Use start_actor_pico.sh live with the reviewed S100 peer profile')
+    require_peer_profile(os.environ['ZENOH_SESSION_CONFIG_URI'])
+    load_robot_config(args.robot_config)  # Fail before any control/Pico handle.
+    verify_vendor_sources()
+    verify_state_decoder()
+    stop = threading.Event()
+    previous = {n:signal.signal(n, lambda *_:stop.set()) for n in (signal.SIGINT, signal.SIGTERM)}
+    sdk = runtime.root/'vendor_packages/xrobotoolkit-arm64/opt/apps/roboticsservice'
+    try:
+        with ExitStack() as resources:
+            lock_path = runtime.root/'build/operator.lock'
+            lock_path.parent.mkdir(parents=True, exist_ok=True)
+            # Reuse the shell's inherited lock description when present.
+            try:
+                inherited = os.fstat(9)
+                target = lock_path.stat()
+                lock = os.dup(9) if (inherited.st_dev, inherited.st_ino) == (target.st_dev, target.st_ino) else None
+            except OSError:
+                lock = None
+            if lock is None:
+                lock = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o600)
+            resources.callback(os.close, lock)
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            log = resources.enter_context((runtime.root/'outputs/pico_service_actor.log').open('a'))
+            service = subprocess.Popen([str(sdk/'RoboticsServiceProcess')], cwd=sdk,
+                                       stdout=log, stderr=subprocess.STDOUT)
+            def close_service():
+                if service.poll() is None:
+                    service.terminate()
+                    try:
+                        service.wait(timeout=3)
+                    except subprocess.TimeoutExpired:
+                        service.kill()
+                        service.wait(timeout=2)
+            resources.callback(close_service)
+            pico = create_pico_source(logger=logging.getLogger('actor-live'), maximum_age=.1)
+            resources.callback(pico.stop)
+            pico.start()
+            transport = RealtimeBodyTransport(group=args.group, node_name='vita-actor-pico-live')
+            resources.callback(transport.close)
+            controller = PullController(group=args.group, node_name='vita-actor-pico-live', _transport=transport)
+            resources.callback(controller.close)
+            return run_live(runtime, args, write, controller, pico, stop,
+                            service_alive=lambda:service.poll() is None)
+    finally:
+        for n, handler in previous.items():
+            signal.signal(n, handler)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('mode', choices=('check', 'replay', 'shadow'))
+    parser.add_argument('mode', choices=('check', 'replay', 'shadow', 'live'))
     parser.add_argument('--root', type=Path, default=ROOT)
     parser.add_argument('--backend', choices=('auto', 'sdk', 'ort'), default='auto')
     parser.add_argument('--threads', type=int, default=1)
@@ -182,7 +243,19 @@ def main():
     parser.add_argument('--input', type=Path)
     parser.add_argument('--log', type=Path)
     parser.add_argument('--record-observations', action='store_true')
+    parser.add_argument('--confirm-motion', action='store_true', help='live only; terminal on-site confirmation is also required')
+    parser.add_argument('--robot-id', help='live target identity, verified on-site; never inferred from old configs')
+    parser.add_argument('--robot-config', type=Path, help='absolute path to this robot running effective locomotion YAML')
+    parser.add_argument('--stand-only', action='store_true', help='live supported policy preparation/stand trial, without Pico following')
     args = parser.parse_args()
+    if args.mode == 'live':
+        if (not args.confirm_motion or not args.robot_id or not args.robot_id.strip()
+                or args.robot_config is None or not args.robot_config.is_absolute()):
+            parser.error('live requires --confirm-motion, --robot-id and an absolute --robot-config; on-site confirmation remains mandatory')
+        if args.seconds > 120:
+            parser.error('live trials are bounded to 120 seconds')
+    elif args.confirm_motion or args.robot_id or args.robot_config or args.stand_only:
+        parser.error('motion authorization/options apply only to live')
     if (args.steps < 1 or not math.isfinite(args.seconds) or not 1 <= args.seconds <= 7200
             or not math.isfinite(args.startup_timeout) or not 1 <= args.startup_timeout <= 120):
         parser.error('Invalid step/duration/startup budget')
@@ -197,15 +270,21 @@ def main():
             stream.write(json.dumps(row, allow_nan=False, separators=(',', ':'))+'\n')
         write(dict(record_type='header', model=runtime.config['artifacts']['model'],
                    contract=dict(input_dim=1520, action_dim=28, policy_hz=50),
-                   scope='inference_only', retargeter='calibrated_segment_orientation_ik',
+                   scope='supported_external_trial' if args.mode == 'live' else 'inference_only',
+                   robot_id=args.robot_id, retargeter='calibrated_segment_orientation_ik',
                    reference_delay_s=runtime.reference.delay, actions_sent=0))
         try:
-            report = {'check': check, 'replay': replay, 'shadow': shadow}[args.mode](runtime, args, write)
-        except Exception as exc:
-            write(dict(record_type='error', error=repr(exc), actions_sent=0))
+            report = {'check': check, 'replay': replay, 'shadow': shadow, 'live': live}[args.mode](runtime, args, write)
+        except BaseException as exc:
+            # Live fault paths may already have published; never claim zero.
+            write(dict(record_type='error', error=repr(exc),
+                       actions_sent=None if args.mode == 'live' else 0,
+                       actions_sent_evidence='preceding publish records' if args.mode == 'live' else 'none'))
             raise
-        report.update(actions_sent=0, control_handles_created=0, log=str(args.log),
-                      s100_inference_timing='not_measured' if args.mode != 'shadow' else 'see_trace')
+        report.setdefault('actions_sent', 0)
+        report.setdefault('control_handles_created', 0)
+        report.update(log=str(args.log),
+                      s100_inference_timing='see_trace' if args.mode in ('shadow', 'live') else 'not_measured')
         write(dict(record_type='summary', **report))
     print(json.dumps(report, indent=2))
 

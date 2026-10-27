@@ -91,11 +91,14 @@ def main():
                 with zipfile.ZipFile(wheel) as archive:
                     archive.extractall(site)
             run([sys.executable, 'tests/test_actor_pico.py'], cwd=export, env=env)
+            run([sys.executable, 'tests/test_actor_pico_live.py'], cwd=export, env=env)
             run([sys.executable, 'src/tests/test_pico_atomic_reader.py'], cwd=export, env=env)
             run([sys.executable, 'scripts/actor_pico.py', 'check', '--steps', '100'], cwd=export, env=env)
             run([sys.executable, 'scripts/actor_pico.py', 'replay', '--input',
                  'tests/fixtures/actor_pico/pico_replay.npz', '--steps', '100'], cwd=export, env=env)
-            result.update(model_steps=100, replay_steps=100, actor_tests=14, pico_reader_tests=3)
+            result.update(model_steps=100, replay_steps=100, actor_tests=14, pico_reader_tests=3,
+                          live_runner_tests=20, live_runner_io='simulated; real SDK session/math',
+                          robot_motion='not_measured')
         (ROOT/'outputs').mkdir(exist_ok=True)
         (ROOT/'outputs/actor_delivery_validation.json').write_text(json.dumps(result, indent=2)+'\n')
         print(json.dumps(result, indent=2))

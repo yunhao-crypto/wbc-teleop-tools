@@ -28,6 +28,10 @@ def main():
                     provision='Supply separately using bootstrap_actor_s100.py --model')
     actor['files'] = [item for item in actor['files'] if item['path'] != model['path']]
     actor['external_resources'] = [external]
+    actor['scope'] = 'inference checks and explicitly armed supported EXTERNAL trials; hardware not_measured'
+    for name in ('src/deployment/vita_s100_aorta_30dof/actor_pico_live.py', 'tests/test_actor_pico_live.py'):
+        if not any(item['path'] == name for item in actor['files']):
+            actor['files'].append(dict(path=name))
     for item in actor['files']:
         p = root/item['path']
         item.update(sha256=sha(p), bytes=p.stat().st_size, mode=oct(p.stat().st_mode & 0o777))
@@ -39,6 +43,8 @@ def main():
     required = ['artifacts/output_envelopes.motion.urdf',
                 'config/actor_pico.json', 'config/sdk021-wheel-guard.json',
                 'scripts/bootstrap_actor_s100.py', 'scripts/start_actor_pico.sh',
+                'src/deployment/vita_s100_aorta_30dof/actor_pico_live.py',
+                'tests/test_actor_pico_live.py',
                 'third_party/pico_binding/bindings/py_bindings.cpp',
                 'third_party/pico_binding/bindings/body_pose_snapshot.h',
                 'third_party/pico_binding/include/PXREARobotSDK.h',
@@ -57,9 +63,9 @@ def main():
     missing = set(required)-set(names)
     if missing:
         raise RuntimeError('Stage these required delivery files first: '+', '.join(sorted(missing)))
-    record = dict(schema='vita_actor_s100_delivery_v1', version='2026.10.23-actor1',
+    record = dict(schema='vita_actor_s100_delivery_v1', version='2026.10.27-actor2',
                   target=dict(os='Linux', architecture='aarch64', python='3.10', glibc_min='2.35'),
-                  scope='offline model check and live-input shadow inference; no actuation',
+                  scope='offline/shadow checks and explicitly armed supported EXTERNAL trials; hardware not_measured',
                   required_inputs=required, external_resources=[external], archives=archives,
                   files=[dict(path=n, bytes=(root/n).stat().st_size, sha256=sha(root/n)) for n in names])
     (root/output).write_text(json.dumps(record, indent=2)+'\n')
