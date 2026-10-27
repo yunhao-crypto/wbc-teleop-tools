@@ -97,7 +97,7 @@ def main():
             run([sys.executable, 'scripts/actor_pico.py', 'replay', '--input',
                  'tests/fixtures/actor_pico/pico_replay.npz', '--steps', '100'], cwd=export, env=env)
             result.update(model_steps=100, replay_steps=100, actor_tests=15, pico_reader_tests=3,
-                          live_runner_tests=57, live_runner_io='simulated; real SDK session/math',
+                          live_runner_tests=72, live_runner_io='simulated; real SDK session/math',
                           robot_motion='not_measured')
         (ROOT/'outputs').mkdir(exist_ok=True)
         (ROOT/'outputs/actor_delivery_validation.json').write_text(json.dumps(result, indent=2)+'\n')

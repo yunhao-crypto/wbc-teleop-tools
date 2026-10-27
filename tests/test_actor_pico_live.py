@@ -748,6 +748,102 @@ class LiveTests(unittest.TestCase):
         self.assertEqual([x[0] for x in self.startup_calls],['FIXED_STAND','CANCEL'])
         self.assertEqual(self.transport.requests,[])
 
+    def online_setup(self, initial='FIXED_STAND'):
+        self.auto_setup(initial)
+        self.args.entry_policy='policy-online'
+        self.args.seconds=5.
+
+    def test_online_entry_runs_onnx_during_lead_in_from_straight_knees(self):
+        self.online_setup()
+        result=self.auto_trial()
+        self.assertTrue(result['onnx_control_enabled'])
+        self.assertFalse(any(r.get('stage')=='pose_prepare' for r in self.rows))
+        self.assertTrue(any(r.get('stage')=='prepare_stand' for r in self.rows))
+        self.assertGreater(len(self.transport.commands),100)
+        self.assert_cancelled()
+
+    def test_online_entry_uses_measured_reference_without_clipping_observation(self):
+        self.online_setup()
+        original=self.runtime.infer_motion_command
+        first=[]
+        def inference(motion,**kw):
+            if self.transport.requests and not self.transport.commands:
+                np.testing.assert_allclose(motion.q[0],kw['q'])
+                self.assertLess(kw['q'][10],self.runtime.policy.lower[10])
+                first.append(True)
+            return original(motion,**kw)
+        with patch.object(self.runtime,'infer_motion_command',inference):self.auto_trial()
+        self.assertTrue(first)
+
+    def test_online_does_not_require_all_joints_at_fixed_zero_target(self):
+        self.online_setup()
+        original=self.transport.state_fault
+        def bent(s):
+            s=original(s)
+            if not self.transport.commands:
+                q=s.q.copy();q[18]=.25;return replace(s,q=q)
+            return s
+        self.transport.state_fault=bent
+        self.auto_trial()
+        confirmed=next(r for r in self.rows if r.get('record_type')=='fixed_stand_confirmed')
+        self.assertAlmostEqual(confirmed['q'][18],.25)
+        self.assert_cancelled()
+
+    def test_online_requires_actual_active_fixed_stand_before_handoff(self):
+        self.online_setup('')
+        def never_active(name):
+            self.startup_calls.append((name,self.clock.monotonic()))
+            if name=='CANCEL':self.transport.value=replace(self.transport.value,current_action='PASSIVE')
+        self.request_action=never_active
+        with self.assertRaisesRegex(TimeoutError,'FIXED_STAND did not settle'):self.auto_trial()
+        self.assertEqual(self.transport.requests,[])
+
+    def test_online_large_first_target_is_rejected_before_external_request(self):
+        self.online_setup()
+        original=self.runtime.infer_motion_command
+        def jumping(*a,**kw):
+            cmd,obs,row=original(*a,**kw)
+            joints=list(cmd.joints);joints[0]=replace(joints[0],q=1.)
+            return replace(cmd,joints=tuple(joints)),obs,row
+        with patch.object(self.runtime,'infer_motion_command',jumping):
+            with self.assertRaisesRegex(RuntimeError,'Policy command step'):self.auto_trial()
+        self.assertEqual(self.transport.requests,[])
+        self.assertEqual([x[0] for x in self.startup_calls],['CANCEL'])
+
+    def test_online_wait_pico_starts_receiver_without_enabling_following(self):
+        self.online_setup();self.args.wait_pico=True
+        self.auto_trial()
+        self.assertTrue(self.worker.connected)
+        self.assertFalse(any(r.get('stage')=='pico_tracking' for r in self.rows))
+
+    def test_online_auto_pico_follows_only_after_preparation_in_same_session(self):
+        self.online_setup();self.args.wait_pico=self.args.auto_pico=True
+        self.auto_trial()
+        self.assertTrue(any(r.get('stage')=='pico_tracking' for r in self.rows))
+        self.assertEqual([r.operation.value for r in self.transport.requests],['PREPARE','COMMIT','CANCEL'])
+        self.assert_cancelled()
+
+    def test_online_auto_pico_stale_or_non_neutral_stays_in_onnx_stand(self):
+        for stale in (True,False):
+            self.setUp();self.online_setup();self.args.wait_pico=self.args.auto_pico=True
+            original=self.worker.snapshot
+            def bad():
+                value=original()
+                if stale:value['received_monotonic']-=.2
+                else:value['q']=value['q']+.2
+                return value
+            self.worker.snapshot=bad
+            self.auto_trial()
+            self.assertFalse(any(r.get('stage')=='pico_tracking' for r in self.rows))
+            self.assert_cancelled()
+
+    def test_terminal_short_pico_command_still_requires_explicit_operator_line(self):
+        from deployment.vita_s100_aorta_30dof.actor_pico_live import TerminalCommands
+        terminal=TerminalCommands('TEST-ONLY',self.stop)
+        with patch('sys.stdin',io.StringIO('PICO\n')),patch('select.select',return_value=([1],[],[])):
+            self.assertEqual(terminal.poll(),'track')
+        self.assertFalse(self.stop.is_set())
+
     def test_status_freeze_is_detected(self):
         guard = StatusGuard(self.clock)
         status = self.controller.status
@@ -789,6 +885,80 @@ class LiveTests(unittest.TestCase):
         self.assertEqual((result['actions_sent'], result['control_handles_created']), (0, 0))
         self.assertEqual((self.transport.requests, self.transport.commands), ([], []))
         self.assertTrue(self.transport.closed)
+
+
+class LocalStartTests(unittest.TestCase):
+    def setUp(self):
+        import hashlib
+        self.tmp=tempfile.TemporaryDirectory();self.addCleanup(self.tmp.cleanup)
+        self.root=Path(self.tmp.name);(self.root/'outputs').mkdir()
+        self.machine=self.root/'machine-id';self.machine.write_text('this-board\n')
+        self.selector=self.root/'end_effector';self.selector.write_text('none\n')
+        self.config=self.root/'robot.yaml';self.config.write_text(json.dumps(robot_config()))
+        self.profile=self.root/'outputs/actor_pico_local.json'
+        self.profile.touch(mode=0o600)
+        self.cfg=dict(schema='vita_actor_local_start_v1',machine_id_sha256=hashlib.sha256(b'this-board').hexdigest(),
+            robot_id='10.100.23.96',robot_config=str(self.config),
+            robot_config_sha256=hashlib.sha256(self.config.read_bytes()).hexdigest(),
+            end_effector='none',seconds=120,pico_handoff='manual')
+        self.save()
+
+    def save(self):self.profile.write_text(json.dumps(self.cfg))
+
+    def load(self,addresses=('10.100.23.96',)):
+        from deployment.vita_s100_aorta_30dof.actor_pico_local import load_local_start
+        with patch('platform.machine',return_value='aarch64'),patch('platform.system',return_value='Linux'):
+            return load_local_start(self.root,machine_id_path=self.machine,selector_path=self.selector,addresses=addresses)
+
+    def test_no_argument_launcher_selects_attended_device_bound_motion_and_keeps_check_explicit(self):
+        import subprocess
+        scripts=self.root/'scripts';scripts.mkdir()
+        launcher=scripts/'start_actor_pico.sh';launcher.write_bytes((ROOT/'scripts/start_actor_pico.sh').read_bytes())
+        output=self.root/'arguments.json'
+        fake=self.root/'fake-python'
+        fake.write_text('#!/usr/bin/env python3\nimport json,os,sys\nfrom pathlib import Path\nPath(os.environ["ACTOR_LAUNCH_TEST_OUTPUT"]).write_text(json.dumps(sys.argv[1:]))\n')
+        fake.chmod(0o755)
+        startup=self.root/'bash-env'
+        startup.write_text('source() { if [[ "$1" == /app/script/env.sh ]]; then return 0; fi; builtin source "$@"; }\n')
+        env=dict(os.environ,BASH_ENV=str(startup),VITA_ACTOR_PYTHON=str(fake),ACTOR_LAUNCH_TEST_OUTPUT=str(output))
+        subprocess.run(['bash',str(launcher)],env=env,check=True,capture_output=True,text=True,timeout=10)
+        args=json.loads(output.read_text())
+        self.assertEqual(args[1],'live')
+        for flag in ('--auto-start','--wait-pico','--manual-pico','--confirm-motion','--local-start'):
+            self.assertIn(flag,args)
+        self.assertNotIn('10.100.23.96',args)
+        subprocess.run(['bash',str(launcher),'check','--steps','1'],env=env,check=True,capture_output=True,text=True,timeout=10)
+        args=json.loads(output.read_text());self.assertEqual(args[1:],["check","--steps","1"])
+
+    def test_device_profile_selects_local_target_and_receives_pico_but_not_auto_follow(self):
+        args=self.load()
+        self.assertEqual(args['robot_id'],'10.100.23.96')
+        self.assertEqual(args['robot_config'],self.config)
+        self.assertTrue(args['wait_pico']);self.assertFalse(args['auto_pico'])
+        self.assertNotIn('confirm_motion',args)
+
+    def test_profile_wrong_device_or_nonlocal_address_fails(self):
+        with self.assertRaisesRegex(ValueError,'not a local'):self.load(addresses=('192.0.2.1',))
+        self.machine.write_text('another-board')
+        with self.assertRaisesRegex(ValueError,'another device'):self.load()
+
+    def test_profile_config_or_selector_change_requires_review(self):
+        self.config.write_text('changed')
+        with self.assertRaisesRegex(ValueError,'configuration changed'):self.load()
+        self.selector.write_text('gripper')
+        with self.assertRaisesRegex(ValueError,'selection changed'):self.load()
+
+    def test_missing_or_public_profile_fails_before_control(self):
+        self.profile.chmod(0o644)
+        with self.assertRaisesRegex(RuntimeError,'local startup profile'):self.load()
+        self.profile.unlink()
+        with self.assertRaisesRegex(RuntimeError,'local startup profile'):self.load()
+
+    def test_profile_invalid_handoff_or_unbounded_duration_fails(self):
+        self.cfg['seconds']=1000;self.save()
+        with self.assertRaises(ValueError):self.load()
+        self.cfg['seconds']=120;self.cfg['pico_handoff']='anything';self.save()
+        with self.assertRaises(ValueError):self.load()
 
 
 if __name__ == '__main__': unittest.main()

@@ -1,9 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 ROOT=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
-MODE=${1:-check}
+if [[ $# == 0 ]]; then
+  # Device-bound defaults are private deployment data, never cached consent.
+  set -- auto --local-start
+fi
+MODE=$1
 case "$MODE" in
-  auto) shift; MODE=live; set -- --auto-start --manual-pico --confirm-motion "$@" ;;
+  auto) shift; MODE=live; set -- --auto-start --manual-pico --wait-pico --confirm-motion "$@" ;;
   check|replay|state-check|shadow|live) shift "$(( $# > 0 ? 1 : 0 ))" ;;
   *) echo 'Usage: start_actor_pico.sh {check|replay|state-check|shadow|live|auto} [options]' >&2; exit 2 ;;
 esac

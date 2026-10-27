@@ -313,10 +313,23 @@ def main():
                         help='live: enter ONNX stand without Pico, then CONNECT/PICO commands in the same session')
     parser.add_argument('--auto-start', action='store_true',
                         help='live: one confirmation, wait damping, FIXED_STAND, bounded pose preparation, ONNX stand; implies manual Pico')
+    parser.add_argument('--local-start', action='store_true', help='live: load private defaults bound to this S100; still requires on-site confirmation')
+    parser.add_argument('--entry-policy', choices=('policy-online','joint-ramp'), default='policy-online',
+                        help='auto-start activation: policy-online matches the tracking profile; joint-ramp retains the explicit supported preparation trial')
+    parser.add_argument('--wait-pico', action='store_true', help='live manual-Pico path: start receiving Pico automatically while ONNX stand continues')
+    parser.add_argument('--auto-pico', action='store_true', help='live: receive Pico and automatically follow only after preparation and a fresh neutral reference window')
     args = parser.parse_args()
+    if args.local_start:
+        if args.mode != 'live' or args.robot_id or args.robot_config:
+            parser.error('--local-start requires live without explicit target/config overrides')
+        from deployment.vita_s100_aorta_30dof.actor_pico_local import load_local_start
+        for key,value in load_local_start(args.root).items():
+            setattr(args,key,value)
     if args.mode == 'live':
-        if args.auto_start:
+        if args.auto_start or args.wait_pico or args.auto_pico:
             args.manual_pico = True
+        if args.auto_pico:
+            args.wait_pico = True
         if args.stand_only and args.manual_pico:
             parser.error('--stand-only and --manual-pico are mutually exclusive')
         if (not args.confirm_motion or not args.robot_id or not args.robot_id.strip()
@@ -324,7 +337,8 @@ def main():
             parser.error('live requires --confirm-motion, --robot-id and an absolute --robot-config; on-site confirmation remains mandatory')
         if args.seconds > 120:
             parser.error('live trials are bounded to 120 seconds')
-    elif args.confirm_motion or args.robot_id or args.robot_config or args.stand_only or args.manual_pico or args.auto_start:
+    elif (args.confirm_motion or args.robot_id or args.robot_config or args.stand_only
+          or args.manual_pico or args.auto_start or args.wait_pico or args.auto_pico):
         parser.error('motion authorization/options apply only to live')
     if (args.steps < 1 or not math.isfinite(args.seconds) or not 1 <= args.seconds <= 7200
             or not math.isfinite(args.startup_timeout) or not 1 <= args.startup_timeout <= 120):

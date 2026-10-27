@@ -37,9 +37,10 @@ def vector(value, label):
 
 
 class StartupPlan:
-    def __init__(self, runtime, envelope, config_path):
+    def __init__(self, runtime, envelope, config_path, *, online=False):
         import yaml
         root = yaml.safe_load(Path(config_path).read_text())
+        self.online = online
         action = root['actions']['FIXED_STAND']
         params = action['params']
         frames = params['keyframes']
@@ -70,12 +71,16 @@ class StartupPlan:
                     or np.any(vector(frames[-1].get('kd', p.get('kd')), 'terminal damping') != 0)):
                 raise ValueError('Unknown PASSIVE/QUIET_PASSIVE damping completion contract')
             self.damping[name] = float(stamps[-1])+2.  # Conservative full curve from first observation.
-        self.review = dict(sequence=['wait_damping', 'FIXED_STAND', 'EXTERNAL_pose_prepare',
+        self.review = dict(sequence=['wait_damping', 'FIXED_STAND',
+                                     'EXTERNAL_policy_lead_in' if online else 'EXTERNAL_pose_prepare',
                                      'ONNX_stand', 'manual_Pico'],
             fixed_stand=[dict(q=j.q,kp=j.kp,kd=j.kd) for j in self.fixed.joints],
             pose_speed_rad_s=POSE_SPEED, pose_min_seconds=POSE_MIN_SECONDS,
             settle_error_rad=SETTLE_ERROR, settle_speed_rad_s=SETTLE_SPEED,
             damping_wait_seconds=self.damping,
+            entry_policy='policy-online' if online else 'joint-ramp',
+            fixed_stand_ready='active FIXED_STAND, healthy hardware-bounded feedback and stationary joints' if online
+                else 'measured positions at FIXED_STAND target and stationary joints',
             startup_exit='CANCEL to PASSIVE on an incomplete FIXED_STAND startup; loaded limbs may fall')
 
     def check_hardware_pose(self, envelope, state):
@@ -166,25 +171,41 @@ def fixed_stand_startup(plan, envelope, runtime, args, controller, inputs, stop,
         if initial != 'FIXED_STAND':
             write(dict(record_type='fixed_stand_requested',actions_sent=0))
             request_action('FIXED_STAND')
-        deadline=clock.monotonic()+args.startup_timeout; settled=None
+        deadline=clock.monotonic()+args.startup_timeout; settled=None; next_print=clock.monotonic()
         while True:
             if stop.is_set(): raise InterruptedError('Startup interrupted after FIXED_STAND')
             state,status=monitor()
             # The zero-time FIXED_STAND keyframe can finish between two status
             # publications. After the one accepted request, verify actual q/dq
             # continuously and require either that action or no active action.
-            if status.current_action in ('FIXED_STAND',''):
-                good=(np.max(np.abs(state.q-plan.fixed_q)) <= SETTLE_ERROR
-                      and np.max(np.abs(state.dq)) <= SETTLE_SPEED)
+            named_ready = status.current_action == 'FIXED_STAND' if plan.online else status.current_action in ('FIXED_STAND','')
+            if named_ready:
+                position_ready = plan.online or np.max(np.abs(state.q-plan.fixed_q)) <= SETTLE_ERROR
+                good=position_ready and np.max(np.abs(state.dq)) <= SETTLE_SPEED
                 settled = (settled if settled is not None else clock.monotonic()) if good else None
                 if settled is not None and clock.monotonic()-settled >= SETTLE_SECONDS:
-                    print('AUTO_START: FIXED_STAND feedback settled; entering EXTERNAL pose preparation',flush=True)
-                    write(dict(record_type='fixed_stand_confirmed',actions_sent=0))
+                    print('AUTO_START: FIXED_STAND feedback ready; entering EXTERNAL '+
+                          ('policy-online lead-in' if plan.online else 'pose preparation'),flush=True)
+                    write(dict(record_type='fixed_stand_confirmed',actions_sent=0,
+                               entry_policy=plan.review['entry_policy'],q=state.q.tolist(),dq=state.dq.tolist()))
                     return True
             elif status.current_action != initial:
                 raise RuntimeError('Unexpected action during FIXED_STAND activation')
             if clock.monotonic() >= deadline:
-                raise TimeoutError('FIXED_STAND did not settle; no EXTERNAL request sent')
+                i=int(np.argmax(np.abs(state.q-plan.fixed_q)));v=int(np.argmax(np.abs(state.dq)))
+                raise TimeoutError(f'FIXED_STAND did not settle; no EXTERNAL request sent; '
+                    f'action={status.current_action!r}, {envelope.body.joint_names[i]} '
+                    f'q={state.q[i]:.5f}, fixed_target={plan.fixed_q[i]:.5f}; '
+                    f'{envelope.body.joint_names[v]} dq={state.dq[v]:.5f}')
+            if clock.monotonic() >= next_print:
+                i=int(np.argmax(np.abs(state.q-plan.fixed_q)));v=int(np.argmax(np.abs(state.dq)))
+                print(f'AUTO_START: verifying FIXED_STAND, action={status.current_action!r}, '
+                      f'max position error={abs(state.q[i]-plan.fixed_q[i]):.3f} rad ({envelope.body.joint_names[i]}), '
+                      f'max speed={abs(state.dq[v]):.3f} rad/s ({envelope.body.joint_names[v]})',flush=True)
+                write(dict(record_type='fixed_stand_feedback',current_action=status.current_action,
+                    q=state.q.tolist(),dq=state.dq.tolist(),position_target=plan.fixed_q.tolist(),
+                    entry_policy=plan.review['entry_policy'],actions_sent=0))
+                next_print=clock.monotonic()+1.
             clock.sleep(.02)
     except BaseException:
         if requested:

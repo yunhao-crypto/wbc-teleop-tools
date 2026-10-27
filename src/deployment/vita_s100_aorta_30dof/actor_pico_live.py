@@ -298,9 +298,9 @@ class TerminalCommands:
         if not line or line.strip() == 'STOP':
             self.stop.set()
             return None
-        if line.strip() == 'CONNECT '+self.robot_id:
+        if line.strip() in ('CONNECT', 'CONNECT '+self.robot_id):
             return 'connect'
-        if line.strip() == 'PICO '+self.robot_id:
+        if line.strip() in ('PICO', 'PICO '+self.robot_id):
             return 'track'
         print(f'Commands: CONNECT {self.robot_id}, PICO {self.robot_id}, STOP', flush=True)
         return None
@@ -321,6 +321,18 @@ def manual_reference(runtime, snapshot, now):
         ik_max_residual_rad=float(snapshot['ik_max_residual_rad']))
 
 
+def check_policy_step(command, state, previous=None):
+    """Reject large target discontinuities; never clip observations or actions."""
+    from .sdkmain_adapter import BODY_NAMES
+    target = np.asarray([j.q for j in command.joints])
+    reference = np.asarray(state.q) if previous is None else np.asarray([j.q for j in previous.joints])
+    delta = np.abs(target-reference)
+    if np.max(delta) > .35:
+        i = int(np.argmax(delta))
+        raise RuntimeError(f'Policy command step exceeds 0.35 rad: {BODY_NAMES[i]}, '
+                           f'from={reference[i]:.6f}, target={target[i]:.6f}; command not published')
+
+
 def run_live(runtime, args, write, controller, pico, stop, service_alive,
              confirm=onsite_confirmation, clock=time, manual_pico=None, poll_command=lambda:None,
              request_action=None):
@@ -332,11 +344,14 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
     params, receipt = load_robot_config(args.robot_config)
     envelope = CommandEnvelope(runtime, controller.get_robot_info(args.startup_timeout), params)
     auto = bool(getattr(args, 'auto_start', False))
+    online = auto and getattr(args, 'entry_policy', 'joint-ramp') == 'policy-online'
+    wait_pico = bool(getattr(args, 'wait_pico', False))
+    auto_pico = bool(getattr(args, 'auto_pico', False))
     startup = None
     if auto:
         from .actor_pico_startup import (StartupPlan, PosePreparation, fixed_stand_startup,
                                          cancel_startup, FirmwareActions)
-        startup = StartupPlan(runtime, envelope, args.robot_config)
+        startup = StartupPlan(runtime, envelope, args.robot_config, online=online)
     manual = bool(getattr(args, 'manual_pico', False))
     requires_pico = not args.stand_only and not manual
     if auto and (not manual or args.stand_only):
@@ -380,8 +395,11 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
                 command, obs, row = runtime.infer_command(q=q, dq=dq, root=root, gyro=gyro,
                     now_monotonic=started, maximum_pico_age=PICO_AGE)
             else:
-                command, obs, row = runtime.infer_motion_command(runtime.math.Motion.hold(
-                    runtime.model.contract.default), q=q, dq=dq, root=root, gyro=gyro)
+                motion = runtime.math.Motion.hold(runtime.model.contract.default)
+                if online:
+                    motion = motion.lead_in(q, root, runtime.config['body_profile']['lead_in'])
+                command, obs, row = runtime.infer_motion_command(motion,
+                    q=q, dq=dq, root=root, gyro=gyro, yaw_offset=runtime.math.yaw(root) if online else 0.)
             envelope.check(command)
             if clock.monotonic()-started > COMPUTE_BUDGET:
                 raise TimeoutError('Preflight inference exceeds 20 ms budget')
@@ -395,7 +413,8 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
     print('ACTOR_LIVE_REVIEW '+json.dumps(dict(robot_id=args.robot_id,
         model=runtime.config['artifacts']['model'], config=receipt,
         stand_only=args.stand_only, seconds=args.seconds,
-        manual_pico=manual, auto_start=auto,
+        manual_pico=manual, auto_start=auto, entry_policy='policy-online' if online else 'joint-ramp',
+        wait_pico=wait_pico, auto_pico=auto_pico,
         startup_plan=startup.review if auto else None,
         default_pose=dict(zip(runtime.model.contract.names, runtime.model.contract.default.tolist())),
         kp=dict(zip(runtime.model.contract.names, runtime.model.contract.kp.tolist())),
@@ -418,7 +437,7 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
         if auto and load_robot_config(args.robot_config)[1] != receipt:
             raise RuntimeError('Effective config file changed during startup')
         runtime.reset_inputs()
-        state, q, _, _, _ = inputs.read(STATE_AGE)
+        state, q, dq, root, gyro = inputs.read(STATE_AGE)
         if auto:
             startup.check_hardware_pose(envelope, state)
         else:
@@ -427,6 +446,23 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
             inputs.require_pico()
         guard = StatusGuard(clock, initial_actions=('FIXED_STAND', '') if auto else ('PASSIVE',))
         guard.check(controller.status)
+        if online:
+            # PASSIVE can have a very different pose. Validate the first policy
+            # command on the actual prepared FIXED_STAND feedback, not on an
+            # earlier passive snapshot, and still before requesting EXTERNAL.
+            runtime.reset_inputs()
+            begin = clock.monotonic()
+            lead = runtime.math.Motion.hold(runtime.model.contract.default).lead_in(
+                q, root, runtime.config['body_profile']['lead_in'])
+            command, obs, row = runtime.infer_motion_command(lead,q=q,dq=dq,root=root,gyro=gyro,
+                                                            yaw_offset=runtime.math.yaw(root))
+            envelope.check(command)
+            check_policy_step(command,state)
+            if clock.monotonic()-begin > COMPUTE_BUDGET:
+                raise TimeoutError('Prepared pose inference exceeds 20 ms; no EXTERNAL request sent')
+            inputs.fresh(state)
+            write(dict(row,record_type='prepared_policy_preflight',actions_sent=0),obs)
+            runtime.reset_inputs()
     except BaseException:
         if auto:
             cancel_startup(controller, cancel_action, clock, write, startup_generation)
@@ -434,7 +470,7 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
     attempted, sent_count = False, 0
     report = dict(mode='live', actions_sent=0, control_handles_created=1, entered=False,
                   exit_confirmed=False, robot_id=args.robot_id, stand_only=args.stand_only,
-                  auto_start=auto, pose_prepared=not auto, onnx_control_enabled=False)
+                  auto_start=auto, pose_prepared=not auto or online, onnx_control_enabled=False)
     try:
         if stop.is_set():
             return report
@@ -450,7 +486,9 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
         state, q, dq, root, gyro = inputs.read(0)
         if requires_pico:
             inputs.require_pico()
-        pose_prepare = PosePreparation(startup, envelope, state) if auto else None
+        pose_prepare = PosePreparation(startup, envelope, state) if auto and not online else None
+        if online:
+            startup.check_hardware_pose(envelope,state)
         if not auto:
             envelope.check_entry_pose(runtime, state, q)
         lead = runtime.math.Motion.hold(runtime.model.contract.default).lead_in(
@@ -460,14 +498,21 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
                       for name in runtime.config['body_profile']['fixed_joints']}
         preparation = max(3., (len(lead.q)-1)*runtime.model.contract.period)
         start = deadline = clock.monotonic()
-        policy_start = None if auto else start
+        policy_start = None if pose_prepare is not None else start
         tracking = False
-        if auto:
+        if online:
+            print('POLICY_LEAD_IN: ONNX runs from measured-pose reference toward model stand; awaiting Pico',flush=True)
+        elif auto:
             print('POSE_PREPARE: bounded joint/gain ramp; ONNX control remains disabled until feedback settles.',flush=True)
         if manual:
             print(f'PICO_MANUAL: no Pico required. After preparation: CONNECT {args.robot_id}; '
                   f'keep wearer neutral, then PICO {args.robot_id}. STOP or Ctrl-C cancels.', flush=True)
         previous_pico_state = None
+        if manual and wait_pico:
+            manual_pico.connect(root)
+            print('PICO_WAIT: receiver starting; ONNX stand does not depend on receiving Pico',flush=True)
+            write(dict(record_type='pico_connect_requested',automatic=True,actions_sent=0))
+        previous_command = None
         while not stop.is_set() and clock.monotonic()-start < args.seconds:
             if requires_pico and not service_alive():
                 raise RuntimeError('Pico service exited')
@@ -512,7 +557,14 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
                     print(f'PICO_INPUT: {state_name}; ONNX '+('tracking' if tracking else 'stand'), flush=True)
                     write(dict(record_type='pico_input_state', state=state_name,
                                error=snapshot.get('error'), actions_sent=sent_count))
-                if request == 'track' and not tracking:
+                automatic_switch = False
+                if auto_pico and not tracking and elapsed >= preparation and snapshot.get('state') == 'ready':
+                    try:
+                        candidate,_ = manual_reference(runtime,snapshot,clock.monotonic())
+                        automatic_switch = np.max(np.abs(candidate.q-runtime.model.contract.default)) <= NEUTRAL_TOLERANCE
+                    except (ValueError,TimeoutError):
+                        pass
+                if (request == 'track' or automatic_switch) and not tracking:
                     try:
                         if elapsed < preparation:
                             raise ValueError('Stand preparation has not completed')
@@ -554,6 +606,8 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
                     joints[index] = replace(joints[index], q=(1-alpha)*initial+alpha*joints[index].q)
                 command = replace(command, joints=tuple(joints))
             envelope.check(command)
+            if online:
+                check_policy_step(command, state, previous_command)
             if clock.monotonic()-cycle > COMPUTE_BUDGET:
                 raise TimeoutError('State/retarget/inference exceeds 20 ms; target not published')
             inputs.fresh(state)
@@ -573,6 +627,7 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
                 ts_client_created_us=clock.time_ns()//1000)
             before = clock.monotonic()
             sent = controller.publish(command)  # SDK alone owns session + sequence.
+            previous_command = sent
             sent_count += 1
             report['actions_sent'] = sent_count
             if pose_row is None:
