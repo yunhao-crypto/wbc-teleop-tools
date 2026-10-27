@@ -10,24 +10,27 @@ import numpy as np
 import mujoco
 root=Path(__file__).resolve().parents[1];sys.path.insert(0,str(root/'src'))
 from deployment.vita_s100_aorta_30dof.actor_pico_runtime import ActorPicoRuntime
-p=argparse.ArgumentParser(description='Headless closed-loop physics validation; never connects to a robot.');p.add_argument('--scene',type=Path,required=True);p.add_argument('--incident-log',type=Path);p.add_argument('--output',type=Path,required=True);p.add_argument('--initial',choices=('default','zero','incident'),default='default');p.add_argument('--seconds',type=float,default=10);p.add_argument('--lead-speed',type=float,default=1.2);p.add_argument('--fixed-base',action='store_true');a=p.parse_args()
+p=argparse.ArgumentParser(description='Headless closed-loop physics validation; never connects to a robot.');p.add_argument('--scene',type=Path,required=True);p.add_argument('--incident-log',type=Path);p.add_argument('--candidate-log',type=Path);p.add_argument('--output',type=Path,required=True);p.add_argument('--initial',choices=('default','zero','incident'),default='default');p.add_argument('--seconds',type=float,default=10);p.add_argument('--lead-speed',type=float,default=1.2);p.add_argument('--fixed-base',action='store_true');a=p.parse_args()
 if not 0<a.seconds<=120:raise ValueError('simulation duration must be in (0,120]')
-if a.initial=='incident' and a.incident_log is None:raise ValueError('--initial incident requires --incident-log')
+if a.initial=='incident' and a.incident_log is None and a.candidate_log is None:raise ValueError('--initial incident requires --incident-log')
 r=ActorPicoRuntime(root,backend='ort')
 m=mujoco.MjModel.from_xml_path(str(a.scene));m.opt.timestep=.002
 d=mujoco.MjData(m)
 ids=np.array([m.joint(n).id for n in r.model.contract.names]);qids=m.jnt_qposadr[ids];vids=m.jnt_dofadr[ids]
-from types import SimpleNamespace
-from deployment.vita_s100_aorta_30dof.actor_pico_live import check_policy_step
-previous=None
 actids={mujoco.mj_id2name(m,mujoco.mjtObj.mjOBJ_ACTUATOR,i):i for i in range(m.nu)}
 allnames=list(actids);q0=r.model.contract.default.copy()
 if a.initial=='zero':q0[:]=0
-if a.initial=='incident':
+if a.initial=='incident' and a.candidate_log is None:
  rows=[json.loads(x) for x in a.incident_log.read_text().splitlines()]
  fixed=next(x for x in rows if x.get('record_type')=='fixed_stand_confirmed')
  order=r.policy.order;q0=np.array([fixed['q'][order.index(n)] for n in r.model.contract.names])
-d.qpos[qids]=q0;d.qpos[3:7]=[1,0,0,0];d.qpos[2]=1.
+initial_quat=np.array([1.,0.,0.,0.]);initial_dq=np.zeros(28);initial_gyro=np.zeros(3)
+if a.candidate_log is not None:
+ a.initial='candidate'
+ candidate=next(x for x in map(json.loads,a.candidate_log.read_text().splitlines()) if x.get('record_type')=='prepared_policy_candidate')
+ measured=candidate['input_state'];q0=np.array(measured['q']);initial_quat=np.array(measured['root']);initial_dq=np.array(measured['dq']);initial_gyro=np.array(measured['gyro'])
+d.qpos[qids]=q0;d.qpos[3:7]=initial_quat;d.qpos[2]=1.
+d.qvel[vids]=initial_dq;d.qvel[3:6]=initial_gyro
 mujoco.mj_forward(m,d)
 footids=[m.body(n).id for n in ('left_ankle_roll_link','right_ankle_roll_link')]
 # Locate the support plane at the initial soles; preserve original contact geometry.
@@ -46,7 +49,8 @@ for i in range(m.ngeom):
 d.qpos[2]-=min(z)-.001;mujoco.mj_forward(m,d)
 height=float(d.qpos[2]);base=np.array(d.qpos[:7]);
 config=dict(r.config['body_profile']['lead_in'],speed_q_per_s=a.lead_speed)
-lead=r.math.Motion.hold(r.model.contract.default).lead_in(q0,[1,0,0,0],config)
+lead=r.math.Motion.hold(r.model.contract.default).lead_in(q0,initial_quat,config)
+heading=r.math.yaw(initial_quat)
 r.reset_inputs();cmd=None;rows=[];maximum_tilt=0.;firststep=None;start=time.monotonic()
 for step in range(round(a.seconds/.002)):
  if a.fixed_base:
@@ -56,12 +60,7 @@ for step in range(round(a.seconds/.002)):
   tilt=float(np.arccos(np.clip(r.math.rotation(quat)[2,2],-1,1)));maximum_tilt=max(maximum_tilt,tilt)
   if tilt>.8 or d.qpos[2]<height-.25:
    print(json.dumps(dict(status='FALL',t=step*.002,height=float(d.qpos[2]),tilt=tilt,initial=a.initial,fixed_base=a.fixed_base,first_step=firststep)));sys.exit(2)
-  cmd,obs,row=r.infer_motion_command(lead,q=q,dq=dq,root=quat,gyro=gyro,ref_time=step*.002)
-  body_q=np.zeros(31)
-  for i,name in enumerate(r.policy.order):
-   if name in actids:body_q[i]=d.qpos[m.joint(name).qposadr[0]]
-  check_policy_step(cmd,SimpleNamespace(q=body_q),previous)
-  previous=cmd
+  cmd,obs,row=r.infer_motion_command(lead,q=q,dq=dq,root=quat,gyro=gyro,ref_time=step*.002,yaw_offset=heading)
   targets=np.array([j.q for j in cmd.joints])[r.policy.mapping]
   if firststep is None:firststep=float(np.max(np.abs(targets-q)))
   rows.append(dict(t=step*.002,height=float(d.qpos[2]),tilt=tilt,raw_action=row['raw_action'],q=q.tolist(),target=targets.tolist()))
@@ -72,4 +71,4 @@ for step in range(round(a.seconds/.002)):
  mujoco.mj_step(m,d)
 print(json.dumps(dict(status='PASS',seconds=a.seconds,initial=a.initial,fixed_base=a.fixed_base,first_step=firststep,max_tilt=maximum_tilt,final_height=float(d.qpos[2]),wall_seconds=time.monotonic()-start)))
 a.output.parent.mkdir(parents=True,exist_ok=True)
-with a.output.open('x') as stream:json.dump(dict(scene=str(a.scene),model_sha256=r.config['artifacts']['model']['sha256'],mujoco_version=mujoco.__version__,initial=a.initial,fixed_base=a.fixed_base,seconds=a.seconds,max_tilt=maximum_tilt,first_step=firststep,steps=rows,actions_sent=0,hardware_motion='not_measured',ankle_physics='serial virtual joints; not the hardware motor-space parallel adapter'),stream)
+with a.output.open('x') as stream:json.dump(dict(scene=str(a.scene),candidate_log=str(a.candidate_log) if a.candidate_log else None,model_sha256=r.config['artifacts']['model']['sha256'],mujoco_version=mujoco.__version__,initial=a.initial,fixed_base=a.fixed_base,seconds=a.seconds,max_tilt=maximum_tilt,first_step=firststep,steps=rows,actions_sent=0,hardware_motion='not_measured',ankle_physics='serial virtual joints; not the hardware motor-space parallel adapter'),stream)

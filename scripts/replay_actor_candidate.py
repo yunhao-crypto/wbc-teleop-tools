@@ -9,8 +9,6 @@ import numpy as np
 ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT/'src'))
 from deployment.vita_s100_aorta_30dof.actor_pico_runtime import ActorPicoRuntime
-from deployment.vita_s100_aorta_30dof.actor_pico_live import check_policy_step
-from types import SimpleNamespace
 
 
 def main():
@@ -35,13 +33,13 @@ def main():
     command_diff=float(np.max(np.abs(actual-expected)))
     if obs_diff>1e-5 or action_diff>1e-4 or command_diff>1e-4:
         raise RuntimeError(f'Candidate replay differs: obs={obs_diff}, action={action_diff}, command={command_diff}')
-    try:
-        check_policy_step(command,SimpleNamespace(q=np.asarray(state['body_q'])))
-        gate='PASS'
-    except RuntimeError as error:gate=str(error)
+    target_delta=np.abs(actual[:,0]-state['body_q'])
+    largest=int(np.argmax(target_delta))
     print(json.dumps(dict(status='PASS_EXACT_CANDIDATE_REPLAY',backend=runtime.model.backend,
         observation_max_diff=obs_diff,action_max_diff=action_diff,command_max_diff=command_diff,
-        step_guard_result=gate,actions_sent=0),indent=2))
+        largest_target_delta_rad=float(target_delta[largest]),
+        largest_target_delta_joint=candidate['body_order'][largest],
+        hardware_envelope_check='not_measured',actions_sent=0),indent=2))
 
 
 if __name__=='__main__':main()

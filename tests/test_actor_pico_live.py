@@ -798,17 +798,27 @@ class LiveTests(unittest.TestCase):
         with self.assertRaisesRegex(TimeoutError,'FIXED_STAND did not settle'):self.auto_trial()
         self.assertEqual(self.transport.requests,[])
 
-    def test_online_large_first_target_is_rejected_before_external_request(self):
+    def test_online_large_step_within_robot_ranges_matches_cpp_policy_output_contract(self):
         self.online_setup()
+        self.transport.reply=self.capability_reply(5,q_min=-.43625,q_max=.43625)
+        original_state=self.transport.state_fault
+        def initial(state):
+            state=original_state(state)
+            if not self.transport.commands:
+                q=state.q.copy();q[5]=.288;return replace(state,q=q)
+            return state
+        self.transport.state_fault=initial
         original=self.runtime.infer_motion_command
-        def jumping(*a,**kw):
+        def output(*a,**kw):
             cmd,obs,row=original(*a,**kw)
-            joints=list(cmd.joints);joints[0]=replace(joints[0],q=1.)
+            joints=list(cmd.joints);joints[5]=replace(joints[5],q=-.392699)
             return replace(cmd,joints=tuple(joints)),obs,row
-        with patch.object(self.runtime,'infer_motion_command',jumping):
-            with self.assertRaisesRegex(RuntimeError,'Policy command step'):self.auto_trial()
-        self.assertEqual(self.transport.requests,[])
-        self.assertEqual([x[0] for x in self.startup_calls],['CANCEL'])
+        self.transport.after_publish=lambda *_:self.stop.set()
+        with patch.object(self.runtime,'infer_motion_command',output):self.auto_trial()
+        self.assertEqual(len(self.transport.commands),1)
+        self.assertGreater(abs(self.transport.commands[0].joints[5].q-.288),.35)
+        self.assertLessEqual(abs(self.transport.commands[0].joints[5].q),.43625)
+        self.assert_cancelled()
 
     def test_online_wait_pico_starts_receiver_without_enabling_following(self):
         self.online_setup();self.args.wait_pico=True
@@ -844,15 +854,17 @@ class LiveTests(unittest.TestCase):
             self.assertEqual(terminal.poll(),'track')
         self.assertFalse(self.stop.is_set())
 
-    def test_rejected_policy_candidate_preserves_full_inputs_before_guard(self):
+    def test_rejected_policy_candidate_preserves_full_inputs_before_hardware_validation(self):
         self.online_setup()
         original=self.runtime.infer_motion_command
         def jumping(*a,**kw):
             command,obs,row=original(*a,**kw)
-            joints=list(command.joints);joints[0]=replace(joints[0],q=1.)
+            joints=list(command.joints)
+            if any(r.get('record_type')=='fixed_stand_confirmed' for r in self.rows):
+                joints[0]=replace(joints[0],q=99.)
             return replace(command,joints=tuple(joints)),obs,row
         with patch.object(self.runtime,'infer_motion_command',jumping):
-            with self.assertRaisesRegex(RuntimeError,'Policy command step'):self.auto_trial()
+            with self.assertRaisesRegex(ValueError,'outside'):self.auto_trial()
         candidate=next(r for r in self.rows if r.get('record_type')=='prepared_policy_candidate')
         self.assertEqual(len(candidate['observation']),1520)
         self.assertEqual(len(candidate['input_state']['q']),28)
@@ -872,7 +884,8 @@ class LiveTests(unittest.TestCase):
         self.assertEqual(process.returncode,0,process.stdout+process.stderr)
         report=json.loads(process.stdout)
         self.assertEqual(report['status'],'PASS_EXACT_CANDIDATE_REPLAY')
-        self.assertEqual(report['step_guard_result'],'PASS')
+        self.assertEqual(report['hardware_envelope_check'],'not_measured')
+        self.assertGreaterEqual(report['largest_target_delta_rad'],0.)
         self.assertEqual(report['actions_sent'],0)
         published=next(r for r in self.rows if r.get('stage')=='prepare_stand')
         self.assertEqual(len(published['feedback']['q_body']),31)

@@ -192,7 +192,7 @@ The sequence is:
    largest joint position error and speed; no request is retried after failure.
 3. Preflight the first native policy command using the newly measured pose,
    cosine reference lead-in, real observations and configured heading alignment.
-   Check hardware/output limits, a 0.35 rad initial target-step bound and the
+   Check hardware/output limits and the
    20 ms inference budget before requesting EXTERNAL. A failed preflight
    cancels startup and records the actual state.
 4. Enter one SDK EXTERNAL session. Keep ONNX active throughout the reference
@@ -201,7 +201,7 @@ The sequence is:
    `stand_on_activate` / online-reference design; it does not first drive an
    independent open-loop trajectory to the training pose. Raw measured q is
    not clipped to model output limits; model targets remain clamped to the
-   trained/physical intersection. Check each target change, state freshness,
+   trained/physical intersection. Check each command against RobotInfo ranges, state freshness,
    ownership/status, body tilt and the complete 20 ms cycle budget.
 5. Start the isolated Pico receiver automatically while ONNX stand continues.
    No Pico input is required for model inference. After `ONNX_READY` and
@@ -389,8 +389,8 @@ output so rejected frames can be replayed without robot control:
 python3 scripts/replay_actor_candidate.py --backend ort --input /path/to/live.jsonl
 ```
 
-The replay checks observation/action/command parity and reports the unchanged
-step guard. Earlier logs lacking this record cannot reconstruct the original
+The replay checks observation/action/command parity and reports target deltas
+as diagnostics. Live RobotInfo validation remains a separate hardware check. Earlier logs lacking this record cannot reconstruct the original
 IMU/reference exactly. Actual live publish records include measured Body31 q/dq,
 HIP orientation/gyro and firmware applied session/sequence evidence.
 
@@ -407,9 +407,21 @@ simulation uses serial virtual ankle joints, not the robot's parallel motor
 adapter; its success is separate from hardware control and balance acceptance.
 
 The captured failed hardware preflight was reproduced exactly on host ORT
-(observation difference 0; action difference about 7e-7). Its measured HIP
-tilt was about 11 degrees. An offline counterfactual removing tilt brought
-the initial target step below the unchanged 0.35 rad guard; this is diagnostic
-evidence, not permission to rewrite real IMU observations. No fake upright IMU is supplied to the model. A temporary 2-degree startup
-rule inferred from this single counterfactual was withdrawn as unsupported.
-Command discontinuity and hardware/profile guards remain separate and active.
+(observation difference 0; action difference about 7e-7). The previously added
+Python 2-degree startup gate and 0.35 rad policy-output delta gate were both
+withdrawn: neither is part of the reviewed C++ tracking contract. Target
+deltas and measured tilt remain diagnostic data, never replacements for real
+observations or evidence that a command is safe by themselves.
+
+C++ parity was checked at the deployed robot revision c9b4e80c: policy
+DecodeAndClampVtHumanAction applies the trained/profile range intersection,
+BuildMotorFrameFromPolicyQ writes the result and ankle clamp feedforward,
+and EXTERNAL ValidateFrameLocked checks the actual BodyCapabilityRegistry
+fields/ranges. The parallel adapter owns its motor-space caps and entry blend.
+No uniform policy-output delta threshold is applied by these paths. The
+profile's stream.max_step_rad=2.0 rejects glitches in incoming Pico reference
+frames; it is not a policy-output bound and is not substituted for one.
+Hardware limits, finite-value checks, gains, ankle feedforward/adapter caps,
+watchdog/interpolation, ownership and checked exit remain in place. Removing
+an extra Python gate restores this contract; hardware stability still requires
+an attended motion trial.

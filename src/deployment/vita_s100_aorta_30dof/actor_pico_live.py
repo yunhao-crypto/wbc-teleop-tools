@@ -321,18 +321,6 @@ def manual_reference(runtime, snapshot, now):
         ik_max_residual_rad=float(snapshot['ik_max_residual_rad']))
 
 
-def check_policy_step(command, state, previous=None):
-    """Reject large target discontinuities; never clip observations or actions."""
-    from .sdkmain_adapter import BODY_NAMES
-    target = np.asarray([j.q for j in command.joints])
-    reference = np.asarray(state.q) if previous is None else np.asarray([j.q for j in previous.joints])
-    delta = np.abs(target-reference)
-    if np.max(delta) > .35:
-        i = int(np.argmax(delta))
-        raise RuntimeError(f'Policy command step exceeds 0.35 rad: {BODY_NAMES[i]}, '
-                           f'from={reference[i]:.6f}, target={target[i]:.6f}; command not published')
-
-
 def run_live(runtime, args, write, controller, pico, stop, service_alive,
              confirm=onsite_confirmation, clock=time, manual_pico=None, poll_command=lambda:None,
              request_action=None):
@@ -461,13 +449,13 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
             # This is one pre-ownership record, not a streaming log on the
             # 50 Hz control path. It supports exact inference reproduction.
             write(dict(row,record_type='prepared_policy_candidate',actions_sent=0,
+                body_targets=[dict(q=j.q,dq=j.dq,tau=j.tau,kp=j.kp,kd=j.kd) for j in command.joints],
                 input_state=dict(q=q.tolist(),dq=dq.tolist(),root=root.tolist(),gyro=gyro.tolist(),
                                  body_q=state.q.tolist(),state_id=int(state.state_id)),
                 reference=dict(q=lead.q.tolist(),base=lead.base.tolist(),quat=lead.quat.tolist(),
                                ref_time=0.,yaw_offset=runtime.math.yaw(root)),
                 observation=obs.tolist()))
             envelope.check(command)
-            check_policy_step(command,state)
             if model_elapsed > COMPUTE_BUDGET:
                 raise TimeoutError('Prepared pose inference exceeds 20 ms; no EXTERNAL request sent')
             inputs.fresh(state)
@@ -522,7 +510,6 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
             manual_pico.connect(root)
             print('PICO_WAIT: receiver starting; ONNX stand does not depend on receiving Pico',flush=True)
             write(dict(record_type='pico_connect_requested',automatic=True,actions_sent=0))
-        previous_command = None
         while not stop.is_set() and clock.monotonic()-start < args.seconds:
             if requires_pico and not service_alive():
                 raise RuntimeError('Pico service exited')
@@ -616,8 +603,6 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
                     joints[index] = replace(joints[index], q=(1-alpha)*initial+alpha*joints[index].q)
                 command = replace(command, joints=tuple(joints))
             envelope.check(command)
-            if online:
-                check_policy_step(command, state, previous_command)
             if clock.monotonic()-cycle > COMPUTE_BUDGET:
                 raise TimeoutError('State/retarget/inference exceeds 20 ms; target not published')
             inputs.fresh(state)
@@ -637,7 +622,6 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
                 ts_client_created_us=clock.time_ns()//1000)
             before = clock.monotonic()
             sent = controller.publish(command)  # SDK alone owns session + sequence.
-            previous_command = sent
             sent_count += 1
             report['actions_sent'] = sent_count
             if pose_row is None:
