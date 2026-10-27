@@ -18,7 +18,7 @@ import numpy as np
 STATE_AGE = .1
 PICO_AGE = .1
 STATUS_AGE = .5
-COMPUTE_BUDGET = .020
+TARGET_PERIOD = .020
 NEUTRAL_TOLERANCE = .10
 
 
@@ -321,6 +321,24 @@ def manual_reference(runtime, snapshot, now):
         ik_max_residual_rad=float(snapshot['ik_max_residual_rad']))
 
 
+def next_policy_deadline(deadline, now, period):
+    """Advance to a future nominal tick, skipping missed slots without bursts."""
+    following = deadline+period
+    missed = 0
+    if now > following+1e-9:
+        missed = int(math.ceil((now-following-1e-9)/period))
+        following += missed*period
+    return following, missed
+
+
+def record_period_overrun(write, phase_name, elapsed, actions_sent, **details):
+    """50 Hz is a scheduling target, not an extra firmware safety limit."""
+    if elapsed > TARGET_PERIOD:
+        write(dict(record_type='policy_period_overrun',phase=phase_name,
+                   elapsed_ms=elapsed*1000,target_period_ms=TARGET_PERIOD*1000,
+                   actions_sent=actions_sent,**details))
+
+
 def run_live(runtime, args, write, controller, pico, stop, service_alive,
              confirm=onsite_confirmation, clock=time, manual_pico=None, poll_command=lambda:None,
              request_action=None):
@@ -389,8 +407,8 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
                 command, obs, row = runtime.infer_motion_command(motion,
                     q=q, dq=dq, root=root, gyro=gyro, yaw_offset=runtime.math.yaw(root) if online else 0.)
             envelope.check(command)
-            if clock.monotonic()-started > COMPUTE_BUDGET:
-                raise TimeoutError('Preflight inference exceeds 20 ms budget')
+            record_period_overrun(write,'preflight',clock.monotonic()-started,0)
+            inputs.fresh(state)
             write(dict(row, record_type='live_preflight', robot_id=args.robot_id,
                        robot_config=receipt, status=status_row(status)), obs)
             break
@@ -456,8 +474,7 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
                                ref_time=0.,yaw_offset=runtime.math.yaw(root)),
                 observation=obs.tolist()))
             envelope.check(command)
-            if model_elapsed > COMPUTE_BUDGET:
-                raise TimeoutError('Prepared pose inference exceeds 20 ms; no EXTERNAL request sent')
+            record_period_overrun(write,'prepared_preflight',model_elapsed,0)
             inputs.fresh(state)
             write(dict(row,record_type='prepared_policy_preflight',actions_sent=0),obs)
             runtime.reset_inputs()
@@ -468,7 +485,8 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
     attempted, sent_count = False, 0
     report = dict(mode='live', actions_sent=0, control_handles_created=1, entered=False,
                   exit_confirmed=False, robot_id=args.robot_id, stand_only=args.stand_only,
-                  auto_start=auto, pose_prepared=not auto or online, onnx_control_enabled=False)
+                  auto_start=auto, pose_prepared=not auto or online, onnx_control_enabled=False,
+                  missed_policy_ticks=0)
     try:
         if stop.is_set():
             return report
@@ -506,6 +524,7 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
             print(f'PICO_MANUAL: no Pico required. After preparation: CONNECT {args.robot_id}; '
                   f'keep wearer neutral, then PICO {args.robot_id}. STOP or Ctrl-C cancels.', flush=True)
         previous_pico_state = None
+        last_publish = None
         if manual and wait_pico:
             manual_pico.connect(root)
             print('PICO_WAIT: receiver starting; ONNX stand does not depend on receiving Pico',flush=True)
@@ -517,8 +536,12 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
             if stop.is_set() or clock.monotonic()-start >= args.seconds:
                 break
             cycle = clock.monotonic()
+            cpu_clock = getattr(clock,'thread_time',None)
+            cpu_start = cpu_clock() if cpu_clock is not None else None
             guard.check(controller.status, entered)
+            status_end = clock.monotonic()
             state, q, dq, root, gyro = inputs.read(0)
+            state_end = clock.monotonic()
             if requires_pico:
                 inputs.require_pico()
             elapsed = 0. if policy_start is None else cycle-policy_start
@@ -603,8 +626,11 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
                     joints[index] = replace(joints[index], q=(1-alpha)*initial+alpha*joints[index].q)
                 command = replace(command, joints=tuple(joints))
             envelope.check(command)
-            if clock.monotonic()-cycle > COMPUTE_BUDGET:
-                raise TimeoutError('State/retarget/inference exceeds 20 ms; target not published')
+            compute_end = clock.monotonic()
+            record_period_overrun(write,'compute',compute_end-cycle,sent_count,
+                status_ms=(status_end-cycle)*1000,state_ms=(state_end-status_end)*1000,
+                policy_ms=row.get('total_ms'),
+                thread_cpu_ms=(cpu_clock()-cpu_start)*1000 if cpu_start is not None else None)
             inputs.fresh(state)
             if requires_pico:
                 inputs.require_pico()
@@ -617,6 +643,8 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
             guard.check(controller.status, entered)
             if stop.is_set():
                 break
+            if last_publish is not None and clock.monotonic()-last_publish > STATE_AGE:
+                raise TimeoutError('Command publication gap exceeds 100 ms freshness budget; no retry')
             command = replace(command, input_state_id=int(state.state_id),
                 input_state_ts_real_us=int(state.ts_state_real_us),
                 ts_client_created_us=clock.time_ns()//1000)
@@ -624,6 +652,12 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
             sent = controller.publish(command)  # SDK alone owns session + sequence.
             sent_count += 1
             report['actions_sent'] = sent_count
+            last_publish = before
+            if clock.monotonic()-before > STATE_AGE:
+                write(dict(record_type='publish_stall',actions_sent=sent_count,
+                    session_id=sent.session_id,sequence=sent.sequence,
+                    elapsed_ms=(clock.monotonic()-before)*1000))
+                raise TimeoutError('Command publication stalled beyond 100 ms freshness budget')
             if pose_row is None:
                 if auto and not report['onnx_control_enabled']:
                     print('ONNX_READY: policy commands started; waiting for manual Pico connection',flush=True)
@@ -638,13 +672,18 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
                     ts_first_output_us=int(state.ts_first_output_us)),
                 session_id=sent.session_id, sequence=sent.sequence,
                 publish_ms=(clock.monotonic()-before)*1000,
+                compute_ms=(compute_end-cycle)*1000,
                 sent_body_targets=[dict(q=j.q, dq=j.dq, tau=j.tau, kp=j.kp, kd=j.kd) for j in sent.joints]), obs)
             if sent_count % 50 == 0:
                 stage = 'pose_prepare' if pose_row is not None else ('pico_tracking' if tracking else 'stand')
                 print(f'ACTOR_LIVE steps={sent_count} stage={stage}', flush=True)
-            deadline += runtime.model.contract.period
-            if clock.monotonic() > deadline+1e-9:
-                raise TimeoutError('Complete policy cycle including publish/log exceeded 20 ms; no catch-up/retry')
+            complete = clock.monotonic()
+            record_period_overrun(write,'complete_cycle',complete-cycle,sent_count)
+            deadline,missed = next_policy_deadline(deadline,clock.monotonic(),runtime.model.contract.period)
+            report['missed_policy_ticks'] += missed
+            if missed:
+                write(dict(record_type='policy_ticks_skipped',missed_ticks=missed,
+                           total_missed_ticks=report['missed_policy_ticks'],actions_sent=sent_count))
         report['stopped_by_signal'] = stop.is_set()
         return report
     finally:

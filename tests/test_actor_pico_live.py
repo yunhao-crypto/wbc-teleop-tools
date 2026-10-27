@@ -20,6 +20,7 @@ sys.path.insert(0, str(ROOT/'src'))
 from deployment.vita_s100_aorta_30dof.actor_pico_runtime import ActorPicoRuntime
 from deployment.vita_s100_aorta_30dof.actor_pico_live import (
     run_live, load_robot_config, require_peer_profile, CommandEnvelope, StatusGuard,
+    next_policy_deadline,
 )
 
 
@@ -181,8 +182,9 @@ class LiveTests(unittest.TestCase):
         self.confirm = lambda *_:self.clock.sleep(.02)
 
     def run_trial(self, **kwargs):
+        write = kwargs.pop('write', lambda row, obs=None:self.rows.append(row))
         with redirect_stdout(io.StringIO()):
-            return run_live(self.runtime, self.args, lambda row, obs=None:self.rows.append(row),
+            return run_live(self.runtime, self.args, write,
                 self.controller, self.pico, self.stop, service_alive=lambda:True,
                 confirm=self.confirm, clock=self.clock, **kwargs)
 
@@ -360,15 +362,52 @@ class LiveTests(unittest.TestCase):
                 self.assertEqual(len(self.transport.commands), 1)
                 self.assertIn('CANCEL', [r.operation.value for r in self.transport.requests])
 
-    def test_expensive_inference_is_never_sent_and_cancels(self):
+    def test_one_period_inference_overrun_is_logged_and_skips_missed_ticks(self):
+        self.args.stand_only = True
         original = self.runtime.infer_motion_command
         def expensive(*a, **kw):
             result = original(*a, **kw)
             if self.transport.commands: self.clock.sleep(.021)
             return result
+        self.transport.after_publish = lambda c:self.stop.set() if len(self.transport.commands) == 3 else None
         with patch.object(self.runtime, 'infer_motion_command', expensive):
-            with self.assertRaisesRegex(TimeoutError, '20 ms'): self.run_trial()
+            report = self.run_trial()
+        self.assertEqual([c.sequence for c in self.transport.commands], [1,2,3])
+        self.assertEqual(report['missed_policy_ticks'], 2)
+        self.assertTrue(any(r.get('record_type') == 'policy_period_overrun' and
+                            r.get('phase') == 'compute' for r in self.rows))
+        self.assert_cancelled()
+
+    def test_inference_overrun_cannot_publish_expired_feedback(self):
+        self.args.stand_only = True
+        original = self.runtime.infer_motion_command
+        def expensive(*a, **kw):
+            result = original(*a, **kw)
+            if self.transport.commands: self.clock.sleep(.101)
+            return result
+        with patch.object(self.runtime, 'infer_motion_command', expensive):
+            with self.assertRaisesRegex(TimeoutError, 'stale'): self.run_trial()
         self.assertEqual(len(self.transport.commands), 1)
+        self.assert_cancelled()
+
+    def test_nominal_scheduler_skips_late_slots_without_catchup_bursts(self):
+        for now, expected, missed in [(100.,100.02,0),(100.02,100.02,0),
+                                      (100.025,100.04,1),(100.04,100.04,1),
+                                      (100.045,100.06,2)]:
+            with self.subTest(now=now):
+                following, count = next_policy_deadline(100.,now,.02)
+                self.assertAlmostEqual(following,expected)
+                self.assertEqual(count,missed)
+
+    def test_scheduler_delay_cannot_hide_publication_gap_with_fresh_new_state(self):
+        self.args.stand_only = True
+        original = self.clock.sleep
+        def delayed(seconds):
+            original(seconds)
+            if self.transport.commands: original(.101)
+        with patch.object(self.clock,'sleep',delayed):
+            with self.assertRaisesRegex(TimeoutError,'publication gap'): self.run_trial()
+        self.assertEqual(len(self.transport.commands),1)
         self.assert_cancelled()
 
     def test_entry_failure_still_attempts_cancel(self):
@@ -414,10 +453,37 @@ class LiveTests(unittest.TestCase):
         self.assertEqual((sent.joints[index].tau, sent.joints[index].dq), (2.5, .1))
         self.assert_cancelled()
 
-    def test_logging_overrun_after_publish_cancels_without_catchup(self):
-        self.transport.after_publish = lambda c:self.clock.sleep(.021)
-        with self.assertRaisesRegex(TimeoutError, 'Complete policy cycle'): self.run_trial()
+    def test_slow_logging_skips_ticks_without_burst_publication(self):
+        self.args.stand_only = True
+        published_at = []
+        def after_publish(command):
+            published_at.append(self.clock.monotonic())
+            if len(published_at) == 3: self.stop.set()
+        def write(row, obs=None):
+            self.rows.append(row)
+            if 'sent_body_targets' in row: self.clock.sleep(.021)
+        self.transport.after_publish = after_publish
+        report = self.run_trial(write=write)
+        self.assertEqual(report['actions_sent'],3)
+        self.assertEqual(report['missed_policy_ticks'],3)
+        self.assertTrue(np.allclose(np.diff(published_at),[.04,.04]))
+        self.assert_cancelled()
+
+    def test_publication_stall_records_already_sent_frame_and_cancels(self):
+        self.transport.after_publish = lambda c:self.clock.sleep(.101)
+        with self.assertRaisesRegex(TimeoutError, 'publication stalled'): self.run_trial()
         self.assertEqual(len(self.transport.commands), 1)
+        row = next(r for r in self.rows if r.get('record_type') == 'publish_stall')
+        self.assertEqual((row['actions_sent'],row['session_id'],row['sequence']),(1,7,1))
+        self.assert_cancelled()
+
+    def test_logging_stall_cannot_publish_another_frame_after_long_gap(self):
+        self.args.stand_only = True
+        def write(row, obs=None):
+            self.rows.append(row)
+            if 'sent_body_targets' in row: self.clock.sleep(.101)
+        with self.assertRaisesRegex(TimeoutError,'publication gap'): self.run_trial(write=write)
+        self.assertEqual(len(self.transport.commands),1)
         self.assert_cancelled()
 
     def test_exit_to_other_action_is_not_reported_as_passive(self):

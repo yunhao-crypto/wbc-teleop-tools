@@ -1,6 +1,6 @@
 {
   "schema": "vita_actor_s100_delivery_v1",
-  "version": "2026.10.27-actor12",
+  "version": "2026.10.27-actor13",
   "target": {
     "os": "Linux",
     "architecture": "aarch64",
@@ -81,7 +81,7 @@
     {
       "path": "ACTOR-PICO-MANIFEST.json",
       "bytes": 4674,
-      "sha256": "dfa9707cc1da99b010c2226bf46e4f1c1eb597497c277bde37671a126f3366a2"
+      "sha256": "6e6c7f0104e2091106fb16600b06d61471e5c75092920bead4c59d4daf18b206"
     },
     {
       "path": "README.md",
@@ -90,8 +90,8 @@
     },
     {
       "path": "README_ACTOR_PICO.md",
-      "bytes": 24864,
-      "sha256": "dc7c7d3e5d3a7268aa5d9229c308b17ff5a86b43becfef2e5b088606d5930837"
+      "bytes": 25405,
+      "sha256": "86ac6b3c7909156b37f44c98310685fc917900b18b7159d687ed575b1f5a5f46"
     },
     {
       "path": "artifacts/model_motion/pools_nk/manifest.json",
@@ -641,7 +641,7 @@
     {
       "path": "scripts/seal_actor_delivery.py",
       "bytes": 5064,
-      "sha256": "537bd662c1e8f7444a544a486b93b322e219be3157309aa3ceb61c1264798524"
+      "sha256": "b6e8d2e779b3b26cae1e8873875ed4ba6d88571878001d726aa410e4e4b56085"
     },
     {
       "path": "scripts/send_fake_pico_via_robot_ssh.py",
@@ -721,7 +721,7 @@
     {
       "path": "scripts/verify_actor_delivery.py",
       "bytes": 5940,
-      "sha256": "92e8009a58c0c9cae4bd2afa0eed71e22efe320806e20e969a476fa385691ea3"
+      "sha256": "92954b514518f6745dab67688069c20de6c5d41f3153c2fcabee02ac00ca1273"
     },
     {
       "path": "scripts/vita_wifi.sh",
@@ -1080,8 +1080,8 @@
     },
     {
       "path": "src/deployment/vita_s100_aorta_30dof/actor_pico_live.py",
-      "bytes": 37885,
-      "sha256": "6f76f5f94647fa51704ac1d4da6e974237e97651f29c266aed5ba5f11e195b79"
+      "bytes": 39922,
+      "sha256": "e87f80af7c0dbf2187c776403e2367c5b478d0f819f63690962d05fa3be2065f"
     },
     {
       "path": "src/deployment/vita_s100_aorta_30dof/actor_pico_local.py",
@@ -3235,8 +3235,8 @@
     },
     {
       "path": "tests/test_actor_pico_live.py",
-      "bytes": 55724,
-      "sha256": "9ea13f944d5d12c9eda131a5b480ddb61b244de78e9f8d667f41453d53f75023"
+      "bytes": 59065,
+      "sha256": "c81a35f136d1407ef9a55386a2b88a5761be648f55e1cbc61a379f629eaedcf2"
     },
     {
       "path": "tests/wifi_offline_test.py",

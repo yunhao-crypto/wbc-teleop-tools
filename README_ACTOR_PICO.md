@@ -192,8 +192,8 @@ The sequence is:
    largest joint position error and speed; no request is retried after failure.
 3. Preflight the first native policy command using the newly measured pose,
    cosine reference lead-in, real observations and configured heading alignment.
-   Check hardware/output limits and the
-   20 ms inference budget before requesting EXTERNAL. A failed preflight
+   Check hardware/output limits and feedback freshness before requesting
+   EXTERNAL. Record inference exceeding the nominal 20 ms period. A failed preflight
    cancels startup and records the actual state.
 4. Enter one SDK EXTERNAL session. Keep ONNX active throughout the reference
    lead-in into the model stand, using the pinned profile's 1.2 rad/s reference
@@ -202,7 +202,8 @@ The sequence is:
    independent open-loop trajectory to the training pose. Raw measured q is
    not clipped to model output limits; model targets remain clamped to the
    trained/physical intersection. Check each command against RobotInfo ranges, state freshness,
-   ownership/status, body tilt and the complete 20 ms cycle budget.
+   ownership/status and body tilt. Schedule at 50 Hz, record overruns and skip
+   missed ticks rather than publishing a burst of accumulated commands.
 5. Start the isolated Pico receiver automatically while ONNX stand continues.
    No Pico input is required for model inference. After `ONNX_READY` and
    `PICO_INPUT: ready`, keep the wearer neutral and type **`PICO`** to follow
@@ -343,8 +344,14 @@ The complete decoded BodyCmd is sent, including ankle compensation torque.
 The unpopulated waist-roll slot remains inert; no hand command is sent.
 
 Trials are limited to 120 seconds. Body feedback and Pico age must stay within
-100 ms, advancing ControlStatus within 500 ms, and the complete 50 Hz cycle
-(including publication/logging) within 20 ms. Faults, timeouts, command
+100 ms, and ControlStatus must advance within 500 ms. The 20 ms period is a
+50 Hz scheduling target, matching the C++ executor's treatment of occasional
+overruns. Compute/full-cycle overruns and skipped ticks are recorded; delayed
+commands are never replayed in a catch-up burst. Feedback is rechecked just
+before publication. A publication gap or blocking publish exceeding the same
+100 ms freshness budget cancels the trial, even if a newer state has arrived.
+The effective firmware watchdog/interpolation settings remain unchanged.
+Faults, timeouts, command
 rejections/drops, ownership changes and SIGINT/SIGTERM stop the trial without
 automatic retry. Logging records requested commands, session/sequence and
 input state IDs; publication alone is not proof of actuator execution.
