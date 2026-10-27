@@ -165,14 +165,14 @@ Use `bash scripts/start_actor_pico.sh check` for offline inference, or
 `state-check --seconds 5` for read-only feedback. The default motion entry uses
 `outputs/actor_pico_local.json`, a private 0600 file provisioned for this board.
 It binds the local IPv4 address, machine-id digest, selected end effector,
-effective YAML digest and 120-second live budget. It stores no authorization.
+effective YAML digest and configured duration (`0` means until STOP). It stores no authorization.
 Another device, changed network identity/selector/YAML or missing profile fails
 before robot handles. A generic bundle has no device profile; use explicit
 `auto --robot-id <local-robot-ip> --robot-config <effective-yaml>` or provision
 reviewed local defaults. Do not copy another robot's private profile.
 
-The default displays target, actual gains and startup sequence, and requires
-one current on-site `MOVE <robot-id>` confirmation. Reliable support, clear
+The default displays target, actual gains and startup sequence, then requests
+motion directly without a typed `MOVE` prompt. Reliable support, clear
 movement/pinch zones, an attendant and usable E-stop remain required.
 The sequence is:
 
@@ -237,11 +237,16 @@ receiver connection with `CONNECT`. `--auto-pico` is an explicit opt-in to
 following a fresh neutral reference automatically; it is not enabled by this
 board's selected local profile.
 
-The 120-second live budget starts with EXTERNAL; confirmation, damping wait
-and fixed-stand activation are additional bounded time. `STOP` or Ctrl-C sends
+The configured local default uses `seconds=0`: no application duration expiry.
+Use `bash scripts/start_actor_pico.sh --seconds 300` for a five-minute run;
+an explicit duration overrides the local profile. Positive duration counts from
+EXTERNAL entry; damping wait and fixed-stand activation are additional bounded
+time. `STOP` or Ctrl-C sends
 checked cancellation to PASSIVE. Incomplete startup cancels only a recognized
 non-EXTERNAL state/generation, records incomplete exits and never retries
-motion. EXTERNAL has no ownership expiry; PASSIVE removes position stiffness
+motion. An explicit positive duration also cancels to PASSIVE when it expires;
+the summary reports `stop_reason=duration_elapsed`. Operator stop reports
+`stop_reason=operator_stop`. EXTERNAL has no ownership expiry; PASSIVE removes position stiffness
 and can let loaded limbs fall. Keep support throughout exit. Reference parity,
 mock-I/O tests and native read-only inference do not prove physical balance:
 actual standing, full-loop timing and Pico handoff remain `not_measured` until
@@ -259,9 +264,9 @@ motor-space adapter. Those absent ranges are not zero limits. Other populated
 axes must advertise all five ranges; missing or degraded capabilities fail
 before requesting ownership. The full A-sample YAML still supplies watchdog,
 recovery, interpolation, safe-hold and virtual-PD intent. Do not add old limits
-to robot YAML or weaken model entry-pose checks to get past preflight.
+to robot YAML or weaken output/hardware checks to get past preflight.
 
-`live` is an experimental, bounded **supported** trial. It is not acceptance
+`live` is experimental **supported** control. It is not acceptance
 for unsupported standing/walking. Obtain authorization for the actual robot
 and motion; keep reliable support, clear motion/pinch zones, an attendant and
 a usable hardware emergency stop. The Pico wearer must stay neutral during
@@ -269,7 +274,7 @@ preflight and the first three seconds after entry, then use small movements.
 The 200 ms reference delay remains for Pico following. `--stand-only` still moves the whole body:
 it runs the online actor with a default-stand reference, not a fixed pose.
 It requires no Pico device/service/reader. Body feedback and all control guards
-remain mandatory; an entry pose outside actor/hardware limits is rejected.
+remain mandatory; an entry pose outside physical hardware limits is rejected.
 
 After installing into a new S100 directory, run the existing `check` and
 bounded `shadow` commands first. Verify the matching robot release/schema,
@@ -306,7 +311,7 @@ bash scripts/start_actor_pico.sh live --manual-pico --seconds 120 \
   --robot-config /absolute/path/to/running/locomotion_foot_humanoid_asample_none.yaml
 ```
 
-After preflight and `MOVE <actual robot identity>`, it runs default-stand ONNX
+After preflight, it runs default-stand ONNX
 inference without Pico. After at least three seconds of preparation, type
 `CONNECT <actual robot identity>` to start the owned Pico service/capture.
 Connect the calibrated headset and enable Full body/Send while keeping the
@@ -314,7 +319,8 @@ wearer neutral. When `PICO_INPUT: ready` appears, type
 `PICO <actual robot identity>` to request following. A premature/stale/nonneutral
 request is rejected while stand continues; it is **not queued for automatic
 activation**. `CONNECT` by itself never starts following. Typed `STOP` or Ctrl-C
-cancels. The trial still expires at the specified application duration.
+cancels. A positive application duration expires normally; `--seconds 0`
+continues until operator stop or fault.
 
 Pico initialization and retargeting run in an isolated process so blocking
 vendor initialization cannot hold the control interpreter's GIL. The process
@@ -330,9 +336,9 @@ fresh inputs, live RobotInfo, physical body actuators, gains and command limits
 pass preflight. Only the immediate-following mode requires Pico during entry;
 stand-only and manual-Pico modes can enter with fresh body feedback alone.
 The terminal displays the named model defaults and KP/KD,
-fixed neck targets and config hash, then requires `MOVE <actual robot identity>`
-within 60 seconds as current on-site confirmation. No unattended confirmation
-flag is provided. The CLI identity is an operator label, not discovered robot
+fixed neck targets and config hash. Starting `live --confirm-motion` or the
+automatic local entry requests motion directly, with no typed MOVE prompt.
+The CLI identity is an operator label, not discovered robot
 serial evidence. Confirm the actual device/connection and effective config.
 
 Entry uses the SDK's PREPARE/COMMIT and verifies owned EXTERNAL/RUNNING.
@@ -345,7 +351,7 @@ must remain within 0.10 rad of defaults; otherwise the trial cancels.
 The complete decoded BodyCmd is sent, including ankle compensation torque.
 The unpopulated waist-roll slot remains inert; no hand command is sent.
 
-Trials are limited to 120 seconds. Body feedback and Pico age must stay within
+`--seconds 0` disables only application duration expiry. Body feedback and Pico age must stay within
 100 ms, and ControlStatus must advance within 500 ms. The 20 ms period is a
 50 Hz scheduling target, matching the C++ executor's treatment of occasional
 overruns. Compute/full-cycle overruns and skipped ticks are recorded; delayed

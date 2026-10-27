@@ -299,21 +299,22 @@ def main():
     parser.add_argument('--backend', choices=('auto', 'sdk', 'ort'), default='auto')
     parser.add_argument('--threads', type=int, default=1)
     parser.add_argument('--steps', type=int, default=100)
-    parser.add_argument('--seconds', type=float, default=60)
+    parser.add_argument('--seconds', type=float,
+                        help='live: 0 runs until STOP/Ctrl-C (default); positive values limit EXTERNAL seconds; other modes default to 60')
     parser.add_argument('--startup-timeout', type=float, default=30)
     parser.add_argument('--group', default='default')
     parser.add_argument('--input', type=Path)
     parser.add_argument('--log', type=Path)
     parser.add_argument('--record-observations', action='store_true')
-    parser.add_argument('--confirm-motion', action='store_true', help='live only; terminal on-site confirmation is also required')
+    parser.add_argument('--confirm-motion', action='store_true', help='live only; explicit motion selection, with no typed MOVE prompt')
     parser.add_argument('--robot-id', help='live target identity, verified on-site; never inferred from old configs')
     parser.add_argument('--robot-config', type=Path, help='absolute path to this robot running effective locomotion YAML')
     parser.add_argument('--stand-only', action='store_true', help='live supported policy preparation/stand trial, without Pico following')
     parser.add_argument('--manual-pico', action='store_true',
                         help='live: enter ONNX stand without Pico, then CONNECT/PICO commands in the same session')
     parser.add_argument('--auto-start', action='store_true',
-                        help='live: one confirmation, wait damping, FIXED_STAND, continuous ONNX stand; implies manual Pico')
-    parser.add_argument('--local-start', action='store_true', help='live: load private defaults bound to this S100; still requires on-site confirmation')
+                        help='live: request FIXED_STAND after damping, then continuous ONNX stand; implies manual Pico')
+    parser.add_argument('--local-start', action='store_true', help='live: load private defaults bound to this S100 and request motion directly')
     parser.add_argument('--entry-policy', choices=('policy-online',), default='policy-online',
                         help='compatibility option; startup always uses continuous policy inference')
     parser.add_argument('--wait-pico', action='store_true', help='live manual-Pico path: start receiving Pico automatically while ONNX stand continues')
@@ -324,7 +325,10 @@ def main():
             parser.error('--local-start requires live without explicit target/config overrides')
         from deployment.vita_s100_aorta_30dof.actor_pico_local import load_local_start
         for key,value in load_local_start(args.root).items():
-            setattr(args,key,value)
+            if key != 'seconds' or args.seconds is None:
+                setattr(args,key,value)
+    if args.seconds is None:
+        args.seconds = 0. if args.mode == 'live' else 60.
     if args.mode == 'live':
         if args.auto_start or args.wait_pico or args.auto_pico:
             args.manual_pico = True
@@ -334,13 +338,12 @@ def main():
             parser.error('--stand-only and --manual-pico are mutually exclusive')
         if (not args.confirm_motion or not args.robot_id or not args.robot_id.strip()
                 or args.robot_config is None or not args.robot_config.is_absolute()):
-            parser.error('live requires --confirm-motion, --robot-id and an absolute --robot-config; on-site confirmation remains mandatory')
-        if args.seconds > 120:
-            parser.error('live trials are bounded to 120 seconds')
+            parser.error('live requires --confirm-motion, --robot-id and an absolute --robot-config')
     elif (args.confirm_motion or args.robot_id or args.robot_config or args.stand_only
           or args.manual_pico or args.auto_start or args.wait_pico or args.auto_pico):
         parser.error('motion authorization/options apply only to live')
-    if (args.steps < 1 or not math.isfinite(args.seconds) or not 1 <= args.seconds <= 7200
+    valid_duration = args.seconds >= 0 if args.mode == 'live' else 1 <= args.seconds <= 7200
+    if (args.steps < 1 or not math.isfinite(args.seconds) or not valid_duration
             or not math.isfinite(args.startup_timeout) or not 1 <= args.startup_timeout <= 120):
         parser.error('Invalid step/duration/startup budget')
     logging.basicConfig(level=logging.INFO)

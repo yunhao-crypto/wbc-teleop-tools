@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 ROOT=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
-if [[ $# == 0 ]]; then
+if [[ $# == 0 || "$1" == --* ]]; then
   # Device-bound defaults are private deployment data, never cached consent.
-  set -- auto --local-start
+  set -- auto --local-start "$@"
 fi
 MODE=$1
 case "$MODE" in

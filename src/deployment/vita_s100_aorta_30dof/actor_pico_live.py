@@ -1,4 +1,4 @@
-"""Bounded, supported actor/Pico EXTERNAL trial using the unmodified SDK.
+"""Supported actor/Pico EXTERNAL control using the unmodified SDK.
 
 Importing this module creates no robot handles. Hardware setup belongs to the
 explicit CLI live entry. Injectable I/O lets offline tests exercise failures.
@@ -263,27 +263,6 @@ class StatusGuard:
         return status
 
 
-def onsite_confirmation(robot_id, stop):
-    """Require a current terminal response; CLI flags never replace attendance."""
-    if not sys.stdin.isatty():
-        raise RuntimeError('live requires an attended interactive terminal')
-    print(f'Robot: {robot_id}. This moves body joints using the mode shown in ACTOR_LIVE_REVIEW.\n'
-          'Confirm THIS robot has reliable support, clear motion/pinch zones, an attendant and usable E-stop.\n'
-          'Confirm --robot-config is the running effective full A-sample config, and model gains were reviewed.\n'
-          'EXTERNAL has no automatic expiry. CANCEL returns PASSIVE; loaded limbs may fall.\n'
-          f'Type MOVE {robot_id} within 60 seconds to authorize this supported trial:', flush=True)
-    deadline = time.monotonic()+60
-    while not stop.is_set() and time.monotonic() < deadline:
-        if select.select([sys.stdin], [], [], .1)[0]:
-            line = sys.stdin.readline()
-            if not line:
-                raise RuntimeError('On-site confirmation input closed; use an interactive terminal')
-            if line.strip() == 'MOVE '+robot_id:
-                return
-            print('Not confirmed. Type exactly MOVE '+robot_id+' or Ctrl-C to exit.',flush=True)
-    raise RuntimeError('On-site confirmation interrupted/timed out')
-
-
 class TerminalCommands:
     def __init__(self, robot_id, stop):
         self.robot_id, self.stop = robot_id, stop
@@ -337,13 +316,15 @@ def record_period_overrun(write, phase_name, elapsed, actions_sent, **details):
 
 
 def run_live(runtime, args, write, controller, pico, stop, service_alive,
-             confirm=onsite_confirmation, clock=time, manual_pico=None, poll_command=lambda:None,
+             clock=time, manual_pico=None, poll_command=lambda:None,
              request_action=None):
     """One trial only. Every attempted entry is followed by checked CANCEL.
 
     Fake I/O in unit tests exercises this same runner; actual transport and
     hardware performance remain separate acceptance checks.
     """
+    if not math.isfinite(args.seconds) or args.seconds < 0:
+        raise ValueError('Live duration must be finite and nonnegative; 0 means until STOP')
     params, receipt = load_robot_config(args.robot_config)
     envelope = CommandEnvelope(runtime, controller.get_robot_info(args.startup_timeout), params)
     auto = bool(getattr(args, 'auto_start', False))
@@ -416,7 +397,8 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
         clock.sleep(runtime.model.contract.period)
     if stop.is_set():
         return dict(mode='live', actions_sent=0, control_handles_created=1, entered=False)
-    # Display actual named targets/gains before asking the attendant to move.
+    # Display and record actual targets/gains; starting live requests motion
+    # directly, without a second typed MOVE prompt.
     print('ACTOR_LIVE_REVIEW '+json.dumps(dict(robot_id=args.robot_id,
         model=runtime.config['artifacts']['model'], config=receipt,
         stand_only=args.stand_only, seconds=args.seconds,
@@ -427,12 +409,14 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
         kp=dict(zip(runtime.model.contract.names, runtime.model.contract.kp.tolist())),
         kd=dict(zip(runtime.model.contract.names, runtime.model.contract.kd.tolist())),
         fixed_joints=runtime.config['body_profile']['fixed_joints'], reference_delay_s=runtime.reference.delay)), flush=True)
-    confirm(args.robot_id, stop)
+    print('ACTOR_START: motion requested; '+
+          ('running until STOP/Ctrl-C or fault' if args.seconds == 0 else f'duration limit {args.seconds:g}s')+
+          '; exit requests CANCEL -> PASSIVE. Keep support and E-stop available.',flush=True)
     if stop.is_set():
         return dict(mode='live', actions_sent=0, control_handles_created=1, entered=False)
-    # Confirmation can take a minute: refresh inputs and config BEFORE PREPARE.
+    # Refresh effective configuration before requesting any motion.
     if load_robot_config(args.robot_config)[1] != receipt:
-        raise RuntimeError('Effective config file changed during confirmation')
+        raise RuntimeError('Effective config file changed during preflight')
     if auto:
         if not fixed_stand_startup(startup, envelope, runtime, args, controller, inputs,
                                   stop, write, clock, request_action=request_action,
@@ -487,7 +471,7 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
     report = dict(mode='live', actions_sent=0, control_handles_created=1, entered=False,
                   exit_confirmed=False, robot_id=args.robot_id, stand_only=args.stand_only,
                   auto_start=auto, onnx_control_enabled=False,
-                  missed_policy_ticks=0)
+                  missed_policy_ticks=0, duration_limit_s=args.seconds)
     try:
         if stop.is_set():
             return report
@@ -512,6 +496,7 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
         offset = runtime.math.yaw(root)
         preparation = max(3., (len(lead.q)-1)*runtime.model.contract.period)
         start = deadline = clock.monotonic()
+        end = start+args.seconds if args.seconds > 0 else math.inf
         policy_tick = 0
         tracking = False
         if auto:
@@ -525,11 +510,11 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
             manual_pico.connect(root)
             print('PICO_WAIT: receiver starting; ONNX stand does not depend on receiving Pico',flush=True)
             write(dict(record_type='pico_connect_requested',automatic=True,actions_sent=0))
-        while not stop.is_set() and clock.monotonic()-start < args.seconds:
+        while not stop.is_set() and clock.monotonic() < end:
             if requires_pico and not service_alive():
                 raise RuntimeError('Pico service exited')
             clock.sleep(max(0., deadline-clock.monotonic()))
-            if stop.is_set() or clock.monotonic()-start >= args.seconds:
+            if stop.is_set() or clock.monotonic() >= end:
                 break
             cycle = clock.monotonic()
             cpu_clock = getattr(clock,'thread_time',None)
@@ -660,6 +645,11 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
                 write(dict(record_type='policy_ticks_skipped',missed_ticks=missed,
                            total_missed_ticks=report['missed_policy_ticks'],actions_sent=sent_count))
         report['stopped_by_signal'] = stop.is_set()
+        report['elapsed_s'] = clock.monotonic()-start
+        report['stop_reason'] = 'operator_stop' if stop.is_set() else 'duration_elapsed'
+        write(dict(record_type='stop_requested',reason=report['stop_reason'],
+            elapsed_s=report['elapsed_s'],duration_limit_s=args.seconds,actions_sent=sent_count))
+        print(f"ACTOR_STOP: {report['stop_reason']}, elapsed={report['elapsed_s']:.2f}s; CANCEL -> PASSIVE",flush=True)
         return report
     finally:
         if auto and not attempted:

@@ -179,14 +179,13 @@ class LiveTests(unittest.TestCase):
         self.pico = Pico(self.clock)
         self.args = NS(robot_config=self.config, robot_id='TEST-ONLY', startup_timeout=5.,
                        seconds=3.12, stand_only=False)
-        self.confirm = lambda *_:self.clock.sleep(.02)
 
     def run_trial(self, **kwargs):
         write = kwargs.pop('write', lambda row, obs=None:self.rows.append(row))
         with redirect_stdout(io.StringIO()):
             return run_live(self.runtime, self.args, write,
                 self.controller, self.pico, self.stop, service_alive=lambda:True,
-                confirm=self.confirm, clock=self.clock, **kwargs)
+                clock=self.clock, **kwargs)
 
     def assert_cancelled(self):
         self.assertEqual(self.controller.status.current_action, 'PASSIVE')
@@ -322,16 +321,44 @@ class LiveTests(unittest.TestCase):
         self.assertIsNone(runner.call_args.args[4])
         self.assertIsNone(runner.call_args.kwargs['manual_pico'])
 
-    def test_confirmation_declined_has_no_control_request_or_command(self):
-        def decline(*_): raise RuntimeError('declined')
-        self.confirm = decline
-        with self.assertRaisesRegex(RuntimeError, 'declined'): self.run_trial()
-        self.assertEqual((self.transport.commands, self.transport.requests), ([], []))
+    def test_live_starts_without_reading_a_move_prompt(self):
+        self.args.stand_only=True
+        self.transport.after_publish=lambda *_:self.stop.set()
+        with patch('sys.stdin',io.StringIO('')),patch('select.select',side_effect=AssertionError('MOVE prompt forbidden')):
+            self.assertEqual(self.run_trial()['actions_sent'],1)
+        self.assert_cancelled()
 
-    def test_interrupt_during_confirmation_never_enters(self):
-        self.confirm = lambda *_:self.stop.set()
+    def test_interrupt_before_preflight_never_enters(self):
+        self.stop.set()
         self.assertFalse(self.run_trial()['entered'])
         self.assertEqual(self.transport.requests, [])
+
+    def test_continuous_mode_runs_beyond_120_seconds_until_operator_stop(self):
+        self.args.stand_only=True;self.args.seconds=0.
+        command,_=self.runtime.policy.decode(np.zeros(28))
+        self.transport.after_publish=lambda c:self.stop.set() if c.sequence==6002 else None
+        with patch.object(self.runtime,'infer_motion_command',return_value=(command,np.zeros(1520),{})):
+            report=self.run_trial()
+        self.assertGreater(report['elapsed_s'],120.)
+        self.assertEqual(report['duration_limit_s'],0.)
+        self.assertEqual(report['stop_reason'],'operator_stop')
+        self.assertEqual(report['actions_sent'],6002)
+        self.assert_cancelled()
+
+    def test_explicit_duration_reports_expiry_and_confirms_passive(self):
+        self.args.stand_only=True;self.args.seconds=.06
+        report=self.run_trial()
+        self.assertEqual(report['stop_reason'],'duration_elapsed')
+        self.assertFalse(report['stopped_by_signal'])
+        self.assertAlmostEqual(report['elapsed_s'],.06)
+        self.assert_cancelled()
+
+    def test_invalid_duration_never_requests_control(self):
+        for value in (-1.,float('nan'),float('inf')):
+            self.args.seconds=value
+            with self.subTest(value=value),self.assertRaisesRegex(ValueError,'duration'):
+                self.run_trial()
+        self.assertEqual((self.transport.requests,self.transport.commands),([],[]))
 
     def test_interrupt_after_publish_cancels_once_without_extra_command(self):
         self.transport.after_publish = lambda c:self.stop.set()
@@ -432,12 +459,15 @@ class LiveTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'Physical ACTIVE'): self.run_trial()
         self.assertEqual(self.transport.requests, [])
 
-    def test_config_mismatch_or_changed_after_confirmation_refuses_entry(self):
-        def changed(*_):
+    def test_config_changed_during_preflight_refuses_entry(self):
+        original=self.runtime.infer_motion
+        def changed(*a,**kw):
+            result=original(*a,**kw)
             root = robot_config(); root['parallel_ankle']['pd']['strategy'] = 'position_motor_gains'
             self.config.write_text(json.dumps(root))
-        self.confirm = changed
-        with self.assertRaisesRegex(ValueError, 'virtual_pd'): self.run_trial()
+            return result
+        with patch.object(self.runtime,'infer_motion',changed):
+            with self.assertRaisesRegex(ValueError, 'virtual_pd'): self.run_trial()
         self.assertEqual(self.transport.requests, [])
 
     def test_full_body_compensation_command_is_preserved(self):
@@ -646,10 +676,10 @@ class LiveTests(unittest.TestCase):
         self.assertEqual(self.startup_calls,[])
         self.assert_cancelled()
 
-    def test_auto_confirmation_decline_has_no_fixed_or_external_requests(self):
+    def test_auto_stop_before_preflight_has_no_fixed_or_external_requests(self):
         self.auto_setup()
-        self.confirm = lambda *_:(_ for _ in ()).throw(RuntimeError('declined'))
-        with self.assertRaisesRegex(RuntimeError,'declined'):self.auto_trial()
+        self.stop.set()
+        self.auto_trial()
         self.assertEqual(self.startup_calls,[])
         self.assertEqual(self.transport.requests,[])
 
@@ -731,7 +761,7 @@ class LiveTests(unittest.TestCase):
         self.assertEqual([x[0] for x in self.startup_calls],['FIXED_STAND','CANCEL'])
         self.assertEqual(self.transport.requests,[])
 
-    def test_auto_invalid_fixed_gains_reject_before_confirmation_or_motion(self):
+    def test_auto_invalid_fixed_gains_reject_before_motion(self):
         self.auto_setup()
         config=robot_config()
         config['actions']['FIXED_STAND']['params']['keyframes'][0]['kp']=[999.]*42
@@ -1076,6 +1106,10 @@ class LocalStartTests(unittest.TestCase):
         for flag in ('--auto-start','--wait-pico','--manual-pico','--confirm-motion','--local-start'):
             self.assertIn(flag,args)
         self.assertNotIn('10.100.23.96',args)
+        subprocess.run(['bash',str(launcher),'--seconds','5'],env=env,check=True,capture_output=True,text=True,timeout=10)
+        args=json.loads(output.read_text())
+        self.assertIn('--local-start',args)
+        self.assertEqual(args[-2:],['--seconds','5'])
         subprocess.run(['bash',str(launcher),'check','--steps','1'],env=env,check=True,capture_output=True,text=True,timeout=10)
         args=json.loads(output.read_text());self.assertEqual(args[1:],["check","--steps","1"])
 
@@ -1103,11 +1137,34 @@ class LocalStartTests(unittest.TestCase):
         self.profile.unlink()
         with self.assertRaisesRegex(RuntimeError,'local startup profile'):self.load()
 
-    def test_profile_invalid_handoff_or_unbounded_duration_fails(self):
-        self.cfg['seconds']=1000;self.save()
+    def test_profile_invalid_handoff_or_negative_duration_fails(self):
+        self.cfg['seconds']=-1;self.save()
         with self.assertRaises(ValueError):self.load()
         self.cfg['seconds']=120;self.cfg['pico_handoff']='anything';self.save()
         with self.assertRaises(ValueError):self.load()
+
+    def test_profile_zero_selects_continuous_run(self):
+        self.cfg['seconds']=0;self.save()
+        self.assertEqual(self.load()['seconds'],0)
+
+    def test_cli_local_duration_default_and_explicit_override(self):
+        from deployment.vita_s100_aorta_30dof import actor_pico_local
+        spec=importlib.util.spec_from_file_location('actor_cli_duration_test',ROOT/'scripts/actor_pico.py')
+        cli=importlib.util.module_from_spec(spec);spec.loader.exec_module(cli)
+        self.cfg['seconds']=0;self.save();defaults=self.load()
+        runtime=NS(config={'artifacts':{'model':{}}},reference=NS(delay=.2))
+        for tail,expected in [([],0),(['--seconds','5'],5),(['--seconds','600'],600)]:
+            captured=[]
+            def live(runtime,args,write):
+                captured.append(args);return dict(actions_sent=0)
+            with (self.subTest(tail=tail),redirect_stdout(io.StringIO()),
+                  patch.object(cli,'ActorPicoRuntime',return_value=runtime),
+                  patch.object(cli,'live',side_effect=live),
+                  patch.object(actor_pico_local,'load_local_start',return_value=defaults),
+                  patch.object(sys,'argv',['actor_pico.py','live','--local-start','--auto-start',
+                      '--confirm-motion','--root',str(self.root),*tail])):
+                cli.main()
+            self.assertEqual(captured[0].seconds,expected)
 
 
 if __name__ == '__main__': unittest.main()

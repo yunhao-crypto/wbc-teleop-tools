@@ -1,7 +1,7 @@
 """Private, device-bound defaults for the no-argument S100 launcher.
 
-This file stores configuration, never on-site authorization. Every motion run
-still requires current interactive confirmation of the displayed robot.
+This file stores device configuration, never on-site authorization. The local
+launcher requests motion directly; there is no typed MOVE prompt.
 """
 import hashlib
 import ipaddress
@@ -38,7 +38,7 @@ def load_local_start(root, *, machine_id_path=Path('/etc/machine-id'),
     if not config.is_absolute() or hashlib.sha256(config.read_bytes()).hexdigest() != cfg['robot_config_sha256']:
         raise ValueError('Local effective robot configuration changed; review the device profile')
     if (cfg['pico_handoff'] not in ('manual','auto') or type(cfg['seconds']) is not int
-            or not 1 <= cfg['seconds'] <= 120):
-        raise ValueError('Invalid local Pico handoff or bounded motion duration')
+            or cfg['seconds'] < 0):
+        raise ValueError('Invalid local Pico handoff or motion duration (0 means until STOP)')
     return dict(robot_id=target,robot_config=config,seconds=cfg['seconds'],
                 wait_pico=True,auto_pico=cfg['pico_handoff']=='auto')
