@@ -92,15 +92,18 @@ class ActorPicoTests(unittest.TestCase):
                 np.testing.assert_allclose(obs[280:560], 1., atol=1e-7)
                 self.assertAlmostEqual(ref.delay, delay)
 
-    def test_reference_rejects_duplicate_regression_gap_and_nan(self):
+    def test_reference_rejects_invalid_frames_but_accepts_sparse_timestamps(self):
         ref = CausalActorReference(self.c, self.math)
         ref.append(1_000_000_000, self.c.default, [1, 0, 0, 0], received_monotonic=0.)
-        for stamp in [1_000_000_000, 999_000_000, 1_200_000_000]:
+        for stamp in [1_000_000_000, 999_000_000]:
             with self.assertRaises(ValueError):
                 ref.append(stamp, self.c.default, [1, 0, 0, 0], received_monotonic=.02)
         with self.assertRaises(ValueError):
             ref.append(1_020_000_000, np.full(28, np.nan), [1, 0, 0, 0], received_monotonic=.02)
         self.assertEqual(len(ref.samples), 1)
+        ref.append(1_200_000_000,self.c.default,[1,0,0,0],received_monotonic=.2)
+        self.assertTrue(ref.ready())
+        self.assertEqual(len(ref.samples),2)
 
     def test_irregular_timestamps_are_interpolated_without_extrapolation(self):
         ref = CausalActorReference(self.c, self.math)
@@ -158,18 +161,19 @@ class ActorPicoTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 self.retarget().solve(body)
 
-    def test_excess_residual_does_not_commit_a_reference_pose(self):
+    def test_finite_fit_error_is_diagnostic_and_joint_bounds_still_apply(self):
         rt = self.retarget()
         body = self.body()
         rt.solve(body)
-        before = rt.q.copy()
         # Rotate only the elbow segment about the captured longitudinal axis
         # while keeping its wrist/upper-arm targets unchanged: an inconsistent
-        # hinge chain must not silently become a successful reference sample.
+        # hinge chain produces a diagnostic residual without an arbitrary cutoff.
         body[18, 3:7] = [np.sin(.7), 0., 0., np.cos(.7)]
-        with self.assertRaisesRegex(ValueError, 'residual'):
-            rt.solve(body)
-        np.testing.assert_array_equal(rt.q, before)
+        q,root,residual=rt.solve(body)
+        self.assertGreater(residual,.6)
+        self.assertTrue(np.isfinite(q).all() and np.isfinite(root).all())
+        self.assertTrue(np.all(q>=rt.contract.lower) and np.all(q<=rt.contract.upper))
+        np.testing.assert_array_equal(rt.q,q)
 
     def test_incompatible_model_metadata_is_rejected(self):
         with self.assertRaises(ValueError):

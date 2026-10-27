@@ -248,8 +248,7 @@
     }
   ],
   "ik_iterations": 12,
-  "ik_max_residual_rad": 0.6,
-  "reference_maximum_gap_s": 0.1,
+  "pico_max_age_s": 0.6,
   "provenance": {
     "tracking_checkout_commit": "5eb34b2",
     "tracking_profile_source": "humanoid-sdk-tracking/examples/groot_tracking_asample.json",

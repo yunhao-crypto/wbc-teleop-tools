@@ -142,7 +142,7 @@ def shadow(runtime, args, write):
             resources.callback(source.close)
             if source.group != args.group:
                 raise RuntimeError('SDK source group mismatch')
-            pico = create_pico_source(logger=logging.getLogger('actor-pico'), maximum_age=.6)
+            pico = create_pico_source(logger=logging.getLogger('actor-pico'), maximum_age=runtime.config['pico_max_age_s'])
             resources.callback(pico.stop)
             pico.start()
             start = deadline = time.monotonic()
@@ -279,7 +279,7 @@ def live(runtime, args, write):
                             service.kill()
                             service.wait(timeout=2)
                 resources.callback(close_service)
-                pico = create_pico_source(logger=logging.getLogger('actor-live'), maximum_age=.1)
+                pico = create_pico_source(logger=logging.getLogger('actor-live'), maximum_age=runtime.config['pico_max_age_s'])
                 resources.callback(pico.stop)
                 pico.start()
                 service_alive = lambda:service.poll() is None

@@ -269,39 +269,37 @@ class LiveTests(unittest.TestCase):
         stages=[r['stage'] for r in self.rows if 'stage' in r]
         self.assertEqual(stages[-1],'pico_tracking')
 
-    def test_pico_resync_before_following_keeps_stand_and_pins_new_epoch(self):
+    def test_holomotion_600ms_budget_accepts_300ms_old_reference_and_sparse_frames(self):
         worker,command=self.manual_trial()
         original=worker.snapshot
         def snapshot():
-            value=original();value['reference_epoch']=1 if len(self.transport.commands)>=120 else 0
+            value=original()
+            if value['state']=='ready':
+                value['received_monotonic']-=.3
+                value['source_gap_s']=.122
             return value
         with patch.object(worker,'snapshot',snapshot):
             self.run_trial(manual_pico=worker,poll_command=command)
-        started=next(r for r in self.rows if r.get('record_type')=='tracking_started')
-        self.assertEqual(started['reference_epoch'],1)
-        self.assertTrue(any(r.get('stage')=='pico_tracking' for r in self.rows))
+        tracked=[r for r in self.rows if r.get('stage')=='pico_tracking']
+        self.assertTrue(tracked)
+        self.assertAlmostEqual(tracked[0]['pico_age_s'],.3)
+        self.assertAlmostEqual(tracked[0]['source_gap_s'],.122)
         self.assert_cancelled()
 
-    def test_ready_snapshot_after_gap_cannot_resume_following_in_new_epoch(self):
-        worker,command=self.manual_trial()
-        original=worker.snapshot
-        def snapshot():
-            value=original();value['reference_epoch']=1 if len(self.transport.commands)>=161 else 0
-            return value
-        with patch.object(worker,'snapshot',snapshot):
-            with self.assertRaisesRegex(RuntimeError,'continuity changed'):
-                self.run_trial(manual_pico=worker,poll_command=command)
-        self.assertEqual(len(self.transport.commands),161)
-        self.assertEqual([r.operation.value for r in self.transport.requests],['PREPARE','COMMIT','CANCEL'])
-        self.assert_cancelled()
+    def test_input_age_settings_match_original_holomotion_deployment(self):
+        import yaml
+        from deployment.vita_s100_aorta_30dof.actor_pico_live import STATE_AGE
+        original=yaml.safe_load((ROOT/'src/deployment/vita_s100_aorta_30dof/config/vita02a_s100.yaml').read_text())
+        self.assertEqual(self.runtime.config['pico_max_age_s'],original['runtime']['pico_max_age'])
+        self.assertEqual(STATE_AGE,original['runtime']['state_max_age'])
 
-    def test_collecting_after_gap_rejects_early_follow_request_without_queuing(self):
+
+    def test_initial_incomplete_reference_rejects_early_follow_request_without_queuing(self):
         worker,command=self.manual_trial()
         original=worker.snapshot
         def snapshot():
             value=original();count=len(self.transport.commands)
             if count>=150:
-                value['reference_epoch']=1
                 if count<160:value['state']='collecting'
             return value
         with patch.object(worker,'snapshot',snapshot):
@@ -334,35 +332,29 @@ class LiveTests(unittest.TestCase):
         pico.stop.assert_called_once();service.terminate.assert_called_once()
         return rows
 
-    def test_capture_source_gap_rebuilds_full_window_without_closing_connection(self):
+    def test_capture_source_gap_does_not_clear_ready_reference(self):
         stamps=[1_000_000_000+i*20_000_000 for i in range(11)]
         stamps += [1_500_000_000+i*20_000_000 for i in range(11)]
         rows=self.capture_fixture(stamps)
         self.assertFalse(any(r['state']=='failed' for r in rows))
-        self.assertTrue(any(r['state']=='ready' and r['reference_epoch']==0 for r in rows))
-        rebuilt=[r for r in rows if r['reference_epoch']==1]
-        self.assertEqual(rebuilt[0]['state'],'collecting')
-        self.assertAlmostEqual(rebuilt[0]['source_gap_s'],.3)
-        self.assertTrue(all(r['state']=='collecting' for r in rebuilt[:-1]))
-        self.assertEqual(rebuilt[-1]['state'],'ready')
+        ready=next(i for i,r in enumerate(rows) if r['state']=='ready')
+        self.assertTrue(all(r['state']=='ready' for r in rows[ready:]))
+        self.assertTrue(any(abs(r.get('source_gap_s',0)-.3)<1e-6 for r in rows))
 
     def test_capture_clock_regression_remains_terminal_and_is_not_resynced(self):
         rows=self.capture_fixture([1_000_000_000,1_020_000_000,1_010_000_000])
         self.assertEqual(rows[-1]['state'],'failed')
-        self.assertEqual(rows[-1]['reference_epoch'],0)
         self.assertIn('strictly increase',rows[-1]['error'])
 
-    def test_capture_rejects_unfittable_pose_without_closing_and_rebuilds_on_neutral(self):
+    def test_capture_large_fit_error_remains_diagnostic_without_rebuilding(self):
         neutral=np.zeros((24,7),np.float32);neutral[:,6]=1.
         bad=neutral.copy();bad[18,3:7]=[np.sin(.7),0.,0.,np.cos(.7)]
         stamps=[1_000_000_000+i*20_000_000 for i in range(23)]
         rows=self.capture_fixture(stamps,[neutral]*11+[bad]+[neutral]*11)
-        rejected=next(r for r in rows if r['state']=='rejected')
-        self.assertIn('residual',rejected['error'])
-        self.assertEqual(rejected['reference_epoch'],1)
-        self.assertGreater(rejected['ik_max_residual_rad'],.6)
-        self.assertFalse(any(r['state']=='failed' for r in rows))
-        self.assertEqual((rows[-1]['state'],rows[-1]['reference_epoch']),('ready',1))
+        self.assertFalse(any(r['state'] in ('rejected','failed') for r in rows))
+        self.assertTrue(any(r.get('ik_max_residual_rad',0)>.6 for r in rows))
+        ready=next(i for i,r in enumerate(rows) if r['state']=='ready')
+        self.assertTrue(all(r['state']=='ready' for r in rows[ready:]))
 
     def test_dual_trigger_toggles_follow_stand_follow_without_resetting_session_or_history(self):
         self.online_setup();self.args.wait_pico=True;self.args.seconds=5.1
@@ -398,7 +390,7 @@ class LiveTests(unittest.TestCase):
         original=self.worker.snapshot
         def snapshot():
             value=original()
-            value.update(trigger_event_seq=1,trigger_event_monotonic=self.clock.monotonic()-.2,
+            value.update(trigger_event_seq=1,trigger_event_monotonic=self.clock.monotonic()-.601,
                          controller_received_monotonic=self.clock.monotonic())
             return value
         with patch.object(self.worker,'snapshot',snapshot):self.auto_trial()
@@ -419,14 +411,14 @@ class LiveTests(unittest.TestCase):
 
     def test_manual_stale_reference_rejects_switch_and_keeps_stand(self):
         worker, command=self.manual_trial()
-        worker.fault=lambda:dict(state='ready',received_monotonic=self.clock.monotonic()-.2)
+        worker.fault=lambda:dict(state='ready',received_monotonic=self.clock.monotonic()-.601)
         result=self.run_trial(manual_pico=worker,poll_command=command)
         self.assertTrue(result['exit_confirmed'])
         self.assertTrue(any(r.get('record_type')=='pico_switch_rejected' for r in self.rows))
         self.assertFalse(any(r.get('stage')=='pico_tracking' for r in self.rows))
 
-    def test_manual_non_neutral_reference_is_never_queued(self):
-        worker, command=self.manual_trial()
+    def test_manual_non_neutral_reference_can_enter_tracking(self):
+        worker,command=self.manual_trial()
         original=worker.snapshot
         def non_neutral():
             snapshot=original()
@@ -434,8 +426,8 @@ class LiveTests(unittest.TestCase):
             return snapshot
         with patch.object(worker,'snapshot',non_neutral):
             self.run_trial(manual_pico=worker,poll_command=command)
-        self.assertTrue(any(r.get('record_type')=='pico_switch_rejected' for r in self.rows))
-        self.assertFalse(any(r.get('stage')=='pico_tracking' for r in self.rows))
+        self.assertTrue(any(r.get('stage')=='pico_tracking' for r in self.rows))
+        self.assert_cancelled()
 
     def test_stand_cli_initializes_no_pico_service_or_reader(self):
         from deployment.vita_s100_aorta_30dof import actor_pico_live,sdk021_guard,sdkmain_adapter,pico_input
@@ -512,7 +504,7 @@ class LiveTests(unittest.TestCase):
     def test_stale_pico_after_entry_cancels_without_retry(self):
         self.transport.after_publish = lambda c:setattr(self.pico, 'fault', lambda:None)
         with self.assertRaisesRegex(TimeoutError, 'Pico input'): self.run_trial()
-        self.assertLess(len(self.transport.commands), 10)
+        self.assertLessEqual(len(self.transport.commands), 35)
         self.assert_cancelled()
 
     def test_reject_drop_timeout_and_ownership_changes_stop_publication(self):
@@ -563,15 +555,15 @@ class LiveTests(unittest.TestCase):
                 self.assertAlmostEqual(following,expected)
                 self.assertEqual(count,missed)
 
-    def test_scheduler_delay_cannot_hide_publication_gap_with_fresh_new_state(self):
-        self.args.stand_only = True
-        original = self.clock.sleep
+    def test_scheduler_delay_uses_new_fresh_state_without_extra_publication_gap_rule(self):
+        self.args.stand_only=True
+        original=self.clock.sleep
         def delayed(seconds):
             original(seconds)
-            if self.transport.commands: original(.101)
-        with patch.object(self.clock,'sleep',delayed):
-            with self.assertRaisesRegex(TimeoutError,'publication gap'): self.run_trial()
-        self.assertEqual(len(self.transport.commands),1)
+            if self.transport.commands:original(.101)
+        self.transport.after_publish=lambda c:self.stop.set() if c.sequence==3 else None
+        with patch.object(self.clock,'sleep',delayed):report=self.run_trial()
+        self.assertEqual(report['actions_sent'],3)
         self.assert_cancelled()
 
     def test_entry_failure_still_attempts_cancel(self):
@@ -636,21 +628,24 @@ class LiveTests(unittest.TestCase):
         self.assertTrue(np.allclose(np.diff(published_at),[.04,.04]))
         self.assert_cancelled()
 
-    def test_publication_stall_records_already_sent_frame_and_cancels(self):
-        self.transport.after_publish = lambda c:self.clock.sleep(.101)
-        with self.assertRaisesRegex(TimeoutError, 'publication stalled'): self.run_trial()
-        self.assertEqual(len(self.transport.commands), 1)
-        row = next(r for r in self.rows if r.get('record_type') == 'publish_stall')
-        self.assertEqual((row['actions_sent'],row['session_id'],row['sequence']),(1,7,1))
+    def test_publish_time_is_recorded_without_an_extra_100ms_deadline(self):
+        self.args.stand_only=True
+        def published(c):self.clock.sleep(.101);self.stop.set()
+        self.transport.after_publish=published
+        report=self.run_trial()
+        self.assertEqual(report['actions_sent'],1)
+        row=next(r for r in self.rows if 'sent_body_targets' in r)
+        self.assertAlmostEqual(row['publish_ms'],101.)
         self.assert_cancelled()
 
-    def test_logging_stall_cannot_publish_another_frame_after_long_gap(self):
-        self.args.stand_only = True
-        def write(row, obs=None):
+    def test_logging_delay_does_not_reject_fresh_next_feedback(self):
+        self.args.stand_only=True
+        def write(row,obs=None):
             self.rows.append(row)
-            if 'sent_body_targets' in row: self.clock.sleep(.101)
-        with self.assertRaisesRegex(TimeoutError,'publication gap'): self.run_trial(write=write)
-        self.assertEqual(len(self.transport.commands),1)
+            if 'sent_body_targets' in row:self.clock.sleep(.101)
+        self.transport.after_publish=lambda c:self.stop.set() if c.sequence==3 else None
+        report=self.run_trial(write=write)
+        self.assertEqual(report['actions_sent'],3)
         self.assert_cancelled()
 
     def test_exit_to_other_action_is_not_reported_as_passive(self):
@@ -1067,18 +1062,19 @@ class LiveTests(unittest.TestCase):
         self.assertEqual([r.operation.value for r in self.transport.requests],['PREPARE','COMMIT','CANCEL'])
         self.assert_cancelled()
 
-    def test_online_auto_pico_stale_or_non_neutral_stays_in_onnx_stand(self):
+    def test_online_auto_pico_uses_600ms_age_without_neutral_gate(self):
         for stale in (True,False):
             self.setUp();self.online_setup();self.args.wait_pico=self.args.auto_pico=True
             original=self.worker.snapshot
-            def bad():
+            def sample():
                 value=original()
-                if stale:value['received_monotonic']-=.2
+                if stale:value['received_monotonic']-=.601
                 else:value['q']=value['q']+.2
                 return value
-            self.worker.snapshot=bad
+            self.worker.snapshot=sample
             self.auto_trial()
-            self.assertFalse(any(r.get('stage')=='pico_tracking' for r in self.rows))
+            tracked=any(r.get('stage')=='pico_tracking' for r in self.rows)
+            self.assertEqual(tracked,not stale)
             self.assert_cancelled()
 
     def test_terminal_short_pico_command_still_requires_explicit_operator_line(self):
@@ -1232,7 +1228,7 @@ class PicoButtonTests(unittest.TestCase):
 
     def test_stale_inputs_disarm_until_new_release(self):
         self.sample(0.,0.,0.)
-        self.assertFalse(self.sample(1.,1.,.1,age=.101))
+        self.assertFalse(self.sample(1.,1.,.1,age=.601))
         self.assertFalse(self.sample(1.,1.,.2))
         self.sample(0.,0.,.3);self.assertTrue(self.sample(1.,1.,.4))
 

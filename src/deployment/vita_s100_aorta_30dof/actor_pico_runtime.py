@@ -26,6 +26,8 @@ def load_actor_config(root):
     config = json.loads((root/'config/actor_pico.json').read_text())
     if config['schema'] != 'vita_actor_pico_shadow_v1':
         raise ValueError('Unsupported actor/Pico configuration')
+    if not np.isfinite(config['pico_max_age_s']) or config['pico_max_age_s'] <= 0:
+        raise ValueError('Invalid Pico maximum data age')
     for item in config['artifacts'].values():
         path = (root/item['path']).resolve()
         if not path.is_relative_to(root) or digest(path) != item['sha256']:
@@ -109,13 +111,12 @@ class ActorPicoRuntime:
 
     def reset_reference(self):
         """Reset only Pico calibration/reference; preserve running policy history."""
-        self.reference = CausalActorReference(self.model.contract, self.math,
-                                              maximum_gap=self.config['reference_maximum_gap_s'])
+        self.reference = CausalActorReference(self.model.contract, self.math)
         self.retarget = PicoOrientationRetargeter(
             urdf=self.root/self.config['artifacts']['urdf']['path'],
             contract=replace(self.model.contract, lower=self.policy.lower, upper=self.policy.upper),
             mapping=self.config['segments'], math_api=self.math,
-            iterations=self.config['ik_iterations'], max_residual_rad=self.config['ik_max_residual_rad'])
+            iterations=self.config['ik_iterations'])
         self.last_residual = None
         self.last_retarget_ms = None
 
@@ -128,12 +129,14 @@ class ActorPicoRuntime:
         self.last_residual = residual
         self.last_retarget_ms = (time.perf_counter()-start)*1000
 
-    def infer(self, *, q, dq, root, gyro, now_monotonic, maximum_pico_age=.6):
+    def infer(self, *, q, dq, root, gyro, now_monotonic, maximum_pico_age=None):
         _, observation, row = self.infer_command(q=q, dq=dq, root=root, gyro=gyro,
             now_monotonic=now_monotonic, maximum_pico_age=maximum_pico_age)
         return observation, row
 
-    def infer_command(self, *, q, dq, root, gyro, now_monotonic, maximum_pico_age=.6):
+    def infer_command(self, *, q, dq, root, gyro, now_monotonic, maximum_pico_age=None):
+        if maximum_pico_age is None:
+            maximum_pico_age = self.config['pico_max_age_s']
         age = (float('inf') if self.reference.last_receive_monotonic is None else
                now_monotonic-self.reference.last_receive_monotonic)
         if not 0 <= age <= maximum_pico_age:

@@ -14,8 +14,7 @@ import signal
 import subprocess
 import time
 
-from .actor_pico_reference import (CausalActorReference, PicoOrientationRetargeter,
-                                   PicoReferenceGapError, PicoRetargetFitError)
+from .actor_pico_reference import CausalActorReference, PicoOrientationRetargeter
 from .actor_pico_buttons import TriggerReader
 from .actor_pico_runtime import sdk_math
 
@@ -39,7 +38,6 @@ def _capture(root, config, contract, lower, upper, commands, output, stop, contr
     # process group so the parent can clean up even if vendor init blocks.
     os.setsid()
     service = pico = log = buttons = None
-    epoch = 0
     last_source_stamp = 0
     try:
         while not stop.is_set():
@@ -52,23 +50,21 @@ def _capture(root, config, contract, lower, upper, commands, output, stop, contr
             return
         from .pico_input import create_pico_source
         math_api = sdk_math(root, config)
-        reference = CausalActorReference(contract, math_api,
-            maximum_gap=config['reference_maximum_gap_s'])
+        reference = CausalActorReference(contract, math_api)
         retarget = PicoOrientationRetargeter(
             urdf=Path(root)/config['artifacts']['urdf']['path'],
             contract=replace(contract, lower=lower, upper=upper), mapping=config['segments'],
-            math_api=math_api, iterations=config['ik_iterations'],
-            max_residual_rad=config['ik_max_residual_rad'])
+            math_api=math_api, iterations=config['ik_iterations'])
         sdk = Path(root)/'vendor_packages/xrobotoolkit-arm64/opt/apps/roboticsservice'
         log = (Path(root)/'outputs/pico_service_actor.log').open('a')
         service = subprocess.Popen([str(sdk/'RoboticsServiceProcess')], cwd=sdk,
                                    stdout=log, stderr=subprocess.STDOUT)
-        pico = create_pico_source(logger=logging.getLogger('actor-manual-pico'), maximum_age=.1)
+        pico = create_pico_source(logger=logging.getLogger('actor-manual-pico'), maximum_age=config['pico_max_age_s'])
         pico.start()
         if controls is not None:
-            buttons = TriggerReader(pico.reader.sdk,controls)
+            buttons = TriggerReader(pico.reader.sdk,controls,maximum_age=config['pico_max_age_s'])
             buttons.start()
-        _latest(output, dict(state='waiting_pico',reference_epoch=epoch))
+        _latest(output, dict(state='waiting_pico'))
         while not stop.is_set():
             if service.poll() is not None:
                 raise RuntimeError('Owned Pico service exited')
@@ -80,38 +76,15 @@ def _capture(root, config, contract, lower, upper, commands, output, stop, contr
                     raise ValueError('Pico timestamps must strictly increase')
                 last_source_stamp = stamp
                 begin = time.monotonic()
-                try:
-                    q, root_quat, residual = retarget.solve(body, robot_root=anchor)
-                except PicoRetargetFitError as error:
-                    # Reject the pose, not the connection. Invalid samples never
-                    # enter a motion window; a running follower rejects the epoch.
-                    if reference.last_stamp_ns is not None:
-                        epoch += 1
-                        reference = CausalActorReference(contract,math_api,
-                            maximum_gap=config['reference_maximum_gap_s'])
-                    _latest(output,dict(state='rejected',error=str(error),reference_epoch=epoch,
-                        received_monotonic=float(metadata['timestamp_monotonic']),
-                        pico_timestamp_ns=int(metadata['timestamp_ns']),
-                        retarget_ms=(time.monotonic()-begin)*1000,
-                        ik_max_residual_rad=error.residual))
-                    stop.wait(.005)
-                    continue
+                q, root_quat, residual = retarget.solve(body, robot_root=anchor)
                 received = float(metadata['timestamp_monotonic'])
-                gap_info = {}
-                try:
-                    reference.append(stamp, q, root_quat, received_monotonic=received)
-                except PicoReferenceGapError as error:
-                    # Keep the capture connection alive, but discard every
-                    # sample before the gap. Following pins this epoch and
-                    # cancels on a change, even if it misses 'collecting'.
-                    gap_info = dict(source_gap_s=error.gap_s,
-                        receipt_gap_s=received-reference.last_receive_monotonic)
-                    epoch += 1
-                    reference = CausalActorReference(contract, math_api,
-                        maximum_gap=config['reference_maximum_gap_s'])
-                    reference.append(stamp,q,root_quat,received_monotonic=received)
+                gap_info = dict(source_gap_s=0. if reference.last_stamp_ns is None else
+                    (stamp-reference.last_stamp_ns)*1e-9,
+                    receipt_gap_s=0. if reference.last_receive_monotonic is None else
+                    received-reference.last_receive_monotonic)
+                reference.append(stamp,q,root_quat,received_monotonic=received)
                 snapshot = dict(state='collecting', received_monotonic=received,
-                    reference_epoch=epoch,**gap_info,
+                    **gap_info,
                     pico_timestamp_ns=int(metadata['timestamp_ns']), ik_max_residual_rad=residual,
                     retarget_ms=(time.monotonic()-begin)*1000)
                 if reference.ready():
@@ -120,7 +93,7 @@ def _capture(root, config, contract, lower, upper, commands, output, stop, contr
                 _latest(output, snapshot)
             stop.wait(.005)
     except BaseException as error:
-        _latest(output, dict(state='failed', error=repr(error),reference_epoch=epoch))
+        _latest(output, dict(state='failed', error=repr(error)))
     finally:
         if buttons is not None:
             buttons.close()

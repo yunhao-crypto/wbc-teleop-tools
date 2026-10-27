@@ -121,17 +121,9 @@ class OrientationKinematics:
         return rotations, jacobians
 
 
-class PicoRetargetFitError(ValueError):
-    """A finite pose that cannot be fitted within the reviewed residual limit."""
-    def __init__(self, link, residual, limit):
-        self.link, self.residual, self.limit = link, float(residual), float(limit)
-        super().__init__(f'Pico retarget {link} residual {residual:.4f} rad exceeds {limit}')
-
-
 class PicoOrientationRetargeter:
     """First valid frame calibrates segment offsets against actor default pose."""
-    def __init__(self, *, urdf, contract, mapping, math_api, iterations=12,
-                 max_residual_rad=0.6):
+    def __init__(self, *, urdf, contract, mapping, math_api, iterations=12):
         self.math = math_api
         self.contract = contract
         self.kinematics = OrientationKinematics(urdf, contract.names)
@@ -145,9 +137,8 @@ class PicoOrientationRetargeter:
         if np.any(np.linalg.norm(stacked, axis=0) < 1e-8):
             raise ValueError('Retarget mapping leaves an actor joint unobserved')
         self.iterations = int(iterations)
-        self.max_residual = float(max_residual_rad)
-        if self.iterations < 1 or not 0 < self.max_residual <= math.pi:
-            raise ValueError('Invalid IK budget/residual limit')
+        if self.iterations < 1:
+            raise ValueError('Invalid IK iteration budget')
         self.converter = CPUPicoToSmplConverter()
         self.q = contract.default.copy()
         self.offsets = self.root_offset = None
@@ -194,18 +185,9 @@ class PicoOrientationRetargeter:
         residual = residuals[worst]
         if not np.isfinite(residual):
             raise ValueError('Nonfinite Pico retarget residual')
-        if residual > self.max_residual:
-            raise PicoRetargetFitError(self.mapping[worst][0],residual,self.max_residual)
         self.q = q
         root = self.math.multiply(self.root_offset, root)
         return q.copy(), self.math.quaternion(root), float(residual)
-
-
-class PicoReferenceGapError(ValueError):
-    """A discontinuity that must never be interpolated across."""
-    def __init__(self, gap_s, limit_s):
-        self.gap_s, self.limit_s = float(gap_s), float(limit_s)
-        super().__init__(f'Pico source gap {gap_s:.6f}s exceeds reference interpolation limit {limit_s:.6f}s')
 
 
 class CausalActorReference:
@@ -216,12 +198,11 @@ class CausalActorReference:
     100 ms spacing needs 920 ms. Neither value is measured end-to-end latency.
     No prediction, repeated terminal pose, or invented future velocity is used.
     """
-    def __init__(self, contract, math_api, *, maximum_gap=.10, capacity=1024):
+    def __init__(self, contract, math_api, *, capacity=1024):
         if contract.include_z:
             raise ValueError('This Pico retargeter does not supply calibrated robot root height')
         self.contract, self.math = contract, math_api
-        self.maximum_gap = float(maximum_gap)
-        if not 0 < self.maximum_gap <= .6 or capacity < 3:
+        if capacity < 3:
             raise ValueError('Invalid reference buffering settings')
         self.samples = deque(maxlen=capacity)
         self.last_stamp_ns = None
@@ -242,8 +223,6 @@ class CausalActorReference:
             gap = (int(stamp_ns)-self.last_stamp_ns)*1e-9
             if gap <= 0:
                 raise ValueError('Pico timestamps must strictly increase')
-            if gap > self.maximum_gap:
-                raise PicoReferenceGapError(gap, self.maximum_gap)
         if self.origin_ns is None:
             self.origin_ns = int(stamp_ns)
         self.samples.append(((int(stamp_ns)-self.origin_ns)*1e-9, q.copy(), root.copy()))

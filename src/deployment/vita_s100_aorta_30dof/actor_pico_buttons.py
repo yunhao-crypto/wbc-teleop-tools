@@ -10,7 +10,8 @@ class DualTriggerToggle:
     A connection/stale interval additionally requires a fresh released sample.
     Held/cached buttons therefore cannot engage on connection or recovery.
     """
-    def __init__(self):
+    def __init__(self, maximum_age=.6):
+        self.maximum_age = float(maximum_age)
         self.armed = False
         self.last_stamp = 0
         self.last_toggle = -math.inf
@@ -19,7 +20,7 @@ class DualTriggerToggle:
         available, stamp, age, left, right = sample
         if (not available or type(stamp) is not int or stamp <= 0
                 or not all(math.isfinite(x) for x in (age,left,right,now))
-                or not 0 <= age <= .1 or not 0 <= left <= 1 or not 0 <= right <= 1):
+                or not 0 <= age <= self.maximum_age or not 0 <= left <= 1 or not 0 <= right <= 1):
             self.armed = False
             return False
         if stamp == self.last_stamp:
@@ -40,12 +41,12 @@ class DualTriggerToggle:
 
 class TriggerReader:
     """Poll independently of IK; shared monotonic event counter survives coalescing."""
-    def __init__(self, sdk, shared):
+    def __init__(self, sdk, shared, *, maximum_age=.6):
         self.get = getattr(sdk,'get_controller_trigger_snapshot',None)
         if not callable(self.get):
             raise RuntimeError('Pico binding lacks atomic controller trigger snapshots; update the binding')
         self.shared = shared
-        self.toggle = DualTriggerToggle()
+        self.toggle = DualTriggerToggle(maximum_age)
         self.stop = threading.Event()
         self.thread = threading.Thread(target=self.run,name='pico-trigger-reader',daemon=True)
 
@@ -59,7 +60,7 @@ class TriggerReader:
                 fired = self.toggle.update(sample,now)
                 available,stamp,age,left,right = sample
                 with self.shared.get_lock():
-                    self.shared[2] = now-age if available and 0 <= age <= .1 else 0.
+                    self.shared[2] = now-age if available and 0 <= age <= self.toggle.maximum_age else 0.
                     if fired:
                         self.shared[0] += 1
                         self.shared[1] = now

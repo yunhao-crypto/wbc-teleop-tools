@@ -35,13 +35,11 @@ as reference inputs; its metadata does not request root height or translation.
 
 The new retargeter matches torso, upper/lower legs, feet, upper/lower arms and
 wrists using the bundled Vita URDF. It uses NumPy only and requires no mesh,
-SMPL pickle, Torch, SciPy, CUDA, GMR or planner on S100. Segment mappings,
-iterations and a maximum segment orientation residual are explicit in config.
-Finite poses exceeding the segment-fit residual limit are rejected. Before
-following, capture remains connected and collects a new valid reference window;
-the last accepted pose/calibration is retained. During following, the resulting
-epoch change cancels control. Malformed/nonfinite poses and regressing timestamps
-remain terminal. This retargeter does not enforce contacts, foot
+SMPL pickle, Torch, SciPy, CUDA, GMR or planner on S100. Segment mappings and
+iteration count are explicit in config. Segment-fit residual is diagnostic;
+there is no residual cutoff or pose rejection based on that scalar.
+Malformed/nonfinite poses and regressing timestamps remain terminal. The solver
+and its existing joint bounds are unchanged. This retargeter does not enforce contacts, foot
 placement, collision avoidance or dynamic balance, and has no hardware motion
 acceptance. Its kinematic checks are separate from training-distribution
 or real-human motion quality validation.
@@ -99,11 +97,9 @@ causal reference timing/velocity, stale and invalid inputs, real model
 inference, and Body31 ankle torque/neck/hole mapping. Fixture provenance is in
 `tests/fixtures/actor_pico/tracking_fixture_provenance.json`.
 The replay fixture is synthetic, and its output is not hardware validation.
-The documented 100-step replay covers its initial segment. An extended run
-over the whole HoloMotion synthetic fixture reaches poses that exceed this
-retargeter's 0.6 rad segment-residual limit and is rejected. This source is not
-a guarantee that every arbitrary human pose is feasible for Vita28. The
-residual limit is retained; it is not raised to make that replay pass.
+The documented 100-step replay covers its initial segment. Finite large fit
+residuals remain visible in diagnostics; they do not establish real-human
+reference quality or physical balance.
 
 ## Run on S100
 
@@ -210,7 +206,7 @@ The sequence is:
 5. Start the isolated Pico receiver automatically while ONNX stand continues.
    No Pico input is required for model inference. After `ONNX_READY` and
    `PICO_INPUT: ready` and `PICO_BUTTONS: controller input ready`, keep the
-   wearer neutral, release both triggers, then squeeze both past **0.7** to
+   release both triggers, then squeeze both past **0.7** to
    follow (at least 3 s of initial policy preparation is required). Release
    both and squeeze again to return smoothly to ONNX stand, without leaving
    EXTERNAL. A hold fires once; both must release to/below 0.7 to re-arm, with
@@ -219,15 +215,18 @@ The sequence is:
    are rejected and not queued; source loss after handoff cancels without
    automatic motion retry/reconnection.
 
-Before following, a source timestamp gap over 100 ms discards the causal
-reference buffer and collects a new complete 200 ms window while keeping the
-Pico service/connection alive. It never interpolates across the gap or enables
-following automatically. Each reset advances a reference epoch; following pins
-that epoch and cancels on a change, even if the controller misses the temporary
-`collecting` snapshot. Finite IK-fit rejection uses the same invalidation/rebuild
-behavior, without accepting the rejected pose or increasing its 0.6 rad limit.
-Other capture errors remain terminal. State-change logs
-include the source/receipt gap, retarget time and actual failure reason.
+Input checks follow the original HoloMotion deployment's
+`config/vita02a_s100.yaml`: robot feedback age is 100 ms; Pico source/reference
+age is 600 ms (`config/actor_pico.json:pico_max_age_s`), also used for controller
+input and edge delivery. Source frame intervals are diagnostics, not data age:
+a 110--122 ms interval does not clear a ready buffer or interrupt following.
+Timestamped samples remain in the same causal window and are interpolated on
+the model's 20 ms grid. There is no reference-epoch gate, segment-fit cutoff,
+or 0.1 rad all-joint neutral admission rule. The model's 200 ms initial window,
+finite/shape/quaternion checks and strictly increasing source timestamps remain.
+Pico age exceeding 600 ms or other genuine input faults stop following through
+the existing checked exit; changing input thresholds does not copy HoloMotion's
+separate Velocity-policy fallback into this single-actor deployment.
 
 The trigger interaction follows motion-stream-bridge `sources/pico.py` at
 763f560 (`_TRIGGER_ENGAGE=0.7`, `_TOGGLE_DEBOUNCE_S=0.3`, both-release latch).
@@ -262,7 +261,7 @@ Startup always runs the policy on the measured-pose reference. The earlier
 independent `joint-ramp` experiment was removed; `--entry-policy policy-online`
 remains accepted for existing launch commands. `live --manual-pico` retains manual
 receiver connection with `CONNECT`. `--auto-pico` is an explicit opt-in to
-following a fresh neutral reference automatically; it is not enabled by this
+following a fresh valid reference automatically; it is not enabled by this
 board's selected local profile.
 
 The configured local default uses `seconds=0`: no application duration expiry.
@@ -297,8 +296,8 @@ to robot YAML or weaken output/hardware checks to get past preflight.
 `live` is experimental **supported** control. It is not acceptance
 for unsupported standing/walking. Obtain authorization for the actual robot
 and motion; keep reliable support, clear motion/pinch zones, an attendant and
-a usable hardware emergency stop. The Pico wearer must stay neutral during
-preflight and the first three seconds after entry, then use small movements.
+a usable hardware emergency stop. Start from a steady capture pose for the
+first-frame calibration and use small movements during initial checks.
 The 200 ms reference delay remains for Pico following. `--stand-only` still moves the whole body:
 it runs the online actor with a default-stand reference, not a fixed pose.
 It requires no Pico device/service/reader. Body feedback and all control guards
@@ -344,7 +343,7 @@ inference without Pico. After at least three seconds of preparation, type
 `CONNECT <actual robot identity>` to start the owned Pico service/capture.
 Connect the calibrated headset and enable Full body/Send while keeping the
 wearer neutral. When `PICO_INPUT: ready` and fresh controller input appear,
-release and squeeze both triggers to request following. A premature/stale/nonneutral
+release and squeeze both triggers to request following. A premature/stale/invalid
 request is rejected while stand continues; it is **not queued for automatic
 activation**. `CONNECT` by itself never starts following. Another released/squeezed
 dual-trigger pulse returns to ONNX stand in the same session. Typed `STOP` or Ctrl-C
@@ -376,18 +375,19 @@ measured body pose to actor defaults. As in the SDK tracking example, the
 reference advances by one 20 ms frame per inference, capped at its final frame;
 wall-clock delays do not skip reference frames. Fixed neck targets use the
 reviewed profile directly. At the handoff, the entire buffered Pico reference
-must remain within 0.10 rad of defaults; otherwise the trial cancels.
+must be complete, finite and within the configured Pico age budget.
 The complete decoded BodyCmd is sent, including ankle compensation torque.
 The unpopulated waist-roll slot remains inert; no hand command is sent.
 
-`--seconds 0` disables only application duration expiry. Body feedback and Pico age must stay within
-100 ms, and ControlStatus must advance within 500 ms. The 20 ms period is a
+`--seconds 0` disables only application duration expiry. Body feedback age must
+stay within 100 ms, Pico age within 600 ms, and ControlStatus must advance within
+500 ms. The 20 ms period is a
 50 Hz scheduling target, matching the C++ executor's treatment of occasional
 overruns. Compute/full-cycle overruns and skipped ticks are recorded; delayed
 commands are never replayed in a catch-up burst. Feedback is rechecked just
-before publication. A publication gap or blocking publish exceeding the same
-100 ms freshness budget cancels the trial, even if a newer state has arrived.
-The effective firmware watchdog/interpolation settings remain unchanged.
+before publication. Publish/log timing is recorded without an additional
+100 ms publication-gap/stall cancellation rule. The effective firmware
+watchdog/interpolation settings remain unchanged.
 The Body31 actor path validates native arrays directly without materializing
 an unused legacy44 state. Logs use a 1 MiB buffer, flushed on entry, exit,
 candidate capture and errors; abrupt process termination may lose buffered rows.
