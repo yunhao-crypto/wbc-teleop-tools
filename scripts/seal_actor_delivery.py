@@ -24,7 +24,7 @@ def main():
     model = json.loads((root/'config/actor_pico.json').read_text())['artifacts']['model']
     previous = next(item for item in actor['files']+actor.get('external_resources', [])
                     if item['path'] == model['path'])
-    external = dict(path=model['path'], sha256=model['sha256'], bytes=previous['bytes'],
+    external = dict(path=model['path'], sha256=model['sha256'], bytes=model.get('bytes', previous['bytes']),
                     provision='Supply separately using bootstrap_actor_s100.py --model')
     actor['files'] = [item for item in actor['files'] if item['path'] != model['path']]
     actor['external_resources'] = [external]
@@ -63,7 +63,7 @@ def main():
     missing = set(required)-set(names)
     if missing:
         raise RuntimeError('Stage these required delivery files first: '+', '.join(sorted(missing)))
-    record = dict(schema='vita_actor_s100_delivery_v1', version='2026.10.27-actor2',
+    record = dict(schema='vita_actor_s100_delivery_v1', version='2026.10.27-actor3',
                   target=dict(os='Linux', architecture='aarch64', python='3.10', glibc_min='2.35'),
                   scope='offline/shadow checks and explicitly armed supported EXTERNAL trials; hardware not_measured',
                   required_inputs=required, external_resources=[external], archives=archives,

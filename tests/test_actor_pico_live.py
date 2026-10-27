@@ -2,7 +2,9 @@
 from dataclasses import replace
 from contextlib import redirect_stdout
 import io
+import importlib.util
 import json
+import os
 from pathlib import Path
 import sys
 import tempfile
@@ -318,6 +320,28 @@ class LiveTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'mode=peer'): require_peer_profile(p)
         p.write_text('{mode:"peer"}'); p.chmod(0o644)
         with self.assertRaisesRegex(ValueError, '0600'): require_peer_profile(p)
+
+    def test_state_check_uses_no_control_handles_and_closes_reader(self):
+        from locomotion_aorta.pull import PullStateSource, PullController
+        from deployment.vita_s100_aorta_30dof import sdk021_guard
+        import aorta
+        spec = importlib.util.spec_from_file_location('actor_cli_state_test', ROOT/'scripts/actor_pico.py')
+        cli = importlib.util.module_from_spec(spec); spec.loader.exec_module(cli)
+        profile = Path(self.tmp.name)/'peer.json5'; profile.touch(mode=0o600)
+        profile.write_text('{mode:"peer"}')
+        source = PullStateSource(group='default', _transport=self.transport)
+        args = NS(group='default', seconds=.1)
+        with (patch.dict(os.environ, ZENOH_SESSION_CONFIG_URI=str(profile)),
+              patch.object(sdk021_guard, 'verify_vendor_sources', return_value={}),
+              patch('locomotion_aorta.pull.PullStateSource', return_value=source),
+              patch.object(PullController, '__init__', side_effect=AssertionError('control forbidden')),
+              patch.object(aorta.Node, '__init__', side_effect=AssertionError('real Node forbidden')),
+              patch.object(cli, 'time', self.clock)):
+            result = cli.state_check(self.runtime, args, lambda row:self.rows.append(row))
+        self.assertGreater(result['sampled_fresh_frames'], 0)
+        self.assertEqual((result['actions_sent'], result['control_handles_created']), (0, 0))
+        self.assertEqual((self.transport.requests, self.transport.commands), ([], []))
+        self.assertTrue(self.transport.closed)
 
 
 if __name__ == '__main__': unittest.main()

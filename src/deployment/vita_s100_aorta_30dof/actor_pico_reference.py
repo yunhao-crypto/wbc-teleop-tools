@@ -196,7 +196,9 @@ class PicoOrientationRetargeter:
 class CausalActorReference:
     """Delay real references until the complete future/derivative window exists.
 
-    At 10 x 100 ms, the horizon is 900 ms plus a 20 ms forward derivative.
+    Timing comes from the loaded model. Ten references at 20 ms need a
+    180 ms horizon plus a 20 ms derivative tail (200 ms total); the legacy
+    100 ms spacing needs 920 ms. Neither value is measured end-to-end latency.
     No prediction, repeated terminal pose, or invented future velocity is used.
     """
     def __init__(self, contract, math_api, *, maximum_gap=.10, capacity=1024):

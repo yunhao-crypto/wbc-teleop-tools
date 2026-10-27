@@ -1,7 +1,8 @@
 # Vita S100 actor/Pico 部署
 
 本仓库以 `vita_p123_20261015_sdkmain_opt021` 部署快照作为初始基线，
-提供 Vita02A 的 `actor_g1.onnx` 推理及 Pico 实时输入链路。
+提供 Vita02A 的低延迟 G1 policy `model_step_431500_g1.onnx` 推理及 Pico 实时输入链路
+（安装后统一保存为 `artifacts/actor_g1/actor_g1.onnx`）。
 **actor 部署所需的离线 wheel、Pico ARM 服务、定制绑定和构建源码均纳入 Git；模型单独交付。**
 部署者需要提供指定版本的 `actor_g1.onnx`，安装脚本校验 SHA256 后复制到本地模型目录。
 无需复制原开发目录的虚拟环境。
@@ -21,6 +22,7 @@
 ```bash
 python3.10 scripts/bootstrap_actor_s100.py --model /path/to/actor_g1.onnx
 bash scripts/start_actor_pico.sh check --steps 100
+bash scripts/start_actor_pico.sh state-check --seconds 5 --group default
 bash scripts/start_actor_pico.sh shadow --seconds 60 --group default
 ```
 
@@ -70,12 +72,14 @@ python3 scripts/verify_actor_delivery.py --host-inference --model /path/to/actor
 
 检查只接收显式指定的外部模型，不借用工作目录的 `venv`、`vendor_packages`、`reference` 或 `build`。
 它会验证全部文件/归档哈希、离线解析完整 ARM wheel 依赖、从交付归档解包运行文件，
-编译实际 Pico 原子快照 C++ 回归，并使用宿主 ONNX Runtime 运行 14 项 actor 测试、
+编译实际 Pico 原子快照 C++ 回归，并使用宿主 ONNX Runtime 运行 15 项 actor 测试、
 3 项 Pico 读取测试、EXTERNAL 离线故障回归、100 步模型检查和 100 步合成 Pico 回放。
 宿主模式需已有 NumPy、ONNX Runtime、pip 和 C++ 编译器；它不执行 ARM 二进制。
 
 S100 实际安装、推理性能、真实 Pico 输入质量和动作控制仍需分别在目标机验收。
-参考窗口延迟为 0.92 秒；超出重定向误差阈值的姿态会停止推理。
+该模型声明 10 帧、20 ms 间隔；真实参考缓存为 0.20 秒，端到端延迟仍须实测。
+旧 `f0dfa046…` 模型声明 100 ms 间隔，所需缓存为 0.92 秒，不能混用其模型清单。
+超出重定向误差阈值的姿态会停止推理。
 
 ## 来源
 

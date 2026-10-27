@@ -1,10 +1,10 @@
 # actor_g1 + Pico on S100
 
-This entry runs `/host/actor_g1.onnx` through the installed SDK 0.2.1 WBC
+This entry runs `model_step_431500_g1.onnx` through the installed SDK 0.2.1 WBC
 observation/decoder math. The model is supplied separately (excluded from Git)
 and copied by the bootstrap to `artifacts/actor_g1/actor_g1.onnx`
 and SHA256 pinned in `config/actor_pico.json`. Its metadata identifies
-`vita02a_pd40_aniso_dr`, input `[1,1520]`, output `[1,28]`, and 50 Hz.
+`vita02a`, G1 encoder, input `[1,1520]`, output `[1,28]`, and 50 Hz.
 It is the Vita28 tracking actor, regardless of the `g1` filename.
 
 The entry supports model checks, offline Pico replay, live-input shadow
@@ -43,12 +43,18 @@ placement, collision avoidance or dynamic balance, and has no hardware motion
 acceptance. Its kinematic checks are separate from training-distribution
 or real-human motion quality validation.
 
-The actor requests 10 reference frames spaced 100 ms apart. The causal input
-buffer waits for the entire 900 ms horizon plus a 20 ms forward-difference tail.
-The resulting reference delay is **920 ms**, in addition to capture/compute
+The selected step-431500 actor requests 10 reference frames spaced 20 ms apart.
+The causal input buffer waits for the 180 ms horizon plus a 20 ms forward-difference tail.
+The resulting reference delay is **200 ms**, in addition to capture/compute
 latency. These are real past samples interpolated at 50 Hz; future motion is
 not predicted or filled with repeated terminal poses. Removing that delay
 requires a validated predictor or a differently trained/exported model.
+This file is distinct from the old `f0dfa046…` actor: its SHA256 is
+`a341391a346e050caf11c40c6989336c658c445e3e124f12dcbe292d91324474`.
+The old actor declared 100 ms spacing and needed 920 ms buffering. Shape alone
+does not distinguish those models; timing and joint limits come from each
+model's own metadata. The current actor narrows ankle-pitch limits and changes
+shoulder-yaw limits; effective targets use the intersection with robot limits.
 
 The actor path retains the SDK's 10-frame, term-major proprioception history,
 clipped-action feedback and ankle clamp feedforward correction. It uses the
@@ -123,6 +129,7 @@ From the **actual S100 deployment root**, run:
 
 ```bash
 bash scripts/start_actor_pico.sh check --steps 100
+bash scripts/start_actor_pico.sh state-check --seconds 5 --group default
 bash scripts/start_actor_pico.sh shadow --seconds 60 --group default
 ```
 
@@ -134,9 +141,12 @@ It needs no Xbox. Ctrl-C ends shadow and closes its reader/subscriptions/service
 Each run creates a unique `outputs/actor_pico_*.jsonl`; the Pico service writes
 `outputs/pico_service_actor.log`. `--record-observations` also records all 1520
 input values. Successful inference records include `actions_sent=0`, the
-retarget residual, input age, the 920 ms reference delay, inference timing and
+retarget residual, input age, the 200 ms reference delay, inference timing and
 all 31 inert output slots. An overrun record includes logging time. `check`
 does not open the Pico service or check hardware inputs.
+`state-check` subscribes to Body31 only and validates finite joint/IMU values,
+protocol, roster and freshness. It creates no control handles or Pico service.
+No feedback/timeout is reported as a failed check; it never starts robot services.
 
 The bootstrap creates the interpreter with the proper permissions and restores
 executable mode on the service from the sealed archive. The actor shadow entry
@@ -149,7 +159,7 @@ for unsupported standing/walking. Obtain authorization for the actual robot
 and motion; keep reliable support, clear motion/pinch zones, an attendant and
 a usable hardware emergency stop. The Pico wearer must stay neutral during
 preflight and the first three seconds after entry, then use small movements.
-The 920 ms reference delay remains. `--stand-only` still moves the whole body:
+The 200 ms reference delay remains. `--stand-only` still moves the whole body:
 it runs the online actor with a default-stand reference, not a fixed pose.
 
 After installing into a new S100 directory, run the existing `check` and
@@ -218,7 +228,7 @@ been reviewed. The historical P1/P2/P3 `7200` config is not used by this entry.
 `robot_root_quat_wxyz [T,4]` and `robot_root_angvel_local [T,3]` contain the
 model's HIP-frame state convention. Units are radians, rad/s and seconds/ns as
 named. Every one of the actor's 28 joints must be present. Replay inference
-starts only after the full 920 ms window is available.
+starts only after the full model-derived window is available (200 ms for step 431500).
 
 ## Validation boundary
 

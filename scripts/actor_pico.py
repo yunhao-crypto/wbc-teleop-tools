@@ -68,6 +68,47 @@ def replay(runtime, args, write):
                 reference_delay_s=runtime.reference.delay, hardware_inputs_checked=False)
 
 
+def state_check(runtime, args, write):
+    """Bounded Body31 subscription, with no control handles or Pico service."""
+    from deployment.vita_s100_aorta_30dof.actor_pico_live import Inputs, require_peer_profile
+    from deployment.vita_s100_aorta_30dof.sdk021_guard import verify_vendor_sources
+    from locomotion_aorta.pull import PullStateSource
+    profile = os.environ.get('ZENOH_SESSION_CONFIG_URI')
+    if not profile:
+        raise RuntimeError('Use start_actor_pico.sh state-check with a reviewed S100 peer profile')
+    require_peer_profile(profile)
+    verify_vendor_sources()
+    source = PullStateSource(group=args.group, node_name='vita-actor-state-check')
+    frames, last_key = 0, None
+    deadline = time.monotonic()+args.seconds
+    try:
+        validator = Inputs(runtime, source, None, time)
+        while time.monotonic() < deadline:
+            remaining = deadline-time.monotonic()
+            if remaining <= 0:
+                break
+            state = source.wait_state(timeout=min(1., remaining))
+            q, dq, root, gyro = validator.validate_state(state)
+            key = (state.state_id, state.ts_state_real_us)
+            if key != last_key:
+                frames += 1
+                last_key = key
+                write(dict(record_type='readonly_body_state', state_id=int(state.state_id),
+                    joint_slots=len(state.q), policy_joints=len(q),
+                    source_state_us=int(state.ts_state_real_us),
+                    q=q.tolist(), dq=dq.tolist(), root=root.tolist(), gyro=gyro.tolist(),
+                    actions_sent=0, control_handles_created=0))
+            time.sleep(min(.02, max(0., deadline-time.monotonic())))
+    finally:
+        source.close()
+    if not frames:
+        raise TimeoutError('No fresh Body31 feedback received')
+    return dict(mode='readonly_body31_check', sampled_fresh_frames=frames,
+                joint_slots=31, policy_joints=28, actions_sent=0,
+                control_handles_created=0, hardware_inputs_checked=True,
+                pico_inputs_checked=False)
+
+
 def shadow(runtime, args, write):
     from deployment.vita_s100_aorta_30dof.pico_input import create_pico_source
     from deployment.vita_s100_aorta_30dof.sdkmain_adapter import raw_state_from_arrays
@@ -232,7 +273,7 @@ def live(runtime, args, write):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('mode', choices=('check', 'replay', 'shadow', 'live'))
+    parser.add_argument('mode', choices=('check', 'replay', 'state-check', 'shadow', 'live'))
     parser.add_argument('--root', type=Path, default=ROOT)
     parser.add_argument('--backend', choices=('auto', 'sdk', 'ort'), default='auto')
     parser.add_argument('--threads', type=int, default=1)
@@ -274,7 +315,8 @@ def main():
                    robot_id=args.robot_id, retargeter='calibrated_segment_orientation_ik',
                    reference_delay_s=runtime.reference.delay, actions_sent=0))
         try:
-            report = {'check': check, 'replay': replay, 'shadow': shadow, 'live': live}[args.mode](runtime, args, write)
+            report = {'check': check, 'replay': replay, 'state-check': state_check,
+                      'shadow': shadow, 'live': live}[args.mode](runtime, args, write)
         except BaseException as exc:
             # Live fault paths may already have published; never claim zero.
             write(dict(record_type='error', error=repr(exc),

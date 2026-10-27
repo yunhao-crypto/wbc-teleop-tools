@@ -40,7 +40,7 @@ class ActorPicoTests(unittest.TestCase):
         return b
 
     def test_cpp_two_tick_observation_golden(self):
-        # Independently generated C++ oracle; only its 20 ms stride differs.
+        # Independently generated C++ oracle uses 20 ms reference spacing.
         self.policy.contract = replace(self.c, future_dt=.02)
         data = json.loads((ROOT/'tests/fixtures/actor_pico/groot_observation_golden.json').read_text())
         motion = self.math.Motion(np.reshape(data['joint_pos'], (-1, 28)),
@@ -74,18 +74,23 @@ class ActorPicoTests(unittest.TestCase):
         self.assertEqual((hole.q, hole.kp, hole.kd, hole.tau), (0., 0., 0., 0.))
 
     def test_causal_window_has_real_future_and_forward_velocities(self):
-        ref = CausalActorReference(self.c, self.math)
-        for i in range(46):
-            ref.append(1_000_000_000+i*20_000_000, np.full(28, i*.02), [1, 0, 0, 0],
-                       received_monotonic=i*.02)
-        self.assertFalse(ref.ready())
-        ref.append(1_920_000_000, np.full(28, .92), [1, 0, 0, 0], received_monotonic=.92)
-        self.assertTrue(ref.ready())
-        motion = ref.motion()
-        obs = self.policy.observe(motion, 0., self.c.default, np.zeros(28), [1, 0, 0, 0], np.zeros(3))
-        np.testing.assert_allclose(obs[:280].reshape(10, 28)[:, 0], np.arange(10)*.1, atol=1e-7)
-        np.testing.assert_allclose(obs[280:560], 1., atol=1e-7)
-        self.assertAlmostEqual(ref.delay, .92)
+        # Keep both ABIs covered: frame count alone does not determine timing.
+        for dt, delay in ((.02, .20), (.10, .92)):
+            with self.subTest(future_dt=dt):
+                c = replace(self.c, future_dt=dt)
+                policy = self.math.WbcTrackingPolicy(c, self.config['body_profile'])
+                ref = CausalActorReference(c, self.math)
+                for i in range(ref.steps-1):
+                    ref.append(1_000_000_000+i*20_000_000, np.full(28, i*.02), [1, 0, 0, 0],
+                               received_monotonic=i*.02)
+                self.assertFalse(ref.ready())
+                ref.append(1_000_000_000+round(delay*1e9), np.full(28, delay), [1, 0, 0, 0],
+                           received_monotonic=delay)
+                self.assertTrue(ref.ready())
+                obs = policy.observe(ref.motion(), 0., c.default, np.zeros(28), [1, 0, 0, 0], np.zeros(3))
+                np.testing.assert_allclose(obs[:280].reshape(10, 28)[:, 0], np.arange(10)*dt, atol=1e-7)
+                np.testing.assert_allclose(obs[280:560], 1., atol=1e-7)
+                self.assertAlmostEqual(ref.delay, delay)
 
     def test_reference_rejects_duplicate_regression_gap_and_nan(self):
         ref = CausalActorReference(self.c, self.math)
@@ -104,7 +109,7 @@ class ActorPicoTests(unittest.TestCase):
             ref.append(1_000_000_000+i*15_000_000, np.full(28, 2*t),
                        self.math.yaw_quaternion(.2*t), received_monotonic=t)
         m = ref.motion()
-        np.testing.assert_allclose(m.q[:, 0], 2*(1.05-.92+np.arange(47)*.02), atol=1e-12)
+        np.testing.assert_allclose(m.q[:, 0], 2*(1.05-ref.delay+np.arange(ref.steps)*.02), atol=1e-12)
         self.assertAlmostEqual(self.math.yaw(m.quat[-1]), .21, places=8)
 
     def test_neutral_calibration_and_repeated_frame(self):
@@ -181,6 +186,12 @@ class ActorPicoTests(unittest.TestCase):
         self.assertEqual(row['actions_sent'], 0)
         self.assertTrue(np.isfinite(row['raw_action']).all())
         r.policy.reset()
+
+    def test_delivered_actor_is_pinned_low_latency_g1(self):
+        raw = json.loads((ROOT/'tests/fixtures/actor_pico/actor_g1_contract.json').read_text())
+        self.assertEqual(raw['encoder_name'], 'g1')
+        self.assertEqual((self.c.future_frames, self.c.future_dt, self.c.period), (10, .02, .02))
+        self.assertAlmostEqual(CausalActorReference(self.c, self.math).delay, .20)
 
     def test_stale_source_cannot_infer(self):
         with self.assertRaises(TimeoutError):

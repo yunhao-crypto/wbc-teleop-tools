@@ -6,7 +6,12 @@ move the robot only after explicit on-site confirmation; see
 Installation and validation never run that entry. Model weights are supplied
 separately and are excluded from Git. Their required SHA256 is pinned in
 `config/actor_pico.json` and `manifest.json` under `external_resources`:
-`f0dfa04684b4f8967623ddbcf8ede8ef3d862d0b403e9e3659e2a519eade6fae`.
+`a341391a346e050caf11c40c6989336c658c445e3e124f12dcbe292d91324474`.
+This is `model_step_431500_g1.onnx` (10 references at 20 ms spacing), installed
+under the canonical `artifacts/actor_g1/actor_g1.onnx` path. The earlier
+`f0dfa046…` actor has different weights, limits and timing and is not accepted
+by this delivery manifest. Use a fresh checkout for the new model; an existing
+different model/environment is preserved rather than overwritten.
 The URDF, source code, tests and configuration are tracked. No original `venv`, `reference`,
 `model_dependencies_readonly`, `vendor_packages` or `build` directory is needed
 from the developer's machine.
