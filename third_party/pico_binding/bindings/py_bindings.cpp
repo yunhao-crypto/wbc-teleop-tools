@@ -9,6 +9,7 @@
 #include <nlohmann/json.hpp>
 #include "PXREARobotSDK.h"
 #include "body_pose_snapshot.h"
+#include "controller_trigger_snapshot.h"
 #include <tuple>
 
 
@@ -33,6 +34,8 @@ std::array<int64_t, 24> BodyJointsTimestamp;  // IMU timestamp for each joint
 int64_t BodyTimeStampNs = 0;  // Body data timestamp
 bool BodyDataAvailable = false;  // Flag to indicate if body data is available
 BodyPoseSnapshot AtomicBodyPose;  // Complete same-packet pose/root timestamp only
+ControllerTriggerSnapshot AtomicTriggers;
+std::mutex controllerTriggerMutex;
 
 std::array<std::array<double, 7>, 3> MotionTrackerPose;  // Position and rotation for each joint
 std::array<std::array<double, 6>, 3> MotionTrackerVelocity;  // Velocity and angular velocity for each joint
@@ -120,6 +123,17 @@ void OnPXREAClientCallback(void* context, PXREAClientCallbackType type, int stat
             json data = json::parse(dsj.stateJson);
             if (data.contains("value")) {
                 auto value = json::parse(data["value"].get<std::string>());
+                if (value.contains("Controller") && !value["Controller"].empty()) {
+                    ControllerTriggerSnapshot triggers;
+                    try {
+                        triggers = parseControllerTriggerSnapshot(value);
+                        triggers.received = std::chrono::steady_clock::now();
+                    } catch (const std::exception&) {
+                        // Partial/invalid controller packets cannot refresh old buttons.
+                    }
+                    std::lock_guard<std::mutex> lock(controllerTriggerMutex);
+                    AtomicTriggers = triggers;
+                }
                 if (value["Controller"].contains("left")) {
                     auto& left = value["Controller"]["left"];
                     {
@@ -304,6 +318,15 @@ std::array<double, 7> getHeadsetPose() {
 double getLeftTrigger() {
     std::lock_guard<std::mutex> lock(leftMutex);
     return LeftTrigger;
+}
+
+std::tuple<bool, int64_t, double, double, double> getControllerTriggerSnapshot() {
+    std::lock_guard<std::mutex> lock(controllerTriggerMutex);
+    const double age = AtomicTriggers.available
+        ? std::chrono::duration<double>(std::chrono::steady_clock::now()-AtomicTriggers.received).count()
+        : 0.0;
+    return {AtomicTriggers.available, AtomicTriggers.packet_timestamp_ns, age,
+            AtomicTriggers.left, AtomicTriggers.right};
 }
 
 double getLeftGrip() {
@@ -516,6 +539,8 @@ PYBIND11_MODULE(xrobotoolkit_sdk, m) {
     m.def("get_left_trigger", &getLeftTrigger, "Get the left trigger value.");
     m.def("get_left_grip", &getLeftGrip, "Get the left grip value.");
     m.def("get_right_trigger", &getRightTrigger, "Get the right trigger value.");
+    m.def("get_controller_trigger_snapshot", &getControllerTriggerSnapshot,
+          "Atomically copy both trigger depths, same-packet timestamp and native receipt age: available, stamp_ns, age_s, left, right.");
     m.def("get_right_grip", &getRightGrip, "Get the right grip value.");
     m.def("get_left_menu_button", &getLeftMenuButton, "Get the left menu button state.");
     m.def("get_right_menu_button", &getRightMenuButton, "Get the right menu button state.");

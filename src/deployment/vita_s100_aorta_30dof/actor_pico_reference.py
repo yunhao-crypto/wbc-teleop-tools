@@ -121,6 +121,13 @@ class OrientationKinematics:
         return rotations, jacobians
 
 
+class PicoRetargetFitError(ValueError):
+    """A finite pose that cannot be fitted within the reviewed residual limit."""
+    def __init__(self, link, residual, limit):
+        self.link, self.residual, self.limit = link, float(residual), float(limit)
+        super().__init__(f'Pico retarget {link} residual {residual:.4f} rad exceeds {limit}')
+
+
 class PicoOrientationRetargeter:
     """First valid frame calibrates segment offsets against actor default pose."""
     def __init__(self, *, urdf, contract, mapping, math_api, iterations=12,
@@ -185,9 +192,10 @@ class PicoOrientationRetargeter:
                      for (r, _), t in zip(self.mapping, targets)]
         worst = int(np.argmax(residuals))
         residual = residuals[worst]
-        if not np.isfinite(residual) or residual > self.max_residual:
-            raise ValueError(f'Pico retarget {self.mapping[worst][0]} residual '
-                             f'{residual:.4f} rad exceeds {self.max_residual}')
+        if not np.isfinite(residual):
+            raise ValueError('Nonfinite Pico retarget residual')
+        if residual > self.max_residual:
+            raise PicoRetargetFitError(self.mapping[worst][0],residual,self.max_residual)
         self.q = q
         root = self.math.multiply(self.root_offset, root)
         return q.copy(), self.math.quaternion(root), float(residual)

@@ -258,6 +258,9 @@ def live(runtime, args, write):
             pico = manual = None
             service_alive = lambda:True
             if args.manual_pico:
+                import xrobotoolkit_sdk as pico_sdk
+                if not callable(getattr(pico_sdk,'get_controller_trigger_snapshot',None)):
+                    raise RuntimeError('Update the Pico binding: atomic dual-trigger input is required')
                 from deployment.vita_s100_aorta_30dof.actor_pico_worker import PicoReferenceProcess
                 manual = PicoReferenceProcess(runtime)
                 manual.start()
@@ -311,7 +314,7 @@ def main():
     parser.add_argument('--robot-config', type=Path, help='absolute path to this robot running effective locomotion YAML')
     parser.add_argument('--stand-only', action='store_true', help='live supported policy preparation/stand trial, without Pico following')
     parser.add_argument('--manual-pico', action='store_true',
-                        help='live: enter ONNX stand without Pico, then CONNECT/PICO commands in the same session')
+                        help='live: enter ONNX stand without Pico; both controller triggers toggle following/stand in the same session')
     parser.add_argument('--auto-start', action='store_true',
                         help='live: request FIXED_STAND after damping, then continuous ONNX stand; implies manual Pico')
     parser.add_argument('--local-start', action='store_true', help='live: load private defaults bound to this S100 and request motion directly')

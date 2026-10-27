@@ -182,7 +182,7 @@ def install(root, manifest, *, build_pico=False):
     # Validate actual installed SDK bytes/ABI and binding API without calling init().
     code = ('from deployment.vita_s100_aorta_30dof.sdk021_guard import verify_vendor_sources; '
             'verify_vendor_sources(); import xrobotoolkit_sdk as x; '
-            'assert callable(x.get_body_pose_snapshot); print("SDK and Pico binding verification passed")')
+            'assert callable(x.get_body_pose_snapshot); assert callable(x.get_controller_trigger_snapshot); print("SDK and Pico binding verification passed")')
     subprocess.run([str(python), '-c', code], cwd=root, env=env, check=True)
     service = root/'vendor_packages/xrobotoolkit-arm64/opt/apps/roboticsservice/RoboticsServiceProcess'
     for executable in [service, root/'build/pico'/f'xrobotoolkit_sdk.cpython-310-aarch64-linux-gnu.so']:

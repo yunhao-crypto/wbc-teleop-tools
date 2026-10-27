@@ -30,6 +30,12 @@ empty database with the vendor factory schema, not saved device/connection
 records. The binding archive contains the existing atomic-snapshot CPython 3.10
 ARM64 extension and double-conversion dependency. Their C++ source is tracked
 under `third_party/`, so the extension can also be built on S100.
+The dual-trigger revision additionally exports an atomic controller-packet
+snapshot with native receipt age. Its prebuilt extension was cross-compiled
+with aarch64 GCC 11 and the target's Python 3.10 headers, then imported and
+queried on S100 without initializing the SDK. The SDK/service binaries and
+double-conversion dependency are unchanged; actual controller input is a
+separate hardware check.
 Retain the original license/notices associated with each dependency.
 
 ## Target prerequisites

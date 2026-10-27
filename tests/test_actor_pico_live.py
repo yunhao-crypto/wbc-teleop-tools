@@ -310,7 +310,7 @@ class LiveTests(unittest.TestCase):
         self.assertFalse(any(r.get('stage')=='pico_tracking' for r in self.rows))
         self.assert_cancelled()
 
-    def capture_fixture(self, stamps):
+    def capture_fixture(self, stamps, bodies=None):
         import queue
         from unittest.mock import Mock
         from deployment.vita_s100_aorta_30dof import actor_pico_worker as worker,pico_input
@@ -318,10 +318,11 @@ class LiveTests(unittest.TestCase):
         (ROOT/'outputs').mkdir(exist_ok=True)  # Same precondition as the CLI log setup.
         stop=threading.Event();body=np.zeros((24,7),np.float32);body[:,6]=1.
         samples=iter(stamps)
+        poses=iter(bodies) if bodies is not None else None
         def step():
             try:stamp=next(samples)
             except StopIteration:stop.set();return None
-            return body,0,dict(timestamp_ns=stamp,timestamp_monotonic=stamp*1e-9)
+            return body if poses is None else next(poses),0,dict(timestamp_ns=stamp,timestamp_monotonic=stamp*1e-9)
         pico=Mock();pico.step.side_effect=step
         service=Mock();service.poll.return_value=None
         with (patch.object(worker.os,'setsid'),patch.object(worker.subprocess,'Popen',return_value=service),
@@ -350,6 +351,60 @@ class LiveTests(unittest.TestCase):
         self.assertEqual(rows[-1]['state'],'failed')
         self.assertEqual(rows[-1]['reference_epoch'],0)
         self.assertIn('strictly increase',rows[-1]['error'])
+
+    def test_capture_rejects_unfittable_pose_without_closing_and_rebuilds_on_neutral(self):
+        neutral=np.zeros((24,7),np.float32);neutral[:,6]=1.
+        bad=neutral.copy();bad[18,3:7]=[np.sin(.7),0.,0.,np.cos(.7)]
+        stamps=[1_000_000_000+i*20_000_000 for i in range(23)]
+        rows=self.capture_fixture(stamps,[neutral]*11+[bad]+[neutral]*11)
+        rejected=next(r for r in rows if r['state']=='rejected')
+        self.assertIn('residual',rejected['error'])
+        self.assertEqual(rejected['reference_epoch'],1)
+        self.assertGreater(rejected['ik_max_residual_rad'],.6)
+        self.assertFalse(any(r['state']=='failed' for r in rows))
+        self.assertEqual((rows[-1]['state'],rows[-1]['reference_epoch']),('ready',1))
+
+    def test_dual_trigger_toggles_follow_stand_follow_without_resetting_session_or_history(self):
+        self.online_setup();self.args.wait_pico=True;self.args.seconds=5.1
+        original=self.worker.snapshot
+        edges=[155,175,205,225]
+        event_times={}
+        def snapshot():
+            value=original();count=len(self.transport.commands)
+            event=sum(count>=edge for edge in edges)
+            if event not in event_times:event_times[event]=self.clock.monotonic()
+            value.update(trigger_event_seq=event,trigger_event_monotonic=event_times[event],
+                         controller_received_monotonic=self.clock.monotonic())
+            return value
+        before=[];observe=self.runtime.policy.observe
+        def observed(*a,**kw):
+            if self.transport.commands:before.append(len(self.runtime.policy.history))
+            return observe(*a,**kw)
+        with patch.object(self.worker,'snapshot',snapshot),patch.object(self.runtime.policy,'observe',observed):
+            report=self.auto_trial()
+        self.assertEqual(sum(r.get('record_type')=='tracking_started' for r in self.rows),2)
+        self.assertEqual(sum(r.get('record_type')=='tracking_paused' for r in self.rows),2)
+        self.assertTrue(all(n==10 for n in before))
+        self.assertEqual([r.operation.value for r in self.transport.requests],['PREPARE','COMMIT','CANCEL'])
+        self.assertEqual([c.sequence for c in self.transport.commands],list(range(1,report['actions_sent']+1)))
+        for index,row in enumerate(self.rows):
+            if row.get('record_type')=='tracking_paused':
+                next_command=next(r for r in self.rows[index+1:] if 'sent_body_targets' in r)
+                self.assertEqual((next_command['stage'],next_command['reference_frame']),('prepare_stand',0))
+        self.assert_cancelled()
+
+    def test_stale_trigger_edge_cannot_be_queued_for_later_engagement(self):
+        self.online_setup();self.args.wait_pico=True
+        original=self.worker.snapshot
+        def snapshot():
+            value=original()
+            value.update(trigger_event_seq=1,trigger_event_monotonic=self.clock.monotonic()-.2,
+                         controller_received_monotonic=self.clock.monotonic())
+            return value
+        with patch.object(self.worker,'snapshot',snapshot):self.auto_trial()
+        self.assertTrue(any(r.get('record_type')=='pico_trigger_rejected' for r in self.rows))
+        self.assertFalse(any(r.get('stage')=='pico_tracking' for r in self.rows))
+        self.assert_cancelled()
 
     def test_real_capture_process_can_start_and_stop_without_pico(self):
         from deployment.vita_s100_aorta_30dof.actor_pico_worker import PicoReferenceProcess
@@ -1146,6 +1201,48 @@ class LiveTests(unittest.TestCase):
         self.assertEqual((result['actions_sent'], result['control_handles_created']), (0, 0))
         self.assertEqual((self.transport.requests, self.transport.commands), ([], []))
         self.assertTrue(self.transport.closed)
+
+
+class PicoButtonTests(unittest.TestCase):
+    def setUp(self):
+        from deployment.vita_s100_aorta_30dof.actor_pico_buttons import DualTriggerToggle
+        self.toggle=DualTriggerToggle();self.stamp=0
+
+    def sample(self,left,right,now,age=0.,available=True):
+        self.stamp+=1
+        return self.toggle.update((available,self.stamp,age,left,right),now)
+
+    def test_press_at_connect_requires_release_and_hold_fires_only_once(self):
+        self.assertFalse(self.sample(1.,1.,0.))
+        self.assertFalse(self.sample(0.,0.,.1))
+        self.assertTrue(self.sample(1.,1.,.2))
+        self.assertFalse(self.sample(1.,1.,1.))
+
+    def test_one_trigger_dipping_does_not_rearm_the_chord(self):
+        self.sample(0.,0.,0.);self.assertTrue(self.sample(1.,1.,.1))
+        self.assertFalse(self.sample(0.,1.,.5))
+        self.assertFalse(self.sample(1.,1.,.6))
+        self.sample(0.,0.,.7);self.assertTrue(self.sample(1.,1.,.8))
+
+    def test_bridge_threshold_and_debounce_consume_bounce_without_late_refire(self):
+        self.sample(.7,.7,0.);self.assertTrue(self.sample(.71,.71,.1))
+        self.sample(0.,0.,.15);self.assertFalse(self.sample(1.,1.,.2))
+        self.assertFalse(self.sample(1.,1.,.6))
+        self.sample(0.,0.,.7);self.assertTrue(self.sample(1.,1.,.8))
+
+    def test_stale_inputs_disarm_until_new_release(self):
+        self.sample(0.,0.,0.)
+        self.assertFalse(self.sample(1.,1.,.1,age=.101))
+        self.assertFalse(self.sample(1.,1.,.2))
+        self.sample(0.,0.,.3);self.assertTrue(self.sample(1.,1.,.4))
+
+    def test_duplicate_or_regressing_packet_and_invalid_depth_do_not_fire(self):
+        self.sample(0.,0.,0.)
+        self.assertFalse(self.toggle.update((True,self.stamp,0.,1.,1.),.1))
+        self.assertFalse(self.sample(2.,1.,.2))
+        self.assertFalse(self.sample(1.,1.,.3))
+        self.sample(0.,0.,.4)
+        self.assertFalse(self.toggle.update((True,1,0.,1.,1.),.5))
 
 
 class LocalStartTests(unittest.TestCase):

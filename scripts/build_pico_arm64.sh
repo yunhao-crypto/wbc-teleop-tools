@@ -25,5 +25,5 @@ g++ -O3 -std=c++17 -shared -fPIC "${includes[@]}" \
   '-Wl,-rpath,$ORIGIN/../../vendor_packages/xrobotoolkit-arm64/opt/apps/roboticsservice/SDK/arm64' \
   -o "$out/xrobotoolkit_sdk$suffix"
 LD_LIBRARY_PATH="$out:$sdk:$sdk/lib:$sdk/SDK/arm64:${LD_LIBRARY_PATH:-}" \
-  PYTHONPATH="$out" "$python" -c 'import xrobotoolkit_sdk; assert callable(xrobotoolkit_sdk.get_body_pose_snapshot); print(xrobotoolkit_sdk.__file__)'
+  PYTHONPATH="$out" "$python" -c 'import xrobotoolkit_sdk; assert callable(xrobotoolkit_sdk.get_body_pose_snapshot); assert callable(xrobotoolkit_sdk.get_controller_trigger_snapshot); print(xrobotoolkit_sdk.__file__)'
 sha256sum "$out/libdouble-conversion.so.3" "$out/xrobotoolkit_sdk$suffix"

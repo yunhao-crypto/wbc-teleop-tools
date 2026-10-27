@@ -10,6 +10,7 @@ src=(binding/'bindings/py_bindings.cpp').read_text()
 head=src[:src.index('void init()')]
 head='\n'.join(line for line in head.splitlines() if not line.startswith('#include <pybind11/'))
 getter=src[src.index('std::tuple<bool, int64_t, std::array<std::array<double, 7>, 24>> getBodyPoseSnapshot()'):src.index('bool isBodyDataAvailable()')]
+getter+=src[src.index('std::tuple<bool, int64_t, double, double, double> getControllerTriggerSnapshot()'):src.index('double getLeftGrip()')]
 test=r'''
 #include <atomic>
 #include <cassert>
@@ -30,7 +31,23 @@ void publish(const json& value) {
 }
 void coherent(){auto [available,stamp,pose]=getBodyPoseSnapshot();if(!available)return;
  for(const auto&joint:pose)for(double coordinate:joint)assert(coordinate==double(stamp));}
+json with_controller(json value) {
+ const double depth=double(value["timeStampNs"].get<int64_t>()%2);
+ const json side={{"pose","0,0,0,0,0,0,1"},{"trigger",depth},{"grip",0.},
+   {"menuButton",false},{"axisX",0.},{"axisY",0.},{"axisClick",false},
+   {"primaryButton",false},{"secondaryButton",false}};
+ value["Controller"]={{"left",side},{"right",side}};return value;
+}
+void triggers_coherent(){auto [available,stamp,age,left,right]=getControllerTriggerSnapshot();
+ if(!available)return;assert(age>=0);assert(left==right);assert(left==double(stamp%2));}
 int main(){
+ assert(!std::get<0>(getControllerTriggerSnapshot()));
+ publish(with_controller(packet(1)));triggers_coherent();
+ auto bad_controller=with_controller(packet(2));bad_controller["Controller"].erase("right");
+ publish(bad_controller);assert(!std::get<0>(getControllerTriggerSnapshot()));
+ bad_controller=with_controller(packet(3));bad_controller["Controller"]["left"]["trigger"]=1.2;
+ publish(bad_controller);assert(!std::get<0>(getControllerTriggerSnapshot()));
+ {std::lock_guard<std::mutex>lock(bodyMutex);AtomicBodyPose=BodyPoseSnapshot{};}
  assert(!std::get<0>(getBodyPoseSnapshot()));publish(packet(10));coherent();
  assert(std::get<1>(getBodyPoseSnapshot())==10); // root, not Body timestamp
  {std::lock_guard<std::mutex>lock(timestampMutex);TimeStampNs=11;}
@@ -46,8 +63,8 @@ int main(){
  invalid=packet(14);invalid.erase("timeStampNs");publish(invalid);
  assert(std::get<1>(getBodyPoseSnapshot())==10);
  std::atomic<bool>done{false};std::atomic<unsigned>reads{0};
- std::thread reader([&]{while(!done){coherent();++reads;}});
- for(int frame=20;frame<10020;++frame)publish(packet(frame));
+ std::thread reader([&]{while(!done){coherent();triggers_coherent();++reads;}});
+ for(int frame=20;frame<10020;++frame)publish(with_controller(packet(frame)));
  done=true;reader.join();coherent();assert(reads>0);
  std::cout<<"PASS: actual callback/getter, root timestamp semantics, torn global update, 7 malformed packets, 10000 concurrent publications, "<<reads<<" coherent reads\n";
 }

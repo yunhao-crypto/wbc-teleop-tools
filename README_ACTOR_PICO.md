@@ -37,8 +37,11 @@ The new retargeter matches torso, upper/lower legs, feet, upper/lower arms and
 wrists using the bundled Vita URDF. It uses NumPy only and requires no mesh,
 SMPL pickle, Torch, SciPy, CUDA, GMR or planner on S100. Segment mappings,
 iterations and a maximum segment orientation residual are explicit in config.
-Excess residual, malformed poses, regressing timestamps or input gaps stop the
-run with a recorded error. This retargeter does not enforce contacts, foot
+Finite poses exceeding the segment-fit residual limit are rejected. Before
+following, capture remains connected and collects a new valid reference window;
+the last accepted pose/calibration is retained. During following, the resulting
+epoch change cancels control. Malformed/nonfinite poses and regressing timestamps
+remain terminal. This retargeter does not enforce contacts, foot
 placement, collision avoidance or dynamic balance, and has no hardware motion
 acceptance. Its kinematic checks are separate from training-distribution
 or real-human motion quality validation.
@@ -206,9 +209,12 @@ The sequence is:
    missed ticks rather than publishing a burst of accumulated commands.
 5. Start the isolated Pico receiver automatically while ONNX stand continues.
    No Pico input is required for model inference. After `ONNX_READY` and
-   `PICO_INPUT: ready`, keep the wearer neutral and type **`PICO`** to follow
-   (at least 3 s of policy preparation is required). `PICO <robot-id>` remains
-   accepted. The local default never auto-switches to following. The session,
+   `PICO_INPUT: ready` and `PICO_BUTTONS: controller input ready`, keep the
+   wearer neutral, release both triggers, then squeeze both past **0.7** to
+   follow (at least 3 s of initial policy preparation is required). Release
+   both and squeeze again to return smoothly to ONNX stand, without leaving
+   EXTERNAL. A hold fires once; both must release to/below 0.7 to re-arm, with
+   300 ms debounce. The local default never auto-switches to following. The session,
    command sequence and policy history are preserved. Early/invalid requests
    are rejected and not queued; source loss after handoff cancels without
    automatic motion retry/reconnection.
@@ -218,8 +224,22 @@ reference buffer and collects a new complete 200 ms window while keeping the
 Pico service/connection alive. It never interpolates across the gap or enables
 following automatically. Each reset advances a reference epoch; following pins
 that epoch and cancels on a change, even if the controller misses the temporary
-`collecting` snapshot. Other capture errors remain terminal. State-change logs
+`collecting` snapshot. Finite IK-fit rejection uses the same invalidation/rebuild
+behavior, without accepting the rejected pose or increasing its 0.6 rad limit.
+Other capture errors remain terminal. State-change logs
 include the source/receipt gap, retarget time and actual failure reason.
+
+The trigger interaction follows motion-stream-bridge `sources/pico.py` at
+763f560 (`_TRIGGER_ENGAGE=0.7`, `_TOGGLE_DEBOUNCE_S=0.3`, both-release latch).
+This application reads a same-packet dual-trigger snapshot with native receipt
+age in an independent input thread, then carries a monotonic event counter to
+the control loop. Cached/stale inputs cannot engage; startup/recovery additionally
+requires a fresh release. Returning to stand seeds the existing profile's
+cosine lead-in from measured joints/orientation and preserves policy history.
+This is an intentional reference transition; input faults during following still
+cancel and never automatically resume. Trigger toggling is not an emergency stop.
+No bridge repository/runtime is needed on S100. Terminal `PICO` remains an
+optional diagnostic entry command; normal operation needs no typed handoff.
 
 The reference for the activation design is the user-selected
 `vt_human_v2_tracking_asample.yaml`: measured-pose reference, continuous policy
@@ -323,10 +343,11 @@ After preflight, it runs default-stand ONNX
 inference without Pico. After at least three seconds of preparation, type
 `CONNECT <actual robot identity>` to start the owned Pico service/capture.
 Connect the calibrated headset and enable Full body/Send while keeping the
-wearer neutral. When `PICO_INPUT: ready` appears, type
-`PICO <actual robot identity>` to request following. A premature/stale/nonneutral
+wearer neutral. When `PICO_INPUT: ready` and fresh controller input appear,
+release and squeeze both triggers to request following. A premature/stale/nonneutral
 request is rejected while stand continues; it is **not queued for automatic
-activation**. `CONNECT` by itself never starts following. Typed `STOP` or Ctrl-C
+activation**. `CONNECT` by itself never starts following. Another released/squeezed
+dual-trigger pulse returns to ONNX stand in the same session. Typed `STOP` or Ctrl-C
 cancels. A positive application duration expires normally; `--seconds 0`
 continues until operator stop or fault.
 

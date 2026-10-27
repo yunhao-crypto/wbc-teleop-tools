@@ -271,12 +271,13 @@ class TerminalCommands:
         if not select.select([sys.stdin], [], [], 0)[0]:
             return None
         line = sys.stdin.readline()
-        if not line or line.strip() == 'STOP':
+        command = line.strip().upper()
+        if not line or command == 'STOP':
             self.stop.set()
             return None
-        if line.strip() in ('CONNECT', 'CONNECT '+self.robot_id):
+        if command in ('CONNECT', 'CONNECT '+self.robot_id):
             return 'connect'
-        if line.strip() in ('PICO', 'PICO '+self.robot_id):
+        if command in ('PICO', 'PICO '+self.robot_id):
             return 'track'
         print(f'Commands: CONNECT {self.robot_id}, PICO {self.robot_id}, STOP', flush=True)
         return None
@@ -503,14 +504,17 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
         start = deadline = clock.monotonic()
         end = start+args.seconds if args.seconds > 0 else math.inf
         policy_tick = 0
+        stand_tick = 0
         tracking = False
         tracking_epoch = None
         if auto:
             print('POLICY_LEAD_IN: ONNX runs from measured-pose reference toward model stand; awaiting Pico',flush=True)
         if manual:
-            print(f'PICO_MANUAL: no Pico required. After preparation: CONNECT {args.robot_id}; '
-                  f'keep wearer neutral, then PICO {args.robot_id}. STOP or Ctrl-C cancels.', flush=True)
+            print('PICO_BUTTONS: release both triggers, then squeeze both past 0.7 to toggle '
+                  'following/ONNX stand. Keep neutral to engage. STOP or Ctrl-C cancels.',flush=True)
         previous_pico_state = None
+        previous_controller_state = None
+        last_trigger_event = 0
         last_publish = None
         if manual and wait_pico:
             manual_pico.connect(root)
@@ -533,8 +537,8 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
                 inputs.require_pico()
             # Match SDK ReferenceSession: one reference frame per successful
             # inference/publication, independent of wall-clock scheduling jitter.
-            elapsed = policy_tick*runtime.model.contract.period
-            reference_frame = min(policy_tick,len(lead.q)-1)
+            elapsed = stand_tick*runtime.model.contract.period
+            reference_frame = min(stand_tick,len(lead.q)-1)
             reference_time = reference_frame*runtime.model.contract.period
             snapshot = None
             if manual:
@@ -544,6 +548,25 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
                         print('PICO_CONNECTING: ONNX stand continues; stand neutral for calibration.', flush=True)
                         write(dict(record_type='pico_connect_requested', actions_sent=sent_count))
                 snapshot = manual_pico.snapshot()
+                controller_age = clock.monotonic()-float(snapshot.get('controller_received_monotonic',-math.inf))
+                controller_ready = 0 <= controller_age <= PICO_AGE
+                if controller_ready != previous_controller_state:
+                    previous_controller_state = controller_ready
+                    print('PICO_BUTTONS: '+('controller input ready; release then squeeze both triggers to toggle'
+                        if controller_ready else 'waiting for fresh controller input'),flush=True)
+                    write(dict(record_type='pico_controller_input',ready=controller_ready,actions_sent=sent_count))
+                event = int(snapshot.get('trigger_event_seq',last_trigger_event))
+                if event != last_trigger_event:
+                    previous_event = last_trigger_event
+                    last_trigger_event = event
+                    event_age = clock.monotonic()-float(snapshot.get('trigger_event_monotonic',-math.inf))
+                    controller_age = clock.monotonic()-float(snapshot.get('controller_received_monotonic',-math.inf))
+                    if event == previous_event+1 and 0 <= event_age <= PICO_AGE and 0 <= controller_age <= PICO_AGE:
+                        request = 'toggle'
+                        write(dict(record_type='pico_trigger_toggle',event_seq=event,actions_sent=sent_count))
+                    else:
+                        write(dict(record_type='pico_trigger_rejected',reason='stale/missed trigger edge',
+                                   event_seq=event,actions_sent=sent_count))
                 state_name = snapshot.get('state')
                 state_key = (state_name,snapshot.get('reference_epoch',0))
                 if state_key != previous_pico_state:
@@ -557,6 +580,24 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
                                source_gap_s=snapshot.get('source_gap_s'),
                                receipt_gap_s=snapshot.get('receipt_gap_s'),
                                retarget_ms=snapshot.get('retarget_ms'),actions_sent=sent_count))
+                if request == 'toggle' and tracking:
+                    # An intentional standby transition is distinct from a
+                    # source fault. Faulted following still cancels, never falls back.
+                    manual_reference(runtime,snapshot,clock.monotonic(),expected_epoch=tracking_epoch)
+                    tracking = False
+                    tracking_epoch = None
+                    auto_pico = False
+                    lead = runtime.math.Motion.hold(runtime.model.contract.default).lead_in(
+                        q,root,runtime.config['body_profile']['lead_in'])
+                    offset = runtime.math.yaw(root)
+                    stand_tick = 0
+                    elapsed = reference_time = 0.
+                    reference_frame = 0
+                    preparation = max(.3,(len(lead.q)-1)*runtime.model.contract.period)
+                    request = None
+                    print('PICO_STANDBY: returning reference to ONNX stand; EXTERNAL session stays active.',flush=True)
+                    write(dict(record_type='tracking_paused',actions_sent=sent_count,
+                               transition_start_q=q.tolist(),policy_history_reset=False))
                 automatic_switch = False
                 if auto_pico and not tracking and elapsed >= preparation and snapshot.get('state') == 'ready':
                     try:
@@ -564,7 +605,7 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
                         automatic_switch = np.max(np.abs(candidate.q-runtime.model.contract.default)) <= NEUTRAL_TOLERANCE
                     except (ValueError,TimeoutError):
                         pass
-                if (request == 'track' or automatic_switch) and not tracking:
+                if (request in ('track','toggle') or automatic_switch) and not tracking:
                     try:
                         if elapsed < preparation:
                             raise ValueError('Stand preparation has not completed')
@@ -624,6 +665,8 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
             sent = controller.publish(command)  # SDK alone owns session + sequence.
             sent_count += 1
             policy_tick += 1
+            if not tracking:
+                stand_tick += 1
             report['actions_sent'] = sent_count
             last_publish = before
             if clock.monotonic()-before > STATE_AGE:

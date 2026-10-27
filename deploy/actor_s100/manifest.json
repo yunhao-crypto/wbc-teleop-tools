@@ -1,6 +1,6 @@
 {
   "schema": "vita_actor_s100_delivery_v1",
-  "version": "2026.10.27-actor16",
+  "version": "2026.10.27-actor17",
   "target": {
     "os": "Linux",
     "architecture": "aarch64",
@@ -18,9 +18,11 @@
     "src/deployment/vita_s100_aorta_30dof/actor_pico_local.py",
     "src/deployment/vita_s100_aorta_30dof/actor_pico_startup.py",
     "src/deployment/vita_s100_aorta_30dof/actor_pico_worker.py",
+    "src/deployment/vita_s100_aorta_30dof/actor_pico_buttons.py",
     "tests/test_actor_pico_live.py",
     "third_party/pico_binding/bindings/py_bindings.cpp",
     "third_party/pico_binding/bindings/body_pose_snapshot.h",
+    "third_party/pico_binding/bindings/controller_trigger_snapshot.h",
     "third_party/pico_binding/include/PXREARobotSDK.h",
     "third_party/double-conversion/double-conversion/double-to-string.cc",
     "tests/fixtures/actor_pico/pico_replay.npz",
@@ -80,18 +82,18 @@
     },
     {
       "path": "ACTOR-PICO-MANIFEST.json",
-      "bytes": 4674,
-      "sha256": "988963e401cfc5c2b5e4b324800d6f4f9089bdc25b87d87f862884ee0c0cd7bb"
+      "bytes": 5111,
+      "sha256": "44880f15dc7a573a4cd84a0785573e79440de9cef36141f851426d6b5f734dd0"
     },
     {
       "path": "README.md",
-      "bytes": 5891,
-      "sha256": "05d50170ffc10ae2a5b8ceccf09aaaaac5879bbb44f6928dc779c905e8e9f8d8"
+      "bytes": 5977,
+      "sha256": "005af14dbbfa15e7ebae1674c5515124b275cbabfe807ad731240195072ac71c"
     },
     {
       "path": "README_ACTOR_PICO.md",
-      "bytes": 26721,
-      "sha256": "b4f48f749ee8ac8eb8f0d1c5c9903a4802a4ae15ac2caae97c3284a65eafa601"
+      "bytes": 28292,
+      "sha256": "7f077b6ae26457dc7446c93abd240ad63afd266c7513d5054cf60338ddd4223d"
     },
     {
       "path": "artifacts/model_motion/pools_nk/manifest.json",
@@ -150,8 +152,8 @@
     },
     {
       "path": "deploy/actor_s100/README.md",
-      "bytes": 6076,
-      "sha256": "3999027887b632a735d5b27d3aed979a08ffa2e3af450662e1962a61792652dd"
+      "bytes": 6476,
+      "sha256": "f73b1021470842489518bd3b17669adf324c9d424ca84b06e4622b456f9d012b"
     },
     {
       "path": "deploy/actor_s100/requirements.txt",
@@ -160,8 +162,8 @@
     },
     {
       "path": "deploy/actor_s100/runtime/pico_binding_cp310_aarch64.tar.gz",
-      "bytes": 183245,
-      "sha256": "23ee283dbf4786729d483a0ac3807d78cd4ab326b0584f52fdf9bc426ba96bdc"
+      "bytes": 185640,
+      "sha256": "8a96227fbc14ebe2bb36ea5999a13e6bd24b8b59d940fadd1f2883581d76bea7"
     },
     {
       "path": "deploy/actor_s100/runtime/pico_service_arm64.tar.gz",
@@ -285,8 +287,8 @@
     },
     {
       "path": "scripts/actor_pico.py",
-      "bytes": 22048,
-      "sha256": "134f42ee1fe2ffb46c17466bee6e26f88e8c669d441a24226f5c0ccfcc9d7dff"
+      "bytes": 22317,
+      "sha256": "f242ee9390b69547ea41a66413987c7cf85517eb1cbb0ae4a89c5add6b1c5b59"
     },
     {
       "path": "scripts/analyze_latest_live_logs.py",
@@ -315,8 +317,8 @@
     },
     {
       "path": "scripts/bootstrap_actor_s100.py",
-      "bytes": 11792,
-      "sha256": "357290643ab71305e171245e4b7014f2cbf1a5dfac44ddacc2416ce5d65f0f47"
+      "bytes": 11844,
+      "sha256": "c1d894020929488c414317c208158b25fa3d1d5adbfb7a75735455a044c4afe2"
     },
     {
       "path": "scripts/build_onboard_backend.sh",
@@ -325,8 +327,8 @@
     },
     {
       "path": "scripts/build_pico_arm64.sh",
-      "bytes": 1633,
-      "sha256": "cbfe8a9d6e26b36f63d3b7923eaa36ae56eca010b9be00763390d27cede59027"
+      "bytes": 1700,
+      "sha256": "b83948102b772ee83bb2e140f00d0dc0556b84823253090dc9274dabdb05824d"
     },
     {
       "path": "scripts/decode_incident_cdr.py",
@@ -640,8 +642,8 @@
     },
     {
       "path": "scripts/seal_actor_delivery.py",
-      "bytes": 5064,
-      "sha256": "fa53f5850859b4b2a356102bf51cde3e2097e689a73128ed98a5eae9ea17955d"
+      "bytes": 5509,
+      "sha256": "87bde77b5594a22e5daa925f67472c6a2772fbe623b572bd5770db5e88fea6ba"
     },
     {
       "path": "scripts/send_fake_pico_via_robot_ssh.py",
@@ -675,8 +677,8 @@
     },
     {
       "path": "scripts/state_test_pico_snapshot.py",
-      "bytes": 3342,
-      "sha256": "4d033865b2f38f9025fef122eddebca7d51f2a955dc404db70ced1b9ba99734d"
+      "bytes": 4615,
+      "sha256": "b6ab0a150676e4a2d3fdf4f1ae1edfc24650faed46c9ad5a7ad52afd9e38f933"
     },
     {
       "path": "scripts/state_validate_guards.py",
@@ -720,8 +722,8 @@
     },
     {
       "path": "scripts/verify_actor_delivery.py",
-      "bytes": 5940,
-      "sha256": "3e7f369714a17751de08b87b46d8b58f2134eb6385aaf932cba84dc9aad58b07"
+      "bytes": 5941,
+      "sha256": "f197d8ed0b5f6c15c407671d53a228901351062988da4082f4c65660ca30b7b4"
     },
     {
       "path": "scripts/vita_wifi.sh",
@@ -1079,9 +1081,14 @@
       "sha256": "629d1d30a4f3ccf264355907f63070fc40b6f6b30ed633b8ed6f866a63413542"
     },
     {
+      "path": "src/deployment/vita_s100_aorta_30dof/actor_pico_buttons.py",
+      "bytes": 2703,
+      "sha256": "b4fada4b58d50b343855f5207fd319cc9bdda5e531216ae35f9018efb178ff94"
+    },
+    {
       "path": "src/deployment/vita_s100_aorta_30dof/actor_pico_live.py",
-      "bytes": 38581,
-      "sha256": "615338d85ac70a6a70e9e8051490a9044fad19618db8b0b78c202001962ec092"
+      "bytes": 41543,
+      "sha256": "9dbde4ff7321edee2e8bb3a510886771605c05e05947db4d7d4a73216a74e893"
     },
     {
       "path": "src/deployment/vita_s100_aorta_30dof/actor_pico_local.py",
@@ -1090,8 +1097,8 @@
     },
     {
       "path": "src/deployment/vita_s100_aorta_30dof/actor_pico_reference.py",
-      "bytes": 12634,
-      "sha256": "e663cce4a988943851a18ea88433bf5b513ccca6b8eab5f99e906867b6321fd2"
+      "bytes": 12985,
+      "sha256": "37121cee6aba093949331d7438731efa5e765e5c2f6e9615f9c36ddae7bf7183"
     },
     {
       "path": "src/deployment/vita_s100_aorta_30dof/actor_pico_runtime.py",
@@ -1105,8 +1112,8 @@
     },
     {
       "path": "src/deployment/vita_s100_aorta_30dof/actor_pico_worker.py",
-      "bytes": 7050,
-      "sha256": "07ca8001a7db0d3bcf1d1304f885b735ecc75aeef7b0ba2e556eba9e26919423"
+      "bytes": 8800,
+      "sha256": "307b5df4a46f38bd6ffcf3c6a1bf0389d6cb40e4a440f3edfa8803eb448afca4"
     },
     {
       "path": "src/deployment/vita_s100_aorta_30dof/aorta_adapter.py",
@@ -3235,8 +3242,8 @@
     },
     {
       "path": "tests/test_actor_pico_live.py",
-      "bytes": 66543,
-      "sha256": "a4ea24b52c6493dcfce15aac5d5e3f2b724852c47ec1457bb3c69f64e749c85b"
+      "bytes": 71875,
+      "sha256": "9d6f511a05f6391a1cf9786cdc7c869a90f8917826513ac5a7ec340a6f9ea2b1"
     },
     {
       "path": "tests/wifi_offline_test.py",
@@ -3369,9 +3376,14 @@
       "sha256": "e96040f2232b8233ecc594f123776a219071d08d6c91053fad3c98569e3240b3"
     },
     {
+      "path": "third_party/pico_binding/bindings/controller_trigger_snapshot.h",
+      "bytes": 1494,
+      "sha256": "d767af3cdcb1295f23ccf70aebb7583a84aa3393046a6d4bbf021c0983c29d2c"
+    },
+    {
       "path": "third_party/pico_binding/bindings/py_bindings.cpp",
-      "bytes": 22816,
-      "sha256": "911b784d72da99261d7ecd17e6786fdd8675ee35888e038ad72a4c9ea65cc7b8"
+      "bytes": 24228,
+      "sha256": "4803b705ef1162b12313bbaf089d5fcf3a248ec806c6fd060adbb8194c5b7820"
     },
     {
       "path": "third_party/pico_binding/include/PXREARobotSDK.h",

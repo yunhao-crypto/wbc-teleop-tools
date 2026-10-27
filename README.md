@@ -11,7 +11,8 @@
 支撑测试入口。影子入口不申请控制权；`live` 会运动全身。`--stand-only` 无需 Pico；
 `--manual-pico` 可先运行 ONNX 站姿参考，再在同一会话手动接入 Pico。
 已配置的 S100 可直接 `bash scripts/start_actor_pico.sh`：无需输入 MOVE，自动申请
-FIXED_STAND、进入 EXTERNAL 持续 ONNX 推理并接收 Pico，输入 `PICO` 才开始跟随。
+FIXED_STAND、进入 EXTERNAL 持续 ONNX 推理并接收 Pico；双手扳机同时按下切入跟随，
+松开后再次同时按下则平滑返回 ONNX 站姿，控制会话保持。
 默认持续到 `STOP`、Ctrl-C 或故障退出；可加 `--seconds N` 设置运行时长。
 **无参数入口现在会申请运动控制；离线检查请显式使用 `check`。**
 完整流程与限制见 [actor/Pico 运行说明](README_ACTOR_PICO.md#default-local-startup)。

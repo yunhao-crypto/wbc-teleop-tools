@@ -14,7 +14,9 @@ import signal
 import subprocess
 import time
 
-from .actor_pico_reference import CausalActorReference, PicoOrientationRetargeter, PicoReferenceGapError
+from .actor_pico_reference import (CausalActorReference, PicoOrientationRetargeter,
+                                   PicoReferenceGapError, PicoRetargetFitError)
+from .actor_pico_buttons import TriggerReader
 from .actor_pico_runtime import sdk_math
 
 
@@ -32,12 +34,13 @@ def _latest(output, item):
             pass
 
 
-def _capture(root, config, contract, lower, upper, commands, output, stop):
+def _capture(root, config, contract, lower, upper, commands, output, stop, controls=None):
     # All descendants (including the owned vendor service) belong to this
     # process group so the parent can clean up even if vendor init blocks.
     os.setsid()
-    service = pico = log = None
+    service = pico = log = buttons = None
     epoch = 0
+    last_source_stamp = 0
     try:
         while not stop.is_set():
             try:
@@ -62,6 +65,9 @@ def _capture(root, config, contract, lower, upper, commands, output, stop):
                                    stdout=log, stderr=subprocess.STDOUT)
         pico = create_pico_source(logger=logging.getLogger('actor-manual-pico'), maximum_age=.1)
         pico.start()
+        if controls is not None:
+            buttons = TriggerReader(pico.reader.sdk,controls)
+            buttons.start()
         _latest(output, dict(state='waiting_pico',reference_epoch=epoch))
         while not stop.is_set():
             if service.poll() is not None:
@@ -69,10 +75,28 @@ def _capture(root, config, contract, lower, upper, commands, output, stop):
             sample = pico.step()
             if sample is not None:
                 body, _, metadata = sample
-                begin = time.monotonic()
-                q, root_quat, residual = retarget.solve(body, robot_root=anchor)
-                received = float(metadata['timestamp_monotonic'])
                 stamp = int(metadata['timestamp_ns'])
+                if stamp <= last_source_stamp:
+                    raise ValueError('Pico timestamps must strictly increase')
+                last_source_stamp = stamp
+                begin = time.monotonic()
+                try:
+                    q, root_quat, residual = retarget.solve(body, robot_root=anchor)
+                except PicoRetargetFitError as error:
+                    # Reject the pose, not the connection. Invalid samples never
+                    # enter a motion window; a running follower rejects the epoch.
+                    if reference.last_stamp_ns is not None:
+                        epoch += 1
+                        reference = CausalActorReference(contract,math_api,
+                            maximum_gap=config['reference_maximum_gap_s'])
+                    _latest(output,dict(state='rejected',error=str(error),reference_epoch=epoch,
+                        received_monotonic=float(metadata['timestamp_monotonic']),
+                        pico_timestamp_ns=int(metadata['timestamp_ns']),
+                        retarget_ms=(time.monotonic()-begin)*1000,
+                        ik_max_residual_rad=error.residual))
+                    stop.wait(.005)
+                    continue
+                received = float(metadata['timestamp_monotonic'])
                 gap_info = {}
                 try:
                     reference.append(stamp, q, root_quat, received_monotonic=received)
@@ -98,6 +122,8 @@ def _capture(root, config, contract, lower, upper, commands, output, stop):
     except BaseException as error:
         _latest(output, dict(state='failed', error=repr(error),reference_epoch=epoch))
     finally:
+        if buttons is not None:
+            buttons.close()
         if pico is not None:
             pico.stop()
         if service is not None and service.poll() is None:
@@ -116,9 +142,10 @@ class PicoReferenceProcess:
         context = multiprocessing.get_context('spawn')
         self.commands, self.output = context.Queue(maxsize=1), context.Queue(maxsize=2)
         self.stop = context.Event()
+        self.controls = context.Array('d',[0.,0.,0.])
         self.process = context.Process(target=_capture, args=(str(runtime.root), runtime.config,
             runtime.model.contract, runtime.policy.lower, runtime.policy.upper,
-            self.commands, self.output, self.stop), daemon=True)
+            self.commands, self.output, self.stop,self.controls), daemon=True)
         self.connected = False
         self.closed = False
         self.previous = dict(state='idle')
@@ -144,7 +171,10 @@ class PicoReferenceProcess:
                 break
         if not self.process.is_alive() and self.previous['state'] != 'failed':
             self.previous = dict(state='failed', error='Pico worker exited')
-        return self.previous
+        with self.controls.get_lock():
+            count,event_time,controller_time = self.controls[:]
+        return dict(self.previous,trigger_event_seq=int(count),
+                    trigger_event_monotonic=event_time,controller_received_monotonic=controller_time)
 
     def close(self):
         if self.closed:

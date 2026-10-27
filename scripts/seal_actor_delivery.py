@@ -36,6 +36,10 @@ def main():
                  'src/deployment/vita_s100_aorta_30dof/actor_pico_worker.py', 'tests/test_actor_pico_live.py'):
         if not any(item['path'] == name for item in actor['files']):
             actor['files'].append(dict(path=name))
+    for name in ('src/deployment/vita_s100_aorta_30dof/actor_pico_buttons.py',
+                 'third_party/pico_binding/bindings/controller_trigger_snapshot.h'):
+        if not any(item['path'] == name for item in actor['files']):
+            actor['files'].append(dict(path=name))
     for item in actor['files']:
         p = root/item['path']
         item.update(sha256=sha(p), bytes=p.stat().st_size, mode=oct(p.stat().st_mode & 0o777))
@@ -51,9 +55,11 @@ def main():
                 'src/deployment/vita_s100_aorta_30dof/actor_pico_local.py',
                 'src/deployment/vita_s100_aorta_30dof/actor_pico_startup.py',
                 'src/deployment/vita_s100_aorta_30dof/actor_pico_worker.py',
+                'src/deployment/vita_s100_aorta_30dof/actor_pico_buttons.py',
                 'tests/test_actor_pico_live.py',
                 'third_party/pico_binding/bindings/py_bindings.cpp',
                 'third_party/pico_binding/bindings/body_pose_snapshot.h',
+                'third_party/pico_binding/bindings/controller_trigger_snapshot.h',
                 'third_party/pico_binding/include/PXREARobotSDK.h',
                 'third_party/double-conversion/double-conversion/double-to-string.cc',
                 'tests/fixtures/actor_pico/pico_replay.npz', 'deploy/actor_s100/requirements.txt']
@@ -70,7 +76,7 @@ def main():
     missing = set(required)-set(names)
     if missing:
         raise RuntimeError('Stage these required delivery files first: '+', '.join(sorted(missing)))
-    record = dict(schema='vita_actor_s100_delivery_v1', version='2026.10.27-actor16',
+    record = dict(schema='vita_actor_s100_delivery_v1', version='2026.10.27-actor17',
                   target=dict(os='Linux', architecture='aarch64', python='3.10', glibc_min='2.35'),
                   scope='offline/shadow checks and explicitly armed supported EXTERNAL trials; hardware not_measured',
                   required_inputs=required, external_resources=[external], archives=archives,
