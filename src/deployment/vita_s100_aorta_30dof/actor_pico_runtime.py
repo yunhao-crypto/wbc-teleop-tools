@@ -2,7 +2,6 @@
 import hashlib
 import importlib
 import json
-from dataclasses import replace
 from pathlib import Path
 import platform
 import sys
@@ -10,7 +9,8 @@ import time
 
 import numpy as np
 
-from .actor_pico_reference import CausalActorReference, PicoOrientationRetargeter
+from .actor_pico_reference import CausalActorReference
+from .actor_pico_gmr import create_retargeter
 
 
 def digest(path):
@@ -95,9 +95,11 @@ class ActorModel:
 
 
 class ActorPicoRuntime:
-    def __init__(self, root, *, backend='auto', threads=1):
+    def __init__(self, root, *, backend='auto', threads=1, human_height=None):
         self.root = Path(root).resolve()
         self.config = load_actor_config(root)
+        if human_height is not None:
+            self.config['retargeting']['human_height_m'] = float(human_height)
         self.math = sdk_math(root, self.config)
         self.model = ActorModel(self.root/self.config['artifacts']['model']['path'],
                                 self.math, backend=backend, threads=threads)
@@ -112,13 +114,14 @@ class ActorPicoRuntime:
     def reset_reference(self):
         """Reset only Pico calibration/reference; preserve running policy history."""
         self.reference = CausalActorReference(self.model.contract, self.math)
-        self.retarget = PicoOrientationRetargeter(
-            urdf=self.root/self.config['artifacts']['urdf']['path'],
-            contract=replace(self.model.contract, lower=self.policy.lower, upper=self.policy.upper),
-            mapping=self.config['segments'], math_api=self.math,
-            iterations=self.config['ik_iterations'])
+        self.retarget = create_retargeter(self.root, self.config, self.model.contract, self.math)
         self.last_residual = None
         self.last_retarget_ms = None
+        self.reference_yaw_offset = None
+
+    def align_reference_yaw(self, robot_root):
+        motion = self.reference.motion()
+        self.reference_yaw_offset = self.math.yaw(robot_root)-self.math.yaw(motion.quat[0])
 
     def push_pico(self, body, stamp_ns, *, received_monotonic, robot_root):
         if self.reference.last_stamp_ns is not None and stamp_ns <= self.reference.last_stamp_ns:
@@ -141,11 +144,13 @@ class ActorPicoRuntime:
                now_monotonic-self.reference.last_receive_monotonic)
         if not 0 <= age <= maximum_pico_age:
             raise TimeoutError('Pico input is stale')
+        if self.reference_yaw_offset is None:
+            self.align_reference_yaw(root)
         motion = self.reference.motion()
         return self.infer_motion_command(motion, q=q, dq=dq, root=root, gyro=gyro,
+                                 yaw_offset=self.reference_yaw_offset,
                                  diagnostics={'reference_delay_s': self.reference.delay,
-                                              'pico_age_s': age, 'ik_max_residual_rad': self.last_residual,
-                                              'ik_iterations': self.retarget.last_iterations,
+                                              'pico_age_s': age, 'gmr_task_error': self.last_residual,
                                               'retarget_ms': self.last_retarget_ms})
 
     def infer_motion(self, motion, *, q, dq, root, gyro, diagnostics=None):

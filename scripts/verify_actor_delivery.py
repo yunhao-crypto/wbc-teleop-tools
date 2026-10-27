@@ -60,12 +60,13 @@ def main():
         # Resolve the full dependency graph for the target ABI, offline.
         run([sys.executable, '-m', 'pip', 'download', '--no-index',
              '--find-links', str(wheelhouse), '--dest', str(resolved),
-             '--only-binary=:all:', '--platform', 'manylinux_2_35_aarch64',
+             '--only-binary=:all:', '--platform', 'manylinux_2_35_aarch64', '--platform', 'manylinux_2_28_aarch64',
              '--platform', 'manylinux_2_17_aarch64', '--platform', 'manylinux2014_aarch64',
              '--platform', 'linux_aarch64', '--python-version', '310', '--abi', 'cp310',
              '--implementation', 'cp', '-r', 'deploy/actor_s100/requirements.txt'], cwd=export, env=env)
-        if len(list(resolved.glob('*.whl'))) != 8:
-            raise RuntimeError('Offline wheel closure changed from the declared eight wheels')
+        wheel_count = len(list(wheelhouse.glob('*.whl')))
+        if len(list(resolved.glob('*.whl'))) != wheel_count:
+            raise RuntimeError('Offline wheel closure differs from the bundled wheels')
         command = [sys.executable, 'scripts/bootstrap_actor_s100.py', '--unpack-only']
         if args.model:
             command += ['--model', str(args.model)]
@@ -74,7 +75,7 @@ def main():
         # Compile actual callback/parser/getter source without Python or ARM
         # libraries; no vendor SDK init or service is run by this regression.
         run([sys.executable, 'scripts/state_test_pico_snapshot.py'], cwd=export, env=env)
-        result = dict(status='PASS_STAGED_GIT_DELIVERY', offline_wheels=8,
+        result = dict(status='PASS_STAGED_GIT_DELIVERY', offline_wheels=wheel_count,
                       runtime_archives_verified=True, pico_snapshot_cpp='PASS',
                       installer_tests=9, external_model_supplied=bool(args.model),
                       model_steps=0, replay_steps=0, actions_sent=0,
@@ -86,7 +87,7 @@ def main():
             site = export/'venv/lib/python3.10/site-packages'
             site.mkdir(parents=True)
             for wheel in wheelhouse.glob('*.whl'):
-                if wheel.name.startswith(('numpy-', 'pybind11-', 'pyyaml-')):
+                if not wheel.name.startswith(('locomotion_aorta-', 'aorta_sdk-', 'aorta_msgs-', 'vbot_humanoid_msgs-', 'flatbuffers-')):
                     continue
                 with zipfile.ZipFile(wheel) as archive:
                     archive.extractall(site)
@@ -96,8 +97,8 @@ def main():
             run([sys.executable, 'scripts/actor_pico.py', 'check', '--steps', '100'], cwd=export, env=env)
             run([sys.executable, 'scripts/actor_pico.py', 'replay', '--input',
                  'tests/fixtures/actor_pico/pico_replay.npz', '--steps', '100'], cwd=export, env=env)
-            result.update(model_steps=100, replay_steps=100, actor_tests=15, pico_reader_tests=3,
-                          live_runner_tests=100, live_runner_io='simulated; real SDK session/math',
+            result.update(model_steps=100, replay_steps=100, actor_tests=14, pico_reader_tests=3,
+                          live_runner_tests=101, live_runner_io='simulated; real SDK session/math',
                           robot_motion='not_measured')
         (ROOT/'outputs').mkdir(exist_ok=True)
         (ROOT/'outputs/actor_delivery_validation.json').write_text(json.dumps(result, indent=2)+'\n')

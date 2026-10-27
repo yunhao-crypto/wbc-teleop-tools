@@ -148,7 +148,7 @@ def shadow(runtime, args, write):
             start = deadline = time.monotonic()
             next_progress = start+1.
             last_state_ns = None
-            print('ACTOR_SHADOW: waiting for Body31 and Pico; first Pico frame calibrates against actor default pose.', flush=True)
+            print('ACTOR_SHADOW: waiting for Body31 and Pico; using bridge Vita02A GMR.', flush=True)
             while not stop and time.monotonic()-start < args.seconds:
                 if service.poll() is not None:
                     raise RuntimeError('Pico service exited; see outputs/pico_service_actor.log')
@@ -195,7 +195,7 @@ def shadow(runtime, args, write):
                     if steps % 50 == 0:
                         print(json.dumps(dict(steps=steps, inference_ms=row['inference_ms'],
                                               retarget_ms=runtime.last_retarget_ms,
-                                              ik_residual_rad=runtime.last_residual, actions_sent=0)), flush=True)
+                                              gmr_task_error=runtime.last_residual, actions_sent=0)), flush=True)
                 elif now-start > args.startup_timeout:
                     raise TimeoutError('Pico has not provided a complete actor reference window')
                 last_state_ns = state.ts_state_real_us
@@ -301,6 +301,8 @@ def main():
     parser.add_argument('--root', type=Path, default=ROOT)
     parser.add_argument('--backend', choices=('auto', 'sdk', 'ort'), default='auto')
     parser.add_argument('--threads', type=int, default=1)
+    parser.add_argument('--human-height', type=float, default=None,
+                        help='GMR operator height in metres; default 1.75 from config/actor_pico.json')
     parser.add_argument('--steps', type=int, default=100)
     parser.add_argument('--seconds', type=float,
                         help='live: 0 runs until STOP/Ctrl-C (default); positive values limit EXTERNAL seconds; other modes default to 60')
@@ -350,7 +352,8 @@ def main():
             or not math.isfinite(args.startup_timeout) or not 1 <= args.startup_timeout <= 120):
         parser.error('Invalid step/duration/startup budget')
     logging.basicConfig(level=logging.INFO)
-    runtime = ActorPicoRuntime(args.root, backend=args.backend, threads=args.threads)
+    runtime = ActorPicoRuntime(args.root, backend=args.backend, threads=args.threads,
+                               human_height=args.human_height)
     args.log = args.log or args.root/'outputs'/f'actor_pico_{args.mode}_{time.time_ns()}.jsonl'
     args.log.parent.mkdir(parents=True, exist_ok=True)
     with args.log.open('x', buffering=1024*1024) as stream:
@@ -364,7 +367,7 @@ def main():
         write(dict(record_type='header', model=runtime.config['artifacts']['model'],
                    contract=dict(input_dim=1520, action_dim=28, policy_hz=50),
                    scope='supported_external_trial' if args.mode == 'live' else 'inference_only',
-                   robot_id=args.robot_id, retargeter='calibrated_segment_orientation_ik',
+                   robot_id=args.robot_id, retargeter=runtime.config['retargeting'],
                    reference_delay_s=runtime.reference.delay, actions_sent=0))
         try:
             report = {'check': check, 'replay': replay, 'state-check': state_check,

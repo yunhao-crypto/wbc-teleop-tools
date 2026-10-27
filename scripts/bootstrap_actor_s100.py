@@ -134,6 +134,7 @@ def provision_model(root, manifest, source=None):
 
 def environment(root):
     env = os.environ.copy()
+    env['MUJOCO_GL'] = 'disable'
     for name in list(env):
         if name.startswith('PIP_'):
             env.pop(name)

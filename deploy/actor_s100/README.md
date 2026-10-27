@@ -18,9 +18,10 @@ from the developer's machine.
 
 ## Included dependencies
 
-`wheelhouse/` contains eight pinned wheels: locomotion-aorta 0.2.1,
+`wheelhouse/` contains 21 pinned wheels: locomotion-aorta 0.2.1,
 aorta-sdk/aorta-msgs 2026.10.20, vbot-humanoid-msgs 0.1.5,
-FlatBuffers 25.12.19, NumPy 1.26.4, PyYAML 6.0.3 and pybind11 2.13.6.
+FlatBuffers 25.12.19, NumPy 1.26.4, PyYAML 6.0.3 and pybind11 2.13.6, plus the complete pinned GMR dependency closure
+(mink 1.3.0, MuJoCo 3.11.0, SciPy 1.15.3, DAQP 0.10.3 and qpsolvers 4.13.0).
 The bootstrap uses pip's full dependency resolver with `--no-index` and runs
 `pip check`; there is no network or missing-dependency fallback.
 

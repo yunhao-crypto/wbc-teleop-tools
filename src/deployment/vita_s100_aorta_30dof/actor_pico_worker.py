@@ -4,8 +4,8 @@ The process starts idle before EXTERNAL. Vendor initialization occurs only on
 CONNECT, outside the control interpreter/GIL. Snapshots cross a bounded queue;
 the controller keeps current policy history, SDK ownership and sequence.
 """
-from dataclasses import replace
 import logging
+import json
 import multiprocessing
 import os
 from pathlib import Path
@@ -14,7 +14,8 @@ import signal
 import subprocess
 import time
 
-from .actor_pico_reference import CausalActorReference, PicoOrientationRetargeter
+from .actor_pico_reference import CausalActorReference
+from .actor_pico_gmr import create_retargeter
 from .actor_pico_buttons import TriggerReader
 from .actor_pico_runtime import sdk_math
 
@@ -37,7 +38,7 @@ def _capture(root, config, contract, lower, upper, commands, output, stop, contr
     # All descendants (including the owned vendor service) belong to this
     # process group so the parent can clean up even if vendor init blocks.
     os.setsid()
-    service = pico = log = buttons = None
+    service = pico = log = buttons = source_log = None
     last_source_stamp = 0
     try:
         while not stop.is_set():
@@ -51,10 +52,11 @@ def _capture(root, config, contract, lower, upper, commands, output, stop, contr
         from .pico_input import create_pico_source
         math_api = sdk_math(root, config)
         reference = CausalActorReference(contract, math_api)
-        retarget = PicoOrientationRetargeter(
-            urdf=Path(root)/config['artifacts']['urdf']['path'],
-            contract=replace(contract, lower=lower, upper=upper), mapping=config['segments'],
-            math_api=math_api, iterations=config['ik_iterations'])
+        retarget = create_retargeter(root, config, contract, math_api)
+        source_path = Path(root)/'outputs'/f'actor_pico_gmr_input_{time.time_ns()}.jsonl'
+        source_log = source_path.open('x')
+        source_log.write(json.dumps(dict(record_type='header',
+            retargeting=config['retargeting'], model=config['artifacts']['model']))+'\n')
         sdk = Path(root)/'vendor_packages/xrobotoolkit-arm64/opt/apps/roboticsservice'
         log = (Path(root)/'outputs/pico_service_actor.log').open('a')
         service = subprocess.Popen([str(sdk/'RoboticsServiceProcess')], cwd=sdk,
@@ -77,6 +79,10 @@ def _capture(root, config, contract, lower, upper, commands, output, stop, contr
                 last_source_stamp = stamp
                 begin = time.monotonic()
                 q, root_quat, residual = retarget.solve(body, robot_root=anchor)
+                source_log.write(json.dumps(dict(record_type='gmr_frame',
+                    timestamp_ns=stamp, received_monotonic=float(metadata['timestamp_monotonic']),
+                    body_poses=body.tolist(), qpos=retarget.last_qpos.tolist(),
+                    gmr_task_error=residual), allow_nan=False, separators=(',', ':'))+'\n')
                 received = float(metadata['timestamp_monotonic'])
                 gap_info = dict(source_gap_s=0. if reference.last_stamp_ns is None else
                     (stamp-reference.last_stamp_ns)*1e-9,
@@ -85,7 +91,10 @@ def _capture(root, config, contract, lower, upper, commands, output, stop, contr
                 reference.append(stamp,q,root_quat,received_monotonic=received)
                 snapshot = dict(state='collecting', received_monotonic=received,
                     **gap_info,
-                    pico_timestamp_ns=int(metadata['timestamp_ns']), ik_max_residual_rad=residual,
+                    pico_timestamp_ns=int(metadata['timestamp_ns']), gmr_task_error=residual,
+                    raw_body_poses=body.tolist(),
+                    retarget_q=q.tolist(), retarget_root_wxyz=root_quat.tolist(),
+                    source_log=str(source_path),
                     retarget_ms=(time.monotonic()-begin)*1000)
                 if reference.ready():
                     motion = reference.motion()
@@ -107,6 +116,8 @@ def _capture(root, config, contract, lower, upper, commands, output, stop, contr
                 service.kill(); service.wait(timeout=1)
         if log is not None:
             log.close()
+        if source_log is not None:
+            source_log.close()
 
 
 class PicoReferenceProcess:

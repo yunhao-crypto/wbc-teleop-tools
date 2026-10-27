@@ -40,6 +40,14 @@ def main():
                  'third_party/pico_binding/bindings/controller_trigger_snapshot.h'):
         if not any(item['path'] == name for item in actor['files']):
             actor['files'].append(dict(path=name))
+    additional = ['src/deployment/vita_s100_aorta_30dof/actor_pico_gmr.py',
+                  'tests/fixtures/actor_pico/bridge_gmr_golden.npz',
+                  'tests/fixtures/actor_pico/bridge_gmr_golden.json']
+    additional += [str(p.relative_to(root)) for p in (root/'third_party/motion_stream_bridge').rglob('*')
+                   if p.is_file() and '__pycache__' not in p.parts]
+    for name in additional:
+        if not any(item['path'] == name for item in actor['files']):
+            actor['files'].append(dict(path=name))
     for item in actor['files']:
         p = root/item['path']
         item.update(sha256=sha(p), bytes=p.stat().st_size, mode=oct(p.stat().st_mode & 0o777))
@@ -76,7 +84,7 @@ def main():
     missing = set(required)-set(names)
     if missing:
         raise RuntimeError('Stage these required delivery files first: '+', '.join(sorted(missing)))
-    record = dict(schema='vita_actor_s100_delivery_v1', version='2026.10.27-actor18',
+    record = dict(schema='vita_actor_s100_delivery_v1', version='2026.10.27-actor19-gmr',
                   target=dict(os='Linux', architecture='aarch64', python='3.10', glibc_min='2.35'),
                   scope='offline/shadow checks and explicitly armed supported EXTERNAL trials; hardware not_measured',
                   required_inputs=required, external_resources=[external], archives=archives,

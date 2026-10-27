@@ -6,3 +6,10 @@ flatbuffers==25.12.19
 numpy==1.26.4
 PyYAML==6.0.3
 pybind11==2.13.6
+
+# Pinned bridge Vita02A GMR runtime (complete ARM64 wheel closure).
+mink==1.3.0
+mujoco==3.11.0
+scipy==1.15.3
+daqp==0.10.3
+qpsolvers==4.13.0

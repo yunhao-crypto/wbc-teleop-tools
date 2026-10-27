@@ -14,14 +14,14 @@ from deployment.vita_s100_aorta_30dof.actor_pico_runtime import (
     ActorPicoRuntime, load_actor_config, sdk_math,
 )
 from deployment.vita_s100_aorta_30dof.actor_pico_reference import (
-    CausalActorReference, PicoOrientationRetargeter, matrix_quaternion, rotation_vector,
+    CausalActorReference,
 )
 
 
 class ActorPicoTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.runtime = ActorPicoRuntime(ROOT, backend='ort')
+        cls.runtime = ActorPicoRuntime(ROOT, backend='auto')
         cls.math = cls.runtime.math
         cls.c = cls.runtime.model.contract
         cls.config = cls.runtime.config
@@ -29,10 +29,12 @@ class ActorPicoTests(unittest.TestCase):
     def setUp(self):
         self.policy = self.math.WbcTrackingPolicy(self.c, self.config['body_profile'])
 
-    def retarget(self):
-        return PicoOrientationRetargeter(
-            urdf=ROOT/self.config['artifacts']['urdf']['path'], contract=self.c,
-            mapping=self.config['segments'], math_api=self.math, iterations=30)
+    def retarget(self, human_height=None):
+        from deployment.vita_s100_aorta_30dof.actor_pico_gmr import create_retargeter
+        config = dict(self.config, retargeting=dict(self.config['retargeting']))
+        if human_height is not None:
+            config['retargeting']['human_height_m'] = human_height
+        return create_retargeter(ROOT, config, self.c, self.math)
 
     def body(self):
         b = np.zeros((24, 7), np.float32)
@@ -115,65 +117,46 @@ class ActorPicoTests(unittest.TestCase):
         np.testing.assert_allclose(m.q[:, 0], 2*(1.05-ref.delay+np.arange(ref.steps)*.02), atol=1e-12)
         self.assertAlmostEqual(self.math.yaw(m.quat[-1]), .21, places=8)
 
-    def test_neutral_calibration_and_repeated_frame(self):
-        rt = self.retarget()
-        for _ in range(3):
-            q, root, error = rt.solve(self.body(), robot_root=self.math.yaw_quaternion(.3))
-            np.testing.assert_allclose(q, self.c.default, atol=1e-9)
-            np.testing.assert_allclose(root, self.math.yaw_quaternion(.3), atol=1e-7)
-            self.assertLess(error, 1e-6)
+    def test_gmr_matches_original_bridge_qpos_and_named_joint_order(self):
+        rt = self.retarget(human_height=1.6)
+        fixture = np.load(ROOT/'tests/fixtures/actor_pico/bridge_gmr_golden.npz')
+        for body, expected in zip(fixture['body_poses'], fixture['qpos']):
+            q, root, error = rt.solve(body)
+            np.testing.assert_allclose(rt.last_qpos, expected, rtol=0, atol=1e-8)
+            np.testing.assert_allclose(q, expected[rt.indices], rtol=0, atol=1e-8)
+            np.testing.assert_allclose(root, self.math.quaternion(expected[3:7]), rtol=0, atol=1e-8)
+            self.assertTrue(np.isfinite(error))
+        # Model order is interleaved left/right; bridge wire wrists are ordered
+        # roll/pitch/yaw. Verify named selection against explicit qpos addresses.
+        self.assertNotEqual(rt.indices, sorted(rt.indices))
 
-    def test_rotation_ik_recovers_known_robot_pose(self):
-        rt = self.retarget()
-        body = self.body()
-        human, root = rt.human_rotations(body)
-        rt.solve(body)
-        baseline, _ = rt.kinematics.forward(self.c.default)
-        target = self.c.default + .035*np.sin(np.arange(28))
-        rotations, _ = rt.kinematics.forward(target)
-        # Invert the production Pico coordinate convention to synthesize segment
-        # observations from an independently chosen URDF joint configuration.
-        x = np.array([2**-.5, 2**-.5, 0., 0.])
-        y = np.array([0., 0., 1., 0.])
-        for link, i in rt.mapping:
-            desired = rotations[link] @ baseline[link].T @ human[i]
-            canon = self.math.rotation(root) @ desired
-            raw = self.math.multiply(self.math.multiply(self.math.conjugate(x),
-                                                        matrix_quaternion(canon)), self.math.conjugate(y))
-            body[i, 3:7] = raw[[1, 2, 3, 0]]
-        actual, _, error = rt.solve(body)
-        self.assertLess(error, 5e-5)
-        np.testing.assert_allclose(actual, target, atol=2e-4)
+    def test_human_height_default_override_and_invalid_values(self):
+        self.assertEqual(self.config['retargeting']['human_height_m'], 1.75)
+        default = self.retarget()
+        shorter = self.retarget(human_height=1.6)
+        key = default.engine.human_root_name
+        self.assertAlmostEqual(default.engine.human_scale_table[key] /
+                               shorter.engine.human_scale_table[key], 1.75/1.6)
+        for height in (0, float('nan'), float('inf')):
+            with self.assertRaises(ValueError):
+                self.retarget(human_height=height)
 
-    def test_urdf_spatial_jacobian_matches_finite_difference(self):
+    def test_gmr_sources_and_vita02a_settings_are_unmodified(self):
+        import hashlib
+        root = ROOT/'third_party/motion_stream_bridge'
+        source = json.loads((root/'SOURCE.json').read_text())
+        self.assertEqual(source['commit'], self.config['retargeting']['source_commit'])
+        for item in source['files']:
+            self.assertEqual(hashlib.sha256((root/item['path']).read_bytes()).hexdigest(), item['sha256'])
         rt = self.retarget()
-        q = self.c.default+.02*np.sin(np.arange(28))
-        base, jac = rt.kinematics.forward(q)
-        for j in range(28):
-            other = q.copy(); other[j] += 1e-6
-            rotations, _ = rt.kinematics.forward(other)
-            for link, _ in rt.mapping:
-                measured = rotation_vector(rotations[link] @ base[link].T)/1e-6
-                np.testing.assert_allclose(measured, jac[link][:, j], atol=2e-8)
+        for name, default in zip(self.c.names, self.c.default):
+            expected = rt.engine._default_qpos[rt.indices[list(self.c.names).index(name)]]
+            self.assertAlmostEqual(expected, default, places=6)
 
     def test_invalid_pico_quaternion_and_nan_are_rejected(self):
         for body in [np.zeros((24, 7)), np.full((24, 7), np.nan), np.zeros((23, 7))]:
             with self.assertRaises(ValueError):
                 self.retarget().solve(body)
-
-    def test_finite_fit_error_is_diagnostic_and_joint_bounds_still_apply(self):
-        rt = self.retarget()
-        body = self.body()
-        rt.solve(body)
-        # Rotate only the elbow segment about the captured longitudinal axis
-        # while keeping its wrist/upper-arm targets unchanged: an inconsistent
-        # hinge chain produces a diagnostic residual without an arbitrary cutoff.
-        body[18, 3:7] = [np.sin(.7), 0., 0., np.cos(.7)]
-        q,root,residual=rt.solve(body)
-        self.assertGreater(residual,.6)
-        self.assertTrue(np.isfinite(q).all() and np.isfinite(root).all())
-        self.assertTrue(np.all(q>=rt.contract.lower) and np.all(q<=rt.contract.upper))
-        np.testing.assert_array_equal(rt.q,q)
 
     def test_incompatible_model_metadata_is_rejected(self):
         with self.assertRaises(ValueError):
@@ -207,7 +190,7 @@ class ActorPicoTests(unittest.TestCase):
         import locomotion_aorta
         with (patch.object(aorta.Node, '__init__', side_effect=AssertionError('Node forbidden')),
               patch.object(locomotion_aorta.PullController, '__init__', side_effect=AssertionError('Control forbidden'))):
-            runtime = ActorPicoRuntime(ROOT, backend='ort')
+            runtime = ActorPicoRuntime(ROOT, backend='auto')
             for i in range(48):
                 runtime.push_pico(self.body(), 1_000_000_000+i*20_000_000,
                                   received_monotonic=i*.02, robot_root=[1, 0, 0, 0])

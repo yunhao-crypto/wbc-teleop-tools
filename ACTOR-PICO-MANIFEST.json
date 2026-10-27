@@ -6,20 +6,20 @@
   "files": [
     {
       "path": "README_ACTOR_PICO.md",
-      "sha256": "e6e68e614a3456324b9ef98809c7b02ee7c2fd29eb4596fbcf96d6816c92f953",
-      "bytes": 28161,
+      "sha256": "45aa0b3f30d0eede975ef9593955a873d15789646dbfa087c64951c213176e94",
+      "bytes": 27408,
       "mode": "0o644"
     },
     {
       "path": "config/actor_pico.json",
-      "sha256": "bb99af22a96d64f1329f58af84e4f7cbe533aeebf9ae82a08dce8779a125a7e8",
-      "bytes": 6117,
+      "sha256": "3398a2e4b5669ffd957221061c03652b34e7ead536a46163087d3858b5deef47",
+      "bytes": 6549,
       "mode": "0o644"
     },
     {
       "path": "scripts/actor_pico.py",
-      "sha256": "1de3137f994818e330dbf0c55ec55262274530c1cb80075d5d0ce817ddf84660",
-      "bytes": 22377,
+      "sha256": "40b62d65b1f2780268f4f72d4c59a46e7e3e5511f68fd2624ba488645a9cb691",
+      "bytes": 22575,
       "mode": "0o755"
     },
     {
@@ -30,20 +30,20 @@
     },
     {
       "path": "scripts/start_actor_pico.sh",
-      "sha256": "4c8ba632b81a4e63b767f892523a4b41eb97cf4906eb2f266e7e98c4c110e448",
-      "bytes": 2131,
+      "sha256": "3a20d15d7861f93fa30d82eeb3064ec0c0918ba7f68b7c020e36e695b7673fa3",
+      "bytes": 2159,
       "mode": "0o755"
     },
     {
       "path": "src/deployment/vita_s100_aorta_30dof/actor_pico_reference.py",
-      "sha256": "544f3db0ced64f0e516b531f0b6a51f5565ba376f4b433718a6ea26a35ff9d25",
-      "bytes": 11843,
+      "sha256": "7a927e9c9cf8150e56f7b196834ab518a8641ac5640c88a234f03e54d45f019a",
+      "bytes": 3190,
       "mode": "0o644"
     },
     {
       "path": "src/deployment/vita_s100_aorta_30dof/actor_pico_runtime.py",
-      "sha256": "a36b169677120a17d214aed5fb24731559d3f8898103ce23755b688d8c2b18f3",
-      "bytes": 8930,
+      "sha256": "e8caa9abf36f26384b8858e5c507f3c388b4cae62d8ae8110e1061f61d6714b0",
+      "bytes": 9094,
       "mode": "0o644"
     },
     {
@@ -66,26 +66,26 @@
     },
     {
       "path": "tests/test_actor_pico.py",
-      "sha256": "2edaa7f4ef80ffc631c124eefc44c8e3289460c8010498db257eefd5d9f2b9cc",
-      "bytes": 11501,
+      "sha256": "f900efbd8add0d48e5ebe8ec22b33e3bdc11d4b215347aa223654e528a53a9f8",
+      "bytes": 10914,
       "mode": "0o644"
     },
     {
       "path": "src/deployment/vita_s100_aorta_30dof/actor_pico_live.py",
-      "sha256": "674f3f4ba3c100d563ae8616604486695d6f4a735b7b67da22572c9a553db262",
-      "bytes": 39679,
+      "sha256": "06dacd4608a640d34526f91d18f8ce3292be46fae5ed084dcb9dd4cc72d4d84d",
+      "bytes": 40397,
       "mode": "0o644"
     },
     {
       "path": "tests/test_actor_pico_live.py",
-      "sha256": "6a6c9c63fd65edadd2101bfdb625531c5c39cc341452f816dc6431d09b65f15d",
-      "bytes": 71304,
+      "sha256": "28ebab5083aa047bf0ceb4348d8061bff81e50c5a73c17ac46eadd16dcc204b7",
+      "bytes": 72325,
       "mode": "0o644"
     },
     {
       "path": "src/deployment/vita_s100_aorta_30dof/actor_pico_worker.py",
-      "sha256": "3126e694081616cbcbc0f4ae158f33d3b8383906576acba6825192f49d786706",
-      "bytes": 7198,
+      "sha256": "6367f2b93725da66e0ea873df0037e3bd14e63c71f0994b5c9e2657d072d54f4",
+      "bytes": 7882,
       "mode": "0o644"
     },
     {
@@ -122,6 +122,78 @@
       "path": "third_party/pico_binding/bindings/controller_trigger_snapshot.h",
       "sha256": "d767af3cdcb1295f23ccf70aebb7583a84aa3393046a6d4bbf021c0983c29d2c",
       "bytes": 1494,
+      "mode": "0o644"
+    },
+    {
+      "path": "src/deployment/vita_s100_aorta_30dof/actor_pico_gmr.py",
+      "sha256": "253dd60f3b3d46208cb13ac3077c17dc9328ef35b08ba735f0a30cd0100712c5",
+      "bytes": 3660,
+      "mode": "0o644"
+    },
+    {
+      "path": "tests/fixtures/actor_pico/bridge_gmr_golden.npz",
+      "sha256": "cc59d71d66cc6ff632ed7933099320aaea07b4c11178d3f764f773edf647c193",
+      "bytes": 31058,
+      "mode": "0o644"
+    },
+    {
+      "path": "tests/fixtures/actor_pico/bridge_gmr_golden.json",
+      "sha256": "48f89435103c60804ffe81f4c150f7e1fa798fd925683a0694ead77071ab09c5",
+      "bytes": 361,
+      "mode": "0o644"
+    },
+    {
+      "path": "third_party/motion_stream_bridge/SOURCE.json",
+      "sha256": "a5aa5da297048ba46d52a5c21978e93ec8d8189a6701d475de8e1668b1854dcd",
+      "bytes": 1345,
+      "mode": "0o644"
+    },
+    {
+      "path": "third_party/motion_stream_bridge/GMR-LICENSE",
+      "sha256": "c5a85c0b0012230739a0ab8f30eafba7f8ee7a1b29e025d01e27fa330298e522",
+      "bytes": 1055,
+      "mode": "0o644"
+    },
+    {
+      "path": "third_party/motion_stream_bridge/motion_stream_bridge/__init__.py",
+      "sha256": "4f68dc48fe89bbc6b8afdc12c94c8a208f6684fd7f5589e29a0640cc1a1f0aaa",
+      "bytes": 68,
+      "mode": "0o644"
+    },
+    {
+      "path": "third_party/motion_stream_bridge/motion_stream_bridge/gmr_lite/__init__.py",
+      "sha256": "87292d7465ed4e1568c3e3dc1d09679558204edc59f59429c17ff733eacf1f13",
+      "bytes": 1639,
+      "mode": "0o644"
+    },
+    {
+      "path": "third_party/motion_stream_bridge/motion_stream_bridge/gmr_lite/retarget.py",
+      "sha256": "20df57d111055b9a2de0fcaaac115ca8acb8a6659d1d0d989f34f0ca51056d0d",
+      "bytes": 46453,
+      "mode": "0o644"
+    },
+    {
+      "path": "third_party/motion_stream_bridge/motion_stream_bridge/gmr_lite/streamer.py",
+      "sha256": "b61e4b5b3d33ece5b01d3c9254bc1274cf6afb6f78f27a6e354740c64f525f18",
+      "bytes": 5703,
+      "mode": "0o644"
+    },
+    {
+      "path": "third_party/motion_stream_bridge/motion_stream_bridge/gmr_lite/geom_utils.py",
+      "sha256": "cdd7e6c0a3f4d1ef6170864f152f5963e8918d30259e995d13bab1f43d6abf05",
+      "bytes": 2796,
+      "mode": "0o644"
+    },
+    {
+      "path": "third_party/motion_stream_bridge/motion_stream_bridge/gmr_lite/configs/xrobot_to_vita02a.json",
+      "sha256": "5116a7ea3aabd8703c793f6143cbbba73f3bad5bd5c808b605f13b85048949b1",
+      "bytes": 27067,
+      "mode": "0o644"
+    },
+    {
+      "path": "third_party/motion_stream_bridge/motion_stream_bridge/gmr_lite/robots/vita02a/vita02a_nomesh.xml",
+      "sha256": "53e87f274a726e64fe36403be7b24aacb283fb954a4b7c71d877b08f3124769b",
+      "bytes": 35827,
       "mode": "0o644"
     }
   ],

@@ -1,0 +1,33 @@
+{
+  "repository": "/host/motion-stream-bridge",
+  "commit": "763f5607c3f0accb61a415cfd676af54b72e1232",
+  "scope": "Unmodified Vita02A GMR solver, coordinate conversion, model and tuning; no bridge robot transport",
+  "upstream": "https://github.com/YanjieZe/GMR",
+  "upstream_license": "MIT (as identified by motion-stream-bridge gmr_lite provenance)",
+  "files": [
+    {
+      "path": "motion_stream_bridge/gmr_lite/__init__.py",
+      "sha256": "87292d7465ed4e1568c3e3dc1d09679558204edc59f59429c17ff733eacf1f13"
+    },
+    {
+      "path": "motion_stream_bridge/gmr_lite/retarget.py",
+      "sha256": "20df57d111055b9a2de0fcaaac115ca8acb8a6659d1d0d989f34f0ca51056d0d"
+    },
+    {
+      "path": "motion_stream_bridge/gmr_lite/streamer.py",
+      "sha256": "b61e4b5b3d33ece5b01d3c9254bc1274cf6afb6f78f27a6e354740c64f525f18"
+    },
+    {
+      "path": "motion_stream_bridge/gmr_lite/geom_utils.py",
+      "sha256": "cdd7e6c0a3f4d1ef6170864f152f5963e8918d30259e995d13bab1f43d6abf05"
+    },
+    {
+      "path": "motion_stream_bridge/gmr_lite/configs/xrobot_to_vita02a.json",
+      "sha256": "5116a7ea3aabd8703c793f6143cbbba73f3bad5bd5c808b605f13b85048949b1"
+    },
+    {
+      "path": "motion_stream_bridge/gmr_lite/robots/vita02a/vita02a_nomesh.xml",
+      "sha256": "53e87f274a726e64fe36403be7b24aacb283fb954a4b7c71d877b08f3124769b"
+    }
+  ]
+}

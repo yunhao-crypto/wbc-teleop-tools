@@ -78,7 +78,7 @@ class ManualPico:
         return dict(state='ready', received_monotonic=self.clock.monotonic(),
             q=np.repeat(r.model.contract.default[None], n, axis=0),
             base=np.zeros((n, 3)), quat=np.tile([1., 0., 0., 0.], (n, 1)),
-            retarget_ms=.1, ik_max_residual_rad=0.)
+            retarget_ms=.1, gmr_task_error=0.)
 
 
 class Loopback:
@@ -235,6 +235,23 @@ class LiveTests(unittest.TestCase):
         self.assertTrue(worker.connected)
         self.assertFalse(any(r.get('stage') == 'pico_tracking' for r in self.rows))
 
+    def test_gmr_heading_is_aligned_on_engagement_and_reference_is_recorded(self):
+        worker, command = self.manual_trial()
+        original_snapshot = worker.snapshot
+        def snapshot():
+            row = original_snapshot()
+            if row['state'] == 'ready':
+                row['quat'] = np.tile(self.runtime.math.yaw_quaternion(.8),
+                                      (self.runtime.reference.steps, 1))
+            return row
+        worker.snapshot = snapshot
+        self.run_trial(manual_pico=worker, poll_command=command)
+        event = next(r for r in self.rows if r.get('record_type') == 'tracking_started')
+        self.assertAlmostEqual(event['reference_yaw_offset'], -.8, places=6)
+        row = next(r for r in self.rows if r.get('stage') == 'pico_tracking')
+        self.assertAlmostEqual(row['pico_reference']['yaw_offset'], -.8, places=6)
+        self.assertEqual(len(row['pico_reference']['q']), self.runtime.reference.steps)
+
     def test_manual_switch_keeps_one_session_and_policy_history(self):
         worker, command = self.manual_trial()
         # A reset on switching would clear this deque and cause this audit to fail.
@@ -352,7 +369,7 @@ class LiveTests(unittest.TestCase):
         stamps=[1_000_000_000+i*20_000_000 for i in range(23)]
         rows=self.capture_fixture(stamps,[neutral]*11+[bad]+[neutral]*11)
         self.assertFalse(any(r['state'] in ('rejected','failed') for r in rows))
-        self.assertTrue(any(r.get('ik_max_residual_rad',0)>.6 for r in rows))
+        self.assertTrue(any(r.get('gmr_task_error',0)>.6 for r in rows))
         ready=next(i for i,r in enumerate(rows) if r['state']=='ready')
         self.assertTrue(all(r['state']=='ready' for r in rows[ready:]))
 
@@ -1327,7 +1344,7 @@ class LocalStartTests(unittest.TestCase):
         spec=importlib.util.spec_from_file_location('actor_cli_duration_test',ROOT/'scripts/actor_pico.py')
         cli=importlib.util.module_from_spec(spec);spec.loader.exec_module(cli)
         self.cfg['seconds']=0;self.save();defaults=self.load()
-        runtime=NS(config={'artifacts':{'model':{}}},reference=NS(delay=.2))
+        runtime=NS(config={'artifacts':{'model':{}},'retargeting':{'implementation':'motion_stream_bridge_gmr_vita02a'}},reference=NS(delay=.2))
         for tail,expected in [([],0),(['--seconds','5'],5),(['--seconds','600'],600)]:
             captured=[]
             def live(runtime,args,write):

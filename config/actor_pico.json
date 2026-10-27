@@ -11,6 +11,30 @@
     "urdf": {
       "path": "artifacts/output_envelopes.motion.urdf",
       "sha256": "83ce0b3ee9758889e398c5c6bb9b59b14347dfbf9a9d3d1602f650d26dade894"
+    },
+    "gmr_source_0": {
+      "path": "third_party/motion_stream_bridge/motion_stream_bridge/gmr_lite/__init__.py",
+      "sha256": "87292d7465ed4e1568c3e3dc1d09679558204edc59f59429c17ff733eacf1f13"
+    },
+    "gmr_source_1": {
+      "path": "third_party/motion_stream_bridge/motion_stream_bridge/gmr_lite/retarget.py",
+      "sha256": "20df57d111055b9a2de0fcaaac115ca8acb8a6659d1d0d989f34f0ca51056d0d"
+    },
+    "gmr_source_2": {
+      "path": "third_party/motion_stream_bridge/motion_stream_bridge/gmr_lite/streamer.py",
+      "sha256": "b61e4b5b3d33ece5b01d3c9254bc1274cf6afb6f78f27a6e354740c64f525f18"
+    },
+    "gmr_source_3": {
+      "path": "third_party/motion_stream_bridge/motion_stream_bridge/gmr_lite/geom_utils.py",
+      "sha256": "cdd7e6c0a3f4d1ef6170864f152f5963e8918d30259e995d13bab1f43d6abf05"
+    },
+    "gmr_source_4": {
+      "path": "third_party/motion_stream_bridge/motion_stream_bridge/gmr_lite/configs/xrobot_to_vita02a.json",
+      "sha256": "5116a7ea3aabd8703c793f6143cbbba73f3bad5bd5c808b605f13b85048949b1"
+    },
+    "gmr_source_5": {
+      "path": "third_party/motion_stream_bridge/motion_stream_bridge/gmr_lite/robots/vita02a/vita02a_nomesh.xml",
+      "sha256": "53e87f274a726e64fe36403be7b24aacb283fb954a4b7c71d877b08f3124769b"
     }
   },
   "sdk_version": "0.2.1",
@@ -193,67 +217,19 @@
       "neck_yaw_joint"
     ]
   },
-  "segments": [
-    {
-      "robot_link": "waist_pitch_link",
-      "pico_joint": 9
-    },
-    {
-      "robot_link": "left_hip_yaw_link",
-      "pico_joint": 1
-    },
-    {
-      "robot_link": "left_knee_link",
-      "pico_joint": 4
-    },
-    {
-      "robot_link": "left_ankle_roll_link",
-      "pico_joint": 7
-    },
-    {
-      "robot_link": "left_shoulder_yaw_link",
-      "pico_joint": 16
-    },
-    {
-      "robot_link": "left_elbow_link",
-      "pico_joint": 18
-    },
-    {
-      "robot_link": "left_wrist_pitch_link",
-      "pico_joint": 20
-    },
-    {
-      "robot_link": "right_hip_yaw_link",
-      "pico_joint": 2
-    },
-    {
-      "robot_link": "right_knee_link",
-      "pico_joint": 5
-    },
-    {
-      "robot_link": "right_ankle_roll_link",
-      "pico_joint": 8
-    },
-    {
-      "robot_link": "right_shoulder_yaw_link",
-      "pico_joint": 17
-    },
-    {
-      "robot_link": "right_elbow_link",
-      "pico_joint": 19
-    },
-    {
-      "robot_link": "right_wrist_pitch_link",
-      "pico_joint": 21
-    }
-  ],
-  "ik_iterations": 12,
   "pico_max_age_s": 0.6,
   "provenance": {
     "tracking_checkout_commit": "5eb34b2",
     "tracking_profile_source": "humanoid-sdk-tracking/examples/groot_tracking_asample.json",
     "tracking_profile_sha256": "7969af4d52d44e7a0ac4c6060a74300b233715c6a0430080c06c843629f2b1e7",
-    "model_source": "/host/actor_g1.onnx",
-    "retargeter": "New calibrated orientation IK; shadow only; not a trained or contact-aware retargeter"
+    "model_source": "/host/model_step_431500_g1.onnx",
+    "retargeter": "Unmodified motion-stream-bridge Vita02A GMR, named-joint selection"
+  },
+  "retargeting": {
+    "implementation": "motion_stream_bridge_gmr_vita02a",
+    "source_commit": "763f5607c3f0accb61a415cfd676af54b72e1232",
+    "human_height_m": 1.75,
+    "robot": "vita02a",
+    "offset_to_ground": true
   }
 }

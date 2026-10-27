@@ -17,12 +17,13 @@ if [[ "$MODE" == state-check || "$MODE" == shadow || "$MODE" == live ]]; then
   set -u
 fi
 unset HOLOMOTION_REAL_ROBOT
-# This new orientation IK uses the NumPy Pico converter on both host and S100.
+# GMR runs in the isolated input process; keep legacy native preprocessors unset.
 unset VITA_PREPROCESS_LIBRARY VITA_PREPROCESS_NATIVE_STAGES VITA_STATE_LIBRARY
 SDK="$ROOT/vendor_packages/xrobotoolkit-arm64/opt/apps/roboticsservice"
 export PYTHONPATH="$ROOT/src:$ROOT/src/deployment/unitree_g1_ros2_29dof/src:$ROOT/build/pico:$ROOT/model_dependencies_readonly"
 export LD_LIBRARY_PATH="$ROOT/venv/lib/python3.10/site-packages/locomotion_aorta/_onnx/.libs:$ROOT/build/pico:$SDK:$SDK/lib:$SDK/SDK/arm64:/usr/hobot/lib:${LD_LIBRARY_PATH:-}"
 export OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1
+export MUJOCO_GL=disable
 export QT_PLUGIN_PATH="$SDK/plugins" QT_QPA_PLATFORM=offscreen
 mkdir -p "$ROOT/outputs" "$ROOT/build/pico/actor_xdg"
 chmod 700 "$ROOT/build/pico/actor_xdg"

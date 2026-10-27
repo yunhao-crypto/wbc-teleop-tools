@@ -295,7 +295,7 @@ def manual_reference(runtime, snapshot, now):
     return motion, dict(pico_age_s=age, reference_delay_s=runtime.reference.delay,
         source_gap_s=float(snapshot.get('source_gap_s',0.)),
         retarget_ms=float(snapshot['retarget_ms']),
-        ik_max_residual_rad=float(snapshot['ik_max_residual_rad']))
+        gmr_task_error=float(snapshot['gmr_task_error']))
 
 
 def next_policy_deadline(deadline, now, period):
@@ -539,7 +539,7 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
                 request = poll_command()
                 if request == 'connect':
                     if manual_pico.connect(root):
-                        print('PICO_CONNECTING: ONNX stand continues; stand neutral for calibration.', flush=True)
+                        print('PICO_CONNECTING: ONNX stand continues; use the configured GMR reference stance.', flush=True)
                         write(dict(record_type='pico_connect_requested', actions_sent=sent_count))
                 snapshot = manual_pico.snapshot()
                 controller_age = clock.monotonic()-float(snapshot.get('controller_received_monotonic',-math.inf))
@@ -606,16 +606,25 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
                         write(dict(record_type='pico_switch_rejected', error=str(error), actions_sent=sent_count))
                     else:
                         tracking = True
+                        # GMR keeps its world root. Align heading at each new
+                        # engagement using the current measured robot heading.
+                        tracking_yaw = runtime.math.yaw(root)-runtime.math.yaw(motion.quat[0])
                         print('PICO_TRACKING: same EXTERNAL session and policy history.', flush=True)
-                        write(dict(record_type='tracking_started',actions_sent=sent_count))
+                        write(dict(record_type='tracking_started',actions_sent=sent_count,
+                                   reference_yaw_offset=tracking_yaw))
             if manual and tracking:
                 motion, diagnostics = manual_reference(runtime, snapshot, clock.monotonic())
                 command, obs, row = runtime.infer_motion_command(motion, q=q, dq=dq,
-                    root=root, gyro=gyro, diagnostics=diagnostics)
+                    root=root, gyro=gyro, diagnostics=diagnostics, yaw_offset=tracking_yaw)
+                row['pico_reference'] = dict(q=motion.q.tolist(), root_wxyz=motion.quat.tolist(),
+                    raw_body_poses=snapshot.get('raw_body_poses'),
+                    source_log=snapshot.get('source_log'),
+                    timestamp_ns=snapshot.get('pico_timestamp_ns'), yaw_offset=tracking_yaw)
             elif requires_pico and elapsed >= preparation:
                 if not tracking:
                     if not runtime.reference.ready():
                         raise TimeoutError('Pico reference window not ready after preparation')
+                    runtime.align_reference_yaw(root)
                     tracking = True
                     write(dict(record_type='tracking_started', actions_sent=sent_count))
                 command, obs, row = runtime.infer_command(q=q, dq=dq, root=root, gyro=gyro,

@@ -44,6 +44,9 @@ python3.10 scripts/bootstrap_actor_s100.py --model /path/to/actor_g1.onnx --buil
 
 仅 Pico Python 绑定和 double-conversion 需要此源码构建；SDK 使用匹配的官方
 ARM64 wheel，厂商 Pico 服务使用仓库内固定版本的运行包。
+GMR 的算法、Vita02A 模型和配置固定自 motion-stream-bridge `763f560`；
+使用身高参数进行人体尺度缩放。此链路保留 431500 模型，与 HoloMotion 的 SMPL 模型入口不同。
+
 详见 [S100 离线交付说明](deploy/actor_s100/README.md)和
 [actor/Pico 运行说明](README_ACTOR_PICO.md)。
 
@@ -52,7 +55,7 @@ ARM64 wheel，厂商 Pico 服务使用仓库内固定版本的运行包。
 | 内容 | 路径 |
 | --- | --- |
 | 模型接口配置及 SHA256 | `config/actor_pico.json`（模型二进制单独交付） |
-| 8 个匹配的离线 wheel | `deploy/actor_s100/wheelhouse/` |
+| 21 个匹配的离线 wheel | `deploy/actor_s100/wheelhouse/` |
 | Pico ARM 服务、SDK 库、Qt 插件 | `deploy/actor_s100/runtime/pico_service_arm64.tar.gz` |
 | 已验证的 Python 3.10 ARM64 绑定 | `deploy/actor_s100/runtime/pico_binding_cp310_aarch64.tar.gz` |
 | Pico 定制源码和 double-conversion | `third_party/` |
@@ -78,14 +81,15 @@ python3 scripts/verify_actor_delivery.py --host-inference --model /path/to/actor
 
 检查只接收显式指定的外部模型，不借用工作目录的 `venv`、`vendor_packages`、`reference` 或 `build`。
 它会验证全部文件/归档哈希、离线解析完整 ARM wheel 依赖、从交付归档解包运行文件，
-编译实际 Pico 原子快照 C++ 回归，并使用宿主 ONNX Runtime 运行 15 项 actor 测试、
+编译实际 Pico 原子快照 C++ 回归，并使用宿主 ONNX Runtime 运行 14 项 actor 测试、
 3 项 Pico 读取测试、EXTERNAL 离线故障回归、100 步模型检查和 100 步合成 Pico 回放。
 宿主模式需已有 NumPy、ONNX Runtime、pip 和 C++ 编译器；它不执行 ARM 二进制。
 
 S100 实际安装、推理性能、真实 Pico 输入质量和动作控制仍需分别在目标机验收。
 该模型声明 10 帧、20 ms 间隔；真实参考缓存为 0.20 秒，端到端延迟仍须实测。
 旧 `f0dfa046…` 模型声明 100 ms 间隔，所需缓存为 0.92 秒，不能混用其模型清单。
-超出重定向误差阈值的姿态会停止推理。
+重定向使用 motion-stream-bridge 的原版 Vita02A GMR；默认身高 1.75 米，
+可用 `--human-height 1.68` 覆盖。拟合误差作为诊断记录，不再使用旧姿态 IK。
 
 ## 来源
 

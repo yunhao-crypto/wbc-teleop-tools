@@ -16,53 +16,47 @@ launchers, SDK installation and protocol guards are not replaced.
 ## Data path and calibration
 
 ```text
-Pico/XRoboToolkit atomic 24x7 snapshot
-  -> existing Pico world-to-canonical SMPL rotation conversion
-  -> calibrated URDF segment-orientation inverse kinematics
-  -> timestamped 28-joint reference buffer
-  -> SDK WbcTrackingPolicy.observe (1520 floats)
-  -> actor_g1 ONNX (28 actions)
-  -> SDK WbcTrackingPolicy.decode (inert Body31 DTO)
-  -> JSONL: targets, KP/KD, ankle feedforward torque, reference/compute timing
+Atomic Pico 24x7 positions + xyzw quaternions
+  -> original bridge XRobotStreamer Unity-to-GMR conversion
+  -> original bridge Vita02A GMR (mink / MuJoCo / DAQP)
+  -> named Vita02A joint selection + root wxyz
+  -> model-specific 200 ms causal reference window
+  -> SDK observation / ONNX / Body31 command
 ```
 
-The first valid Pico frame calibrates segment offsets against the model's
-default robot pose. Stand upright and still in the intended neutral capture
-pose when starting shadow. Restart the shadow process to recalibrate.
-The initial measured HIP orientation anchors the reference root orientation.
-The current actor uses joint positions, joint velocities and root orientation
-as reference inputs; its metadata does not request root height or translation.
+The solver, geometry helpers, coordinate conversion, `xrobot_to_vita02a.json`
+and `vita02a_nomesh.xml` are copied byte-for-byte from motion-stream-bridge
+commit `763f5607c3f0accb61a415cfd676af54b72e1232`. Hashes and provenance live in
+`third_party/motion_stream_bridge/SOURCE.json`; actor configuration checks the
+actual source/config/model files before creating control handles.
+The old orientation-only IK has been removed. GMR retains its position and
+orientation tasks, foot/toe targets, ground snap, posture regularizers,
+input pose correction, joint limits and qpos smoothing with their original
+settings. It uses shipped offsets; the first received pose is **not** declared
+neutral or automatically calibrated onto the actor defaults. The bridge's
+optional interactive recalibration UI and other action/button combos are not
+part of this actor entry.
 
-The new retargeter matches torso, upper/lower legs, feet, upper/lower arms and
-wrists using the bundled Vita URDF. It uses NumPy only and requires no mesh,
-SMPL pickle, Torch, SciPy, CUDA, GMR or planner on S100. Segment mappings and
-iteration count are explicit in config. Segment-fit residual is diagnostic;
-there is no residual cutoff or pose rejection based on that scalar.
-Malformed/nonfinite poses and regressing timestamps remain terminal. The solver
-and its existing joint bounds are unchanged. This retargeter does not enforce contacts, foot
-placement, collision avoidance or dynamic balance, and has no hardware motion
-acceptance. Its kinematic checks are separate from training-distribution
-or real-human motion quality validation.
+Operator height defaults to **1.75 metres**. Override it for every launch:
 
-The selected step-431500 actor requests 10 reference frames spaced 20 ms apart.
-The causal input buffer waits for the 180 ms horizon plus a 20 ms forward-difference tail.
-The resulting reference delay is **200 ms**, in addition to capture/compute
-latency. These are real past samples interpolated at 50 Hz; future motion is
-not predicted or filled with repeated terminal poses. Removing that delay
-requires a validated predictor or a differently trained/exported model.
-This file is distinct from the old `f0dfa046…` actor: its SHA256 is
-`a341391a346e050caf11c40c6989336c658c445e3e124f12dcbe292d91324474`.
-The old actor declared 100 ms spacing and needed 920 ms buffering. Shape alone
-does not distinguish those models; timing and joint limits come from each
-model's own metadata. The current actor narrows ankle-pitch limits and changes
-shoulder-yaw limits; effective targets use the intersection with robot limits.
+```bash
+bash scripts/start_actor_pico.sh --human-height 1.68
+bash scripts/start_actor_pico.sh shadow --seconds 30 --human-height 1.68
+```
 
-The actor path retains the SDK's 10-frame, term-major proprioception history,
-clipped-action feedback and ankle clamp feedforward correction. It uses the
-actor's healthy HIP IMU convention from `humanoid-sdk-tracking`, not the older
-HoloMotion Motion observation layout. Policy targets are named and mapped to
-Body31; the unpopulated waist-roll slot is inert and the two neck joints use
-the explicit fixed profile. The copied SDK profile is documented in config.
+Height scales the original GMR human-body table and is recorded in the log
+header. This selects the no-hand Vita02A model; no hand or neck tracking is
+introduced. Joints are resolved by name, including wrist yaw/pitch, independently
+of bridge wire order. Each engagement aligns reference yaw to current measured
+robot yaw. Following logs include raw Pico frames and full reference windows. The input
+worker additionally records every solved raw frame and complete GMR qpos in
+`outputs/actor_pico_gmr_input_*.jsonl` before snapshot coalescing;
+`gmr_task_error` is a weighted mixed position/orientation norm, **not radians**
+and not an admission threshold.
+
+This remains a GMR-to-G1-reference actor deployment, not the separate original
+HoloMotion SMPL-input Motion/Velocity neural-policy pair. Source/numerical
+parity does not establish live tracking quality or physical stability.
 
 ## Offline verification on this x86 host
 
@@ -92,7 +86,7 @@ OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 PYTHONDONTWRITEBYTECODE=1 \
 
 The regression tests compare the SDK Body31 observation builder against the
 independent C++ golden observations inherited from `humanoid-sdk-tracking`.
-They also test known-pose IK recovery, an independent numerical Jacobian,
+They also compare 48 GMR frames against the original bridge solver,
 causal reference timing/velocity, stale and invalid inputs, real model
 inference, and Body31 ankle torque/neck/hole mapping. Fixture provenance is in
 `tests/fixtures/actor_pico/tracking_fixture_provenance.json`.
@@ -105,7 +99,7 @@ reference quality or physical balance.
 
 Clone the repository into a new directory on S100, then run
 `python3.10 scripts/bootstrap_actor_s100.py --model /path/to/actor_g1.onnx`.
-The eight offline wheels, Pico service, binding, sources and synthetic replay
+The 21 offline wheels, Pico service, binding, sources and synthetic replay
 fixture are tracked in Git. The model must be supplied separately; its SHA256
 is pinned in `config/actor_pico.json` and the delivery manifest.
 The bootstrap creates a fresh environment and verifies/extracts the resources;
@@ -297,7 +291,7 @@ to robot YAML or weaken output/hardware checks to get past preflight.
 for unsupported standing/walking. Obtain authorization for the actual robot
 and motion; keep reliable support, clear motion/pinch zones, an attendant and
 a usable hardware emergency stop. Start from a steady capture pose for the
-first-frame calibration and use small movements during initial checks.
+GMR shipped offsets and use small movements during initial checks.
 The 200 ms reference delay remains for Pico following. `--stand-only` still moves the whole body:
 it runs the online actor with a default-stand reference, not a fixed pose.
 It requires no Pico device/service/reader. Body feedback and all control guards
