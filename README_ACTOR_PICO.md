@@ -586,6 +586,40 @@ Steps:
    `cProfile`) to split time between mujoco kinematics, DAQP and Python.
 4. Target: mean `retarget_ms` under 10 ms and p99 under 20 ms, then rerun
    the frozen session replay with `--gmr <measured ms>` to confirm.
+### TODO: robot42 hardware and deployment follow-ups
+
+Status: open. Source: session `robot42_test_20261029T220318`. Training-side
+items (fore-aft sway, learned standing asymmetry, ankle roll at its limit,
+missing joint friction) are in trackerlab-supermimic
+`docs/vita02a_robot42_followups.md`.
+
+1. **Robot A/B of `pico_stream`.** So far it is validated only in the frozen
+   session replay. There, action step RMS drops about 32% and the
+   per-segment sway (pitch std, >1 Hz pitch power) is unchanged. Run the same
+   motions with this config, then freeze the new session with
+   `scripts/freeze_pico_session.py --gmr-input ... --actor-log ... --session ... --output ...`.
+   Compare per segment against robot42: reference advance per tick
+   (`playback_time_s`), action step RMS, root pitch std and >1 Hz pitch power.
+2. **Left upper ankle motor (slot 4).** Suspended SysID on 2026-10-28
+   (candidate fit, not validated) gives Coulomb friction of 1.06 Nm, against
+   0.32–0.38 Nm for slots 5/10/11. Its 0.5 Hz ±0.1 rad response has an
+   amplitude ratio of 0.43 (others 0.70–0.76) and a lag of 251 ms (others
+   115–131 ms). Inspect the left ankle linkage, bearings and lubrication, then
+   repeat the slot-4 mapping run. In simulation this friction does not
+   change the sway.
+3. **Left ankle pitch static residual.** Standing on the robot needs about
+   8 Nm more left ankle pitch torque than MuJoCo at the same angle (target - q
+   +0.094 vs -0.107 rad). In the stand probe, three causes fit equally well:
+   about 30% weaker torque on both ankles, about 4 Nm forward load on both
+   ankles (mass/CoM), or a +0.05 rad zero on the left lower motor. Measure
+   the sole attitude with an inclinometer and check robot mass/CoM against
+   the model before changing any zero or torque constant.
+4. **FIXED_STAND keyframe.** The vendor
+   `locomotion_foot_humanoid_asample_none.yaml` FIXED_STAND keyframe has all
+   42 positions at 0.0, marked as a placeholder. The robot then stands
+   straight-legged with IMU roll about +4.5 deg and pitch about -11 deg until
+   the policy takes over (under 1 deg afterwards). Replace it with a real
+   standing pose in the vendor configuration.
 ## Validation boundary
 
 Host CPU inference and synthetic Pico replay are exercised. S100 inference

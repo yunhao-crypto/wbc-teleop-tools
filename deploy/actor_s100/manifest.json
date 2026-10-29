@@ -106,7 +106,7 @@
     {
       "path": "ACTOR-PICO-MANIFEST.json",
       "bytes": 10904,
-      "sha256": "7c866e7aecda84b2576a0e5cde5286163610da650480e2f27e2b067bdf7bda79"
+      "sha256": "40b17f674b167ec1a98a8543c2c998c0d0c291ffdf5582877035693f19a53502"
     },
     {
       "path": "README.md",
@@ -115,8 +115,8 @@
     },
     {
       "path": "README_ACTOR_PICO.md",
-      "bytes": 37454,
-      "sha256": "e1c9ca20c3d80207a13940133eb34d3547e4ab6fba09604f3bff10623bb26119"
+      "bytes": 39644,
+      "sha256": "2dd4296a78df932918149d312439c143d008a4e0101009960a4eefc1d0dbc392"
     },
     {
       "path": "artifacts/model_motion/pools_nk/manifest.json",
