@@ -649,6 +649,40 @@ class LiveTests(unittest.TestCase):
         self.assertEqual(failure['at_failure']['receipt_age_ms'],85.)
         self.assert_cancelled()
 
+    def test_expired_compute_keeps_last_published_action_on_recovery(self):
+        self.args.stand_only = True
+        self.args.seconds = .5
+        published_action = np.full(28, .02, np.float32)
+        skipped_action = np.full(28, .08, np.float32)
+        recovered_action = np.full(28, .04, np.float32)
+        observed_last_actions = []
+        expired = False
+
+        def infer(observation):
+            nonlocal expired
+            if not self.transport.commands:
+                return published_action.copy()
+            observed_last_actions.append(self.runtime.policy.last_action.copy())
+            if not expired:
+                expired = True
+                self.clock.sleep(.11)
+                return skipped_action.copy()
+            return recovered_action.copy()
+
+        self.transport.after_publish = lambda command: self.stop.set() if command.sequence == 2 else None
+        with patch.object(self.runtime.model, 'infer', infer):
+            report = self.run_trial()
+        self.assertEqual(report['actions_sent'], 2)
+        self.assertEqual(len(observed_last_actions), 2)
+        for action in observed_last_actions:
+            np.testing.assert_array_equal(action, published_action)
+        np.testing.assert_array_equal(self.runtime.policy.last_action, recovered_action)
+        failures = [r for r in self.rows if r.get('record_type') == 'body_state_age_failure']
+        self.assertEqual([(r['phase'], r['action']) for r in failures],
+                         [('before_publish', 'skip_tick')])
+        self.assertEqual([command.sequence for command in self.transport.commands], [1, 2])
+        self.assert_cancelled()
+
     def test_feedback_future_clock_error_reports_signed_age(self):
         from deployment.vita_s100_aorta_30dof.actor_pico_live import Inputs
         inputs = Inputs(self.runtime,self.controller,None,self.clock)
@@ -714,6 +748,25 @@ class LiveTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, 'superseded'): self.run_trial()
         self.assertEqual(len(self.transport.commands), MAX_INGRESS_DROPS+1)
         self.assert_cancelled()
+
+    def test_first_ingress_drop_poll_counts_from_entry(self):
+        from deployment.vita_s100_aorta_30dof.actor_pico_live import MAX_INGRESS_DROPS
+        guard = StatusGuard(self.clock)
+        entered = NS(ingress_drop_count=17)
+        status = NS(ingress_drop_count=17+MAX_INGRESS_DROPS+1)
+        with self.assertRaisesRegex(RuntimeError, 'superseded'):
+            guard.ingress_drops(status, entered)
+
+    def test_ingress_drop_window_expires_without_losing_entry_burst(self):
+        from deployment.vita_s100_aorta_30dof.actor_pico_live import (
+            INGRESS_DROP_WINDOW, MAX_INGRESS_DROPS)
+        guard = StatusGuard(self.clock)
+        entered = NS(ingress_drop_count=17)
+        guard.ingress_drops(NS(ingress_drop_count=17+MAX_INGRESS_DROPS), entered)
+        self.clock.sleep(INGRESS_DROP_WINDOW+.01)
+        guard.ingress_drops(NS(ingress_drop_count=18+MAX_INGRESS_DROPS), entered)
+        with self.assertRaisesRegex(RuntimeError, 'superseded'):
+            guard.ingress_drops(NS(ingress_drop_count=18+2*MAX_INGRESS_DROPS), entered)
 
     def test_one_period_inference_overrun_is_logged_and_skips_missed_ticks(self):
         self.args.stand_only = True

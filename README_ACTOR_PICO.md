@@ -299,6 +299,9 @@ the last one (interpolation max 100 ms, watchdog 1000 ms). The third
 consecutive stale tick cancels. Each `body_state_age_failure` record holds
 phase, ages, compute/policy time and `action` (`skip_tick` or `cancel`).
 A stale command is never published or retried.
+If computation finishes on an expired state, its measured observation remains
+in policy history, but `last_action` stays at the last successfully published
+action. The next tick never uses an unsent candidate as its previous action.
 
 Input checks follow the original HoloMotion deployment's
 `config/vita02a_s100.yaml`: robot feedback age is 100 ms; Pico source/reference
@@ -491,7 +494,9 @@ Faults, timeouts, command
 rejections, ownership changes and SIGINT/SIGTERM stop the trial without
 automatic retry. Firmware `ingress_drop_count` counts a valid command superseded
 by a newer one before its control tick (latest wins); each change is logged as
-`firmware_ingress_drop`, and more than 10 within 1 s cancels. Logging records requested commands, session/sequence and
+`firmware_ingress_drop`, and more than 10 within 1 s cancels. The first poll
+counts increments from the confirmed entry counter, rather than treating an
+already increased counter as its baseline. Logging records requested commands, session/sequence and
 input state IDs; publication alone is not proof of actuator execution.
 
 Every attempted entry exits through SDK CANCEL and requires PASSIVE/IDLE.

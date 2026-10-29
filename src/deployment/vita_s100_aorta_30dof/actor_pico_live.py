@@ -287,6 +287,9 @@ class StatusGuard:
         if total < 0:
             raise RuntimeError('EXTERNAL ownership/state or reject/drop counters changed')
         now = self.clock.monotonic()
+        if not self.drops:
+            # Include increments since entry, even before the first status poll.
+            self.drops.append((now, 0))
         self.drops.append((now, total))
         while len(self.drops) > 1 and self.drops[1][0] <= now-INGRESS_DROP_WINDOW:
             self.drops.popleft()
@@ -723,6 +726,7 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
                         print('PICO_TRACKING: same EXTERNAL session and policy history.', flush=True)
                         write(dict(record_type='tracking_started',actions_sent=sent_count,
                                    reference_yaw_offset=tracking_yaw))
+            published_action = runtime.policy.last_action.copy()
             if manual and tracking:
                 command, obs, row = pico_reference_command(runtime, snapshot, clock.monotonic(),
                     q=q, dq=dq, root=root, gyro=gyro, yaw_offset=tracking_yaw)
@@ -740,6 +744,10 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
             else:
                 command, obs, row = runtime.infer_motion_command(lead, q=q, dq=dq,
                     root=root, gyro=gyro, ref_time=reference_time, yaw_offset=offset)
+            # SDK decode updates last_action. Commit that candidate only after
+            # publication succeeds; skipped ticks keep the last published action.
+            pending_action = runtime.policy.last_action.copy()
+            runtime.policy.last_action = published_action
             envelope.check(command)
             compute_end = clock.monotonic()
             record_period_overrun(write,'compute',compute_end-cycle,sent_count,
@@ -749,7 +757,7 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
             try:
                 inputs.fresh(state)
             except StaleStateError as error:
-                # Policy history already holds this tick; only publication is skipped.
+                # Keep the measured observation; the pending action is not committed.
                 skip_stale('before_publish', error, state_id=int(state.state_id),
                     at_read=state_age_at_read, at_failure=inputs.ages(state),
                     compute_ms=(compute_end-cycle)*1000, policy_ms=row.get('total_ms'))
@@ -771,6 +779,7 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
                 ts_client_created_us=clock.time_ns()//1000)
             before = clock.monotonic()
             sent = controller.publish(command)  # SDK alone owns session + sequence.
+            runtime.policy.last_action = pending_action
             sent_count += 1
             stale_ticks = 0
             policy_tick += 1
