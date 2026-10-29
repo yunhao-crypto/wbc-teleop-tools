@@ -57,7 +57,7 @@ class Pico:
         if self.stream is not None: return False
         from deployment.vita_s100_aorta_30dof.actor_pico_worker import ReferenceStream
         r = self.runtime
-        self.stream = ReferenceStream(r.root, r.config, r.model.contract, r.math)
+        self.stream = ReferenceStream(r.root, r.config, r.model.contract, r.math, clock=self.clock.monotonic)
         self.anchor, self.previous = tuple(root), dict(state='waiting_pico')
         return True
 

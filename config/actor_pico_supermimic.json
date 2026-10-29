@@ -243,5 +243,14 @@
     "past_frames": 8,
     "tail_frames": 1,
     "note": "Past frames feed the SONIC sigma-2 reference velocity filters without latency; one tail frame gives an exact forward difference at goal frame f+10. Delay 220 ms."
+  },
+  "pico_stream": {
+    "ik_max_iter": 3,
+    "playback_margin_s": 0.06,
+    "joint_filter": {"min_cutoff_hz": 3.0, "beta": 0.5, "d_cutoff_hz": 1.0},
+    "root_filter": {"min_cutoff_hz": 1.5, "beta": 0.3, "d_cutoff_hz": 1.0},
+    "root_max_tilt_deg": 25.0,
+    "worker_cpus": [],
+    "note": "Worker ships conditioned raw GMR samples; the control loop resamples the window at now - clock offset - playback_margin_s - reference delay, so the reference advances 20 ms per tick. ik_max_iter caps GMR refinement passes per frame (pinned default 10). worker_cpus optionally pins the GMR process."
   }
 }

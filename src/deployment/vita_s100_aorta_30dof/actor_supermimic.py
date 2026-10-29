@@ -239,14 +239,28 @@ class NativeModel:
         return out[0]
 
 
+def window_motion(math_api, times, q, base, quat, query):
+    """Linear/slerp resampling at ``query``, clamped at both ends exactly like np.interp."""
+    times = np.asarray(times, dtype=np.float64)
+    index = np.clip(np.searchsorted(times, query, side='right')-1, 0, len(times)-2)
+    alpha = np.clip((query-times[index])/(times[index+1]-times[index]), 0., 1.)
+    def interp(values):
+        values = np.asarray(values, dtype=np.float64)
+        return values[index]+alpha[:, None]*(values[index+1]-values[index])
+    roots = [math_api.slerp(quat[i], quat[i+1], float(a)) for i, a in zip(index, alpha)]
+    return math_api.Motion(interp(q), interp(base), roots)
+
+
 class SuperMimicReference:
     """Causal Pico window: past filter context, current frame, goals and a derivative tail.
 
-    The current frame lags the newest sample by (K+tail) periods. Past frames
+    The current frame lags the window end by (K+tail) periods. Past frames
     only feed the reference velocity filters, so they add no latency.
+    ``motion()`` ends the window at the newest sample; ``playback()`` ends it
+    at a control-clock time, which needs ``history_s`` of extra samples.
     """
-    def __init__(self, contract, math_api, *, past_frames, tail_frames, capacity=1024):
-        if not is_supermimic(contract) or capacity < 3:
+    def __init__(self, contract, math_api, *, past_frames, tail_frames, capacity=1024, history_s=0.):
+        if not is_supermimic(contract) or capacity < 3 or not 0 <= history_s <= 2:
             raise ValueError('Invalid SuperMimic reference settings')
         self.contract, self.math = contract, math_api
         self.samples = deque(maxlen=capacity)
@@ -256,6 +270,7 @@ class SuperMimicReference:
         self.ref_time = past_frames*contract.period
         self.delay = (contract.future_frames+tail_frames)*contract.period
         self.span = (self.steps-1)*contract.period
+        self.history = self.span+history_s
 
     def append(self, stamp_ns, q, root, *, received_monotonic, base=None):
         if isinstance(stamp_ns, bool) or not isinstance(stamp_ns, (int, np.integer)) or stamp_ns <= 0:
@@ -273,7 +288,7 @@ class SuperMimicReference:
         self.samples.append(((int(stamp_ns)-self.origin_ns)*1e-9, q.copy(), base.copy(), root.copy()))
         # Keep one sample at or before the window start; older ones never
         # affect motion(), and dropping them keeps it O(window) on the worker.
-        start = self.samples[-1][0]-self.span
+        start = self.samples[-1][0]-self.history
         while len(self.samples) > 2 and self.samples[1][0] <= start:
             self.samples.popleft()
         self.last_stamp_ns = int(stamp_ns)
@@ -282,20 +297,39 @@ class SuperMimicReference:
     def ready(self):
         return len(self.samples) >= 2 and self.samples[-1][0]-self.samples[0][0] >= self.span-1e-9
 
+    def export(self):
+        """Raw samples (source seconds since the first sample) for the control loop."""
+        return dict(t=np.array([s[0] for s in self.samples]), q=np.stack([s[1] for s in self.samples]),
+                    base=np.stack([s[2] for s in self.samples]), quat=np.stack([s[3] for s in self.samples]))
+
+    def query(self, end):
+        return end-self.span+np.arange(self.steps)*self.contract.period
+
     def motion(self):
         if not self.ready():
             raise RuntimeError('Waiting for complete causal actor reference window')
-        times = np.array([s[0] for s in self.samples])
-        query = times[-1]-self.span+np.arange(self.steps)*self.contract.period
-        index = np.clip(np.searchsorted(times, query, side='right')-1, 0, len(times)-2)
-        alpha = np.clip((query-times[index])/(times[index+1]-times[index]), 0., 1.)
-        # Linear interpolation, clamped at both ends exactly like np.interp.
-        def interp(k):
-            values = np.stack([s[k] for s in self.samples])
-            return values[index]+alpha[:, None]*(values[index+1]-values[index])
-        roots = [self.math.slerp(self.samples[i][3], self.samples[i+1][3], float(a))
-                 for i, a in zip(index, alpha)]
-        return self.math.Motion(interp(1), interp(2), roots)
+        s = self.export()
+        return window_motion(self.math, s['t'], s['q'], s['base'], s['quat'], self.query(s['t'][-1]))
+
+    def playback(self, stream, now, margin):
+        """Window ending at the source time usable ``margin`` before local ``now``.
+
+        The window advances with the control clock, not with sample arrival.
+        Past the newest sample it holds that sample (``playback_lead_s`` < 0).
+        """
+        t = np.asarray(stream['t'], dtype=np.float64)
+        if t.ndim != 1 or len(t) < 2 or np.any(np.diff(t) <= 0):
+            raise ValueError('Pico stream needs at least two increasing samples')
+        q, base, quat = (np.asarray(stream[k], dtype=np.float64) for k in ('q', 'base', 'quat'))
+        if q.shape != (len(t), 28) or base.shape != (len(t), 3) or quat.shape != (len(t), 4):
+            raise ValueError('Pico stream sample dimensions disagree')
+        offset = float(stream['clock_offset_s'])
+        end = now-offset-margin
+        if not math.isfinite(end):
+            raise ValueError('Pico stream clock offset is invalid')
+        motion = window_motion(self.math, t, q, base, quat, self.query(end))
+        return motion, dict(playback_lead_s=float(t[-1]-end), playback_time_s=end-self.delay,
+                            clock_offset_s=offset)
 
 
 def reference_window(config):
@@ -317,5 +351,10 @@ def create_reference(contract, math_api, config):
     if not is_supermimic(contract):
         from .actor_pico_reference import CausalActorReference
         return CausalActorReference(contract, math_api)
+    from .actor_pico_stream import stream_settings
     past, tail = reference_window(config)
-    return SuperMimicReference(contract, math_api, past_frames=past, tail_frames=tail)
+    settings = stream_settings(config)
+    # Playback lags the newest sample by the margin and, before the hold
+    # rule takes over, by up to pico_hold_age_s; keep samples for both.
+    history = 0. if settings is None else settings.playback_margin_s+config['pico_hold_age_s']+.1
+    return SuperMimicReference(contract, math_api, past_frames=past, tail_frames=tail, history_s=history)

@@ -299,7 +299,8 @@ def main():
     parser.add_argument('--backend', choices=('auto', 'sdk', 'ort'), default='auto')
     parser.add_argument('--threads', type=int, default=1)
     parser.add_argument('--human-height', type=float, default=None,
-                        help='GMR operator height in metres; default 1.75 from config/actor_pico.json')
+                        help='GMR operator height in metres (scales every retargeted limb); '
+                             'default human_height_m from the policy configuration')
     parser.add_argument('--steps', type=int, default=100)
     parser.add_argument('--seconds', type=float,
                         help='live: 0 runs until STOP/Ctrl-C (default); positive values limit EXTERNAL seconds; other modes default to 60')
@@ -351,6 +352,10 @@ def main():
     logging.basicConfig(level=logging.INFO)
     runtime = ActorPicoRuntime(args.root, backend=args.backend, threads=args.threads,
                                human_height=args.human_height, policy=args.policy)
+    if args.mode in ('shadow', 'live') and args.human_height is None:
+        configured = runtime.config['retargeting'].get('human_height_m')
+        print(f"ACTOR_WARNING: --human-height not given; GMR uses the configured {configured} m. "
+              "Pass the operator's height.", file=sys.stderr, flush=True)
     args.log = args.log or args.root/'outputs'/f'actor_pico_{args.mode}_{time.time_ns()}.jsonl'
     args.log.parent.mkdir(parents=True, exist_ok=True)
     with args.log.open('x', buffering=1024*1024) as stream:
@@ -366,7 +371,8 @@ def main():
                    scope='supported_external_trial' if args.mode == 'live' else 'inference_only',
                    robot_id=args.robot_id, retargeter=runtime.config['retargeting'],
                    gmr_engine='accelerated' if runtime.retarget.accelerated else 'pinned',
-                   reference_delay_s=runtime.reference.delay, actions_sent=0))
+                   reference_delay_s=runtime.reference.delay, pico_stream=runtime.config.get('pico_stream'),
+                   actions_sent=0))
         try:
             report = {'check': check, 'replay': replay, 'state-check': state_check,
                       'shadow': shadow, 'live': live}[args.mode](runtime, args, write)

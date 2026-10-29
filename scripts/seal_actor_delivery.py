@@ -49,7 +49,12 @@ def main():
                   'tests/fixtures/actor_pico/bridge_gmr_golden.json',
                   'config/actor_pico_supermimic.json',
                   'src/deployment/vita_s100_aorta_30dof/actor_supermimic.py',
-                  'tests/test_actor_supermimic.py', 'tests/fixtures/actor_pico/supermimic_fixture.npz']
+                  'tests/test_actor_supermimic.py', 'tests/fixtures/actor_pico/supermimic_fixture.npz',
+                  'src/deployment/vita_s100_aorta_30dof/actor_pico_stream.py',
+                  'src/deployment/vita_s100_aorta_30dof/actor_pico_session_replay.py',
+                  'scripts/freeze_pico_session.py', 'scripts/replay_pico_session.py', 'scripts/bench_pico_gmr.py',
+                  'tests/test_actor_pico_session.py',
+                  'tests/fixtures/actor_pico/robot42_pico_session_20261029.npz']
     additional += [str(p.relative_to(root)) for p in (root/'third_party/motion_stream_bridge').rglob('*')
                    if p.is_file() and '__pycache__' not in p.parts]
     for name in additional:
@@ -72,6 +77,7 @@ def main():
                 'src/deployment/vita_s100_aorta_30dof/actor_pico_worker.py',
                 'src/deployment/vita_s100_aorta_30dof/actor_pico_buttons.py',
                 'src/deployment/vita_s100_aorta_30dof/actor_supermimic.py',
+                'src/deployment/vita_s100_aorta_30dof/actor_pico_stream.py',
                 'tests/test_actor_pico_live.py',
                 'third_party/pico_binding/bindings/py_bindings.cpp',
                 'third_party/pico_binding/bindings/body_pose_snapshot.h',

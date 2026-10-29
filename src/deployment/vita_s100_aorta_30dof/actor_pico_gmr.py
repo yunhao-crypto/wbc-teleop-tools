@@ -258,10 +258,18 @@ class PicoGmrRetargeter:
 
 
 def create_retargeter(root, config, contract, math_api, *, accelerated=True):
+    from .actor_pico_stream import stream_settings
     settings = config['retargeting']
     if settings['implementation'] != 'motion_stream_bridge_gmr_vita02a':
         raise ValueError('Only the pinned Vita02A bridge GMR retargeter is supported')
     height = float(settings['human_height_m'])
     if not np.isfinite(height) or not .8 <= height <= 2.5:
         raise ValueError('Invalid GMR operator height in metres')
-    return PicoGmrRetargeter(root, contract, math_api, settings, accelerated=accelerated)
+    retargeter = PicoGmrRetargeter(root, contract, math_api, settings, accelerated=accelerated)
+    stream = stream_settings(config)
+    if stream is not None:
+        # Extra refinement passes per frame (pinned default 10) are where the
+        # IK occasionally walks to another arm branch; the warm-started solve
+        # converges across frames instead. The first frame keeps its own cap.
+        retargeter.engine.max_iter = stream.ik_max_iter
+    return retargeter

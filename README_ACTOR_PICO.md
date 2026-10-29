@@ -519,6 +519,73 @@ model's HIP-frame state convention. Units are radians, rad/s and seconds/ns as
 named. Every one of the actor's 28 joints must be present. Replay inference
 starts only after the full model-derived window is available (200 ms for the current contract).
 
+## Pico stream conditioning (SuperMimic)
+
+`config/actor_pico_supermimic.json` `pico_stream` changes the live Pico path:
+
+- The worker sends conditioned raw GMR samples and a source-clock offset. The
+  control loop resamples the policy window at
+  `now - clock_offset - playback_margin_s - reference delay`, so the reference
+  moves 20 ms per tick no matter when GMR frames arrive.
+- `ik_max_iter` caps GMR refinement passes per frame. The pinned default is 10.
+- `joint_filter`/`root_filter` are One-Euro filters. `root_max_tilt_deg` clamps
+  the reference root tilt and keeps its heading.
+- `worker_cpus` optionally pins the GMR worker process. It is empty until the
+  S100 core layout has been measured (see the TODO below).
+
+Without the block, the previous newest-sample window is used unchanged.
+
+### Frozen session replay (sim2sim)
+
+`tests/fixtures/actor_pico/robot42_pico_session_20261029.npz` freezes the Pico
+input, receipt times and on-robot GMR durations of session
+`robot42_test_20261029T220318` (`scripts/freeze_pico_session.py` rebuilds it).
+Stage 1 runs in the deployment venv and exports the per-tick reference windows
+for the `legacy` and `playback` variants:
+
+```bash
+python3 scripts/replay_pico_session.py --output /tmp/windows.npz
+```
+
+Stage 2 is trackerlab-supermimic
+`scripts/rls/supermimic/replay_pico_session_mujoco.py --windows /tmp/windows.npz`.
+It closes the loop in MuJoCo with the deployed ONNX. The `legacy` variant
+reproduces the robot's per-segment pitch std, >1 Hz pitch power, roll std and
+action step RMS. This is simulation, not hardware validation.
+
+### TODO: on-robot GMR is ~12x slower than x86
+
+Status: open; owner to be assigned. Not caused by this repository's Python
+changes, which were verified on host only.
+
+Evidence from `robot42_test_20261029T220318`:
+
+- On-robot `retarget_ms` averages 36.5 ms per Pico frame. Replaying the same
+  frames through the same pinned GMR on x86 takes 2.7 ms, and the output is
+  bit-identical (max difference 4e-14).
+- This is roughly 5.8 ms per IK solve plus about 10 ms of fixed per-frame time
+  on the robot. Solves per frame average 3.9 (p99 14). `ik_max_iter: 3` cuts
+  p99 to 8 but does not fix the per-solve cost.
+- The worker already runs with OpenBLAS threads = 1.
+
+Steps:
+
+1. On S100 run `python3 scripts/bench_pico_gmr.py --frames 1000`. It pushes
+   the frozen session through the live worker code without robot or Pico and
+   prints wall and thread-CPU ms per frame next to the robot's recorded
+   `retarget_ms` (x86 reference: about 2.9 ms mean, 5.9 ms p99). CPU time
+   close to wall time means compute-bound (slow core, frequency governor, or
+   unoptimized aarch64 numpy/daqp/mujoco wheels). CPU time well below wall
+   time means preemption by other processes. Run it once on an idle robot
+   and once while the actor and vendor services run.
+2. Record `lscpu` and per-core `scaling_cur_freq`/governor. Repeat step 1
+   with `--cpus <id>` for each core type to find the fastest idle core.
+3. Put that core in `pico_stream.worker_cpus`. Live logs then show
+   `worker_affinity` in the GMR input header and `retarget_ms`/`retarget_cpu_ms`
+   per control tick. If no core helps, profile one frame (`py-spy` or
+   `cProfile`) to split time between mujoco kinematics, DAQP and Python.
+4. Target: mean `retarget_ms` under 10 ms and p99 under 20 ms, then rerun
+   the frozen session replay with `--gmr <measured ms>` to confirm.
 ## Validation boundary
 
 Host CPU inference and synthetic Pico replay are exercised. S100 inference

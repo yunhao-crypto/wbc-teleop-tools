@@ -349,13 +349,22 @@ def manual_reference(runtime, snapshot, now):
     age = now-float(snapshot['received_monotonic'])
     if not 0 <= age <= runtime.config['pico_max_age_s']:
         raise TimeoutError('Pico reference worker snapshot is stale/future')
-    motion = runtime.math.Motion(snapshot['q'], snapshot['base'], snapshot['quat'])
+    playback = {}
+    if snapshot.get('stream') is not None:
+        # Resample the worker's samples on this tick's clock: the window
+        # advances by exactly the elapsed control time between ticks.
+        motion, playback = runtime.reference.playback(snapshot['stream'], now,
+                                                      runtime.stream.playback_margin_s)
+    else:
+        motion = runtime.math.Motion(snapshot['q'], snapshot['base'], snapshot['quat'])
     if len(motion.q) != runtime.reference.steps:
         raise ValueError('Pico worker reference window length differs from model')
     return motion, dict(pico_age_s=age, reference_delay_s=runtime.reference.delay,
         source_gap_s=float(snapshot.get('source_gap_s',0.)),
         retarget_ms=float(snapshot['retarget_ms']),
-        gmr_task_error=float(snapshot['gmr_task_error']))
+        gmr_task_error=float(snapshot['gmr_task_error']),
+        **({'retarget_cpu_ms': float(snapshot['retarget_cpu_ms'])} if 'retarget_cpu_ms' in snapshot else {}),
+        **playback)
 
 
 def reference_yaw(runtime, motion, root):
@@ -493,7 +502,9 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
         default_pose=dict(zip(runtime.model.contract.names, runtime.model.contract.default.tolist())),
         kp=dict(zip(runtime.model.contract.names, runtime.model.contract.kp.tolist())),
         kd=dict(zip(runtime.model.contract.names, runtime.model.contract.kd.tolist())),
-        fixed_joints=runtime.config['body_profile']['fixed_joints'], reference_delay_s=runtime.reference.delay)), flush=True)
+        fixed_joints=runtime.config['body_profile']['fixed_joints'], reference_delay_s=runtime.reference.delay,
+        human_height_m=runtime.config['retargeting']['human_height_m'],
+        pico_stream=runtime.config.get('pico_stream'))), flush=True)
     print('ACTOR_START: motion requested; '+
           ('running until STOP/Ctrl-C or fault' if args.seconds == 0 else f'duration limit {args.seconds:g}s')+
           '; exit requests CANCEL -> PASSIVE. Keep support and E-stop available.',flush=True)
