@@ -130,6 +130,41 @@ class ActorPicoTests(unittest.TestCase):
         # roll/pitch/yaw. Verify named selection against explicit qpos addresses.
         self.assertNotEqual(rt.indices, sorted(rt.indices))
 
+    def test_accelerated_gmr_is_bit_identical_to_the_pinned_engine(self):
+        from deployment.vita_s100_aorta_30dof.actor_pico_gmr import create_retargeter
+        replay = np.load(ROOT/'tests/fixtures/actor_pico/pico_replay.npz')['body_poses']
+        golden = np.load(ROOT/'tests/fixtures/actor_pico/bridge_gmr_golden.npz')['body_poses']
+        for height, bodies in ((None, replay), (1.6, golden), (None, [self.body()]*5)):
+            config = dict(self.config, retargeting=dict(self.config['retargeting']))
+            if height is not None:
+                config['retargeting']['human_height_m'] = height
+            fast = create_retargeter(ROOT, config, self.c, self.math)
+            pinned = create_retargeter(ROOT, config, self.c, self.math, accelerated=False)
+            self.assertTrue(fast.accelerated)
+            self.assertFalse(pinned.accelerated)
+            self.assertEqual(type(pinned.engine).__name__, 'GeneralMotionRetargeting')
+            for body in bodies:
+                self.assertEqual(fast.processed_body(body), pinned.processed_body(body))
+                a, b = fast.solve(body), pinned.solve(body)
+                np.testing.assert_array_equal(fast.last_qpos, pinned.last_qpos)
+                np.testing.assert_array_equal(a[0], b[0])
+                np.testing.assert_array_equal(a[1], b[1])
+                self.assertEqual(a[2], b[2])
+                self.assertEqual(fast.last_error, max(pinned.engine.error1(), pinned.engine.error2()))
+
+    def test_accelerated_gmr_refuses_other_dependencies_instead_of_falling_back(self):
+        from deployment.vita_s100_aorta_30dof import actor_pico_gmr
+        from deployment.vita_s100_aorta_30dof.actor_pico_gmr import create_retargeter
+        with patch.dict(actor_pico_gmr._ACCELERATED_VERSIONS, mink='0.0.0'):
+            with self.assertRaisesRegex(RuntimeError, 'requires mink 0.0.0.*installed mink 1.3.0'):
+                self.retarget()
+            # The pinned engine is available only when requested explicitly.
+            rt = create_retargeter(ROOT, self.config, self.c, self.math, accelerated=False)
+        self.assertFalse(rt.accelerated)
+        self.assertEqual(type(rt.engine).__name__, 'GeneralMotionRetargeting')
+        rt.solve(self.body())
+        self.assertTrue(np.isfinite(rt.last_qpos).all())
+
     def test_human_height_default_override_and_invalid_values(self):
         self.assertEqual(self.config['retargeting']['human_height_m'], 1.75)
         default = self.retarget()

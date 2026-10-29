@@ -61,11 +61,17 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--host-inference', action='store_true')
     parser.add_argument('--model', type=Path, help='Explicit external actor model for host inference')
+    parser.add_argument('--supermimic-model', type=Path,
+                        help='Also verify the SuperMimic actor with this explicit external model')
     args = parser.parse_args()
     if args.host_inference and not args.model:
         parser.error('--host-inference requires --model /path/to/actor_g1.onnx (not stored in Git)')
+    if args.supermimic_model and not args.host_inference:
+        parser.error('--supermimic-model requires --host-inference')
     if args.model:
         args.model = args.model.resolve()
+    if args.supermimic_model:
+        args.supermimic_model = args.supermimic_model.resolve()
     env = os.environ.copy()
     for name in list(env):
         if name.startswith('PIP_'):
@@ -83,7 +89,7 @@ def main():
         # Neither extracted vendor runtime nor Python environment comes from
         # the source working directory; verify before materializing anything.
         for name in ['venv', 'vendor_packages', 'model_dependencies_readonly', 'reference',
-                     'artifacts/actor_g1/actor_g1.onnx']:
+                     'artifacts/actor_g1/actor_g1.onnx', 'artifacts/supermimic/supermimic_vita02a.onnx']:
             if (export/name).exists():
                 raise RuntimeError('Unexpected untracked input in Git export: '+name)
         run([sys.executable, 'scripts/bootstrap_actor_s100.py', '--verify-only'], cwd=export, env=env)
@@ -104,6 +110,9 @@ def main():
         if args.model:
             command += ['--model', str(args.model)]
         run(command, cwd=export, env=env)
+        if args.supermimic_model:
+            run([sys.executable, 'scripts/bootstrap_actor_s100.py', '--unpack-only', '--policy', 'supermimic',
+                 '--model', str(args.supermimic_model)], cwd=export, env=env)
         installer_tests = run_tests('tests/test_actor_delivery.py', cwd=export, env=env)
         for entry in ['scripts/bootstrap_actor_s100.py', 'scripts/configure_actor_s100.py']:
             run([sys.executable, entry, '--help'], cwd=export, env=env)
@@ -136,6 +145,12 @@ def main():
             run([sys.executable, 'scripts/actor_pico.py', 'check', '--steps', '100'], cwd=export, env=env)
             run([sys.executable, 'scripts/actor_pico.py', 'replay', '--input',
                  'tests/fixtures/actor_pico/pico_replay.npz', '--steps', '100'], cwd=export, env=env)
+            if args.supermimic_model:
+                result['supermimic_tests'] = run_tests('tests/test_actor_supermimic.py', cwd=export, env=env)
+                run([sys.executable, 'scripts/actor_pico.py', 'check', '--policy', 'supermimic', '--steps', '100'],
+                    cwd=export, env=env)
+                run([sys.executable, 'scripts/actor_pico.py', 'replay', '--policy', 'supermimic', '--input',
+                     'tests/fixtures/actor_pico/pico_replay.npz', '--steps', '100'], cwd=export, env=env)
             result.update(model_steps=100, replay_steps=100, actor_tests=actor_tests, pico_reader_tests=reader_tests,
                           local_provision_tests=provision_tests,
                           live_runner_tests=live_tests, live_runner_io='simulated; real SDK session/math',

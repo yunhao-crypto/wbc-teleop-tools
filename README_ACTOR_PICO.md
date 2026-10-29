@@ -12,6 +12,46 @@ service. It writes computed targets to JSONL; it never creates a controller,
 requests EXTERNAL or publishes a robot command. Only `live` requests control and moves joints. The existing P1/P2/P3 runtime,
 launchers, SDK installation and protocol guards are not replaced.
 
+## Policy selection
+
+`start_actor_pico.sh` requires an explicit policy for every mode except
+`configure`: `sonic` (`config/actor_pico.json`) or `supermimic`
+(`config/actor_pico_supermimic.json`), given as the first word
+(`start_actor_pico.sh supermimic shadow ...`), after the mode, or as `--policy`.
+Without one, a terminal shows a menu with no default; an empty answer or a
+non-interactive run starts nothing. Conflicting selections are rejected. A
+missing/mismatched model of the selected policy is an error; there is no
+substitute policy. (`scripts/actor_pico.py` itself still defaults to `sonic`
+for installer and delivery checks.) Each configuration
+pins its own external model; the shared GMR input, Body31 decode, gains, limits
+and startup/live guards are unchanged.
+
+| | `sonic` | `supermimic` |
+|---|---|---|
+| Model | `artifacts/actor_g1/actor_g1.onnx` | `artifacts/supermimic/supermimic_vita02a.onnx` |
+| Input values | 1520 | 1670 (10x96 observation history + 10x71 goal frames) |
+| Reference delay | 200 ms | 220 ms (10 future goal frames + 1 velocity tail frame) |
+| Root input | quaternion only | quaternion plus GMR base position |
+
+The SuperMimic model is the serial-ankle `resume_nopush` training checkpoint
+(iteration 72188) exported by trackerlab-supermimic
+`scripts/rls/supermimic/export_vita_deployment.py`; its observation/goal contract
+is embedded in the ONNX metadata and checked at load. It needs the firmware's
+virtual ankle PD path, exactly as the SONIC actor does. Provision it with
+`bootstrap_actor_s100.py --policy supermimic --model /path/to/supermimic_vita02a.onnx`
+and pass the same `--policy` to `check`, `replay`, `shadow` and `live`:
+
+```bash
+bash scripts/start_actor_pico.sh supermimic check --steps 100
+bash scripts/start_actor_pico.sh supermimic shadow --seconds 60 --group default
+bash scripts/start_actor_pico.sh supermimic        # default local motion entry
+```
+
+Offline parity: `tests/test_actor_supermimic.py` compares the deployed history,
+goal and action with the training-side fixture. A trackerlab MuJoCo closed loop
+(`validate_vita_deployment_mujoco.py`) compares the training policy, this
+observation builder and the causal Pico window on the same clips. Neither is
+hardware validation.
 ## Data path and calibration
 
 ```text
@@ -36,11 +76,24 @@ neutral or automatically calibrated onto the actor defaults. The bridge's
 optional interactive recalibration UI and other action/button combos are not
 part of this actor entry.
 
+The actor runs this pinned solver through a subclass in `actor_pico_gmr.py`
+that only removes work whose results GMR never reads: `mj_kinematics` +
+`mj_comPos` instead of full `mj_forward` after ground snap and smoothing, a
+direct DAQP call instead of the qpsolvers wrapper, inlined body FrameTask
+residuals, a vectorized Unity conversion, and one residual evaluation for the
+two identical IK tables. Its qpos, root and residual are bit-identical to the
+pinned engine on the 384-frame Pico replay and the bridge golden frames
+(x86 host: median 9.1 -> 6.2 ms, p99 14.5 -> 10.9 ms per frame). The subclass
+requires mink 1.3.0, daqp 0.10.3 and qpsolvers 4.13.0 (the pinned wheelhouse);
+other versions raise at startup instead of silently running the slower pinned
+engine. Log headers record `gmr_engine`. The input worker no longer
+sleeps 5 ms after each solved frame; it polls every 1 ms only while idle.
+
 Operator height defaults to **1.75 metres**. Override it for every launch:
 
 ```bash
-bash scripts/start_actor_pico.sh --human-height 1.68
-bash scripts/start_actor_pico.sh shadow --seconds 30 --human-height 1.68
+bash scripts/start_actor_pico.sh sonic --human-height 1.68
+bash scripts/start_actor_pico.sh sonic shadow --seconds 30 --human-height 1.68
 ```
 
 Height scales the original GMR human-body table and is recorded in the log
@@ -124,9 +177,9 @@ with the existing operator entry.
 From the **actual S100 deployment root**, run:
 
 ```bash
-bash scripts/start_actor_pico.sh check --steps 100
-bash scripts/start_actor_pico.sh state-check --seconds 5 --group default
-bash scripts/start_actor_pico.sh shadow --seconds 60 --group default
+bash scripts/start_actor_pico.sh sonic check --steps 100
+bash scripts/start_actor_pico.sh sonic state-check --seconds 5 --group default
+bash scripts/start_actor_pico.sh sonic shadow --seconds 60 --group default
 ```
 
 Connect the Pico XRoboToolkit app to the S100's reachable LAN IP, enable
@@ -153,12 +206,14 @@ requires no Xbox configuration or Wi-Fi controller key.
 On the configured S100, from the deployment root, run:
 
 ```bash
-bash scripts/start_actor_pico.sh
+bash scripts/start_actor_pico.sh sonic        # or: supermimic
 ```
 
-**No arguments now selects an attended motion trial, not an offline check.**
-Use `bash scripts/start_actor_pico.sh check` for offline inference, or
-`state-check --seconds 5` for read-only feedback. The default motion entry uses
+**A policy name alone (or no arguments, then a menu choice) selects an attended
+motion trial, not an offline check.** The policy has no default; see
+[policy selection](#policy-selection). Use
+`bash scripts/start_actor_pico.sh sonic check` for offline inference, or
+`sonic state-check --seconds 5` for read-only feedback. The default motion entry uses
 `outputs/actor_pico_local.json`, a private 0600 file provisioned for this board.
 It binds the local IPv4 address, machine-id digest, selected end effector,
 effective YAML digest and configured duration (`0` means until STOP). It stores no authorization.
@@ -192,8 +247,10 @@ The sequence is:
    completion. A retired keyframe can clear the action name; that alone does
    not count as FIXED_STAND readiness.
 2. Request FIXED_STAND once, and require actual active FIXED_STAND plus healthy,
-   hardware-bounded, stationary feedback for 0.5 s. Policy-online startup also
-   requires gyro norm <=0.10 rad/s. HIP IMU tilt is displayed and checked
+   hardware-bounded, stationary feedback (every joint |dq| <=0.2 rad/s) for 0.5 s.
+   Policy-online startup also requires gyro norm <=0.10 rad/s. Measured joint
+   positions may exceed advertised RobotInfo q ranges by 0.03 rad (hard stops,
+   calibration); commanded q always uses the exact ranges. HIP IMU tilt is displayed and checked
    against the reviewed profile's unchanged 0.8 rad fall threshold; there is
    no additional 2-degree admission rule. This fall threshold alone does not
    prove a command is safe to apply. In `policy-online` mode the
@@ -233,11 +290,15 @@ explicitly uses `SCHED_OTHER`, so it and the vendor service do not inherit the
 control priority. Linux scheduling permission is required before any control
 handle is created; failure stops startup rather than silently falling back.
 
-Body31 remains limited to 100 ms at read and again before publication. Fault
-messages include source, publication and local receipt ages. A
-`body_state_age_failure` record captures ages at read and at failure, plus
-compute/policy time; the stale command is never published. No stale-command
-retry, automatic re-entry or threshold extension is added.
+Body31 feedback must be within 100 ms at read and again before publication.
+As in the SDK WBC demo, the gate is local receipt age plus producer publication
+age (`ts_state_pub_us`, CLOCK_REALTIME, at most 5 ms in the future); sensor
+stamp age is reported only. A stale tick is skipped rather than ending the
+trial: no command is published and the firmware keeps interpolating/holding
+the last one (interpolation max 100 ms, watchdog 1000 ms). The third
+consecutive stale tick cancels. Each `body_state_age_failure` record holds
+phase, ages, compute/policy time and `action` (`skip_tick` or `cancel`).
+A stale command is never published or retried.
 
 Input checks follow the original HoloMotion deployment's
 `config/vita02a_s100.yaml`: robot feedback age is 100 ms; Pico source/reference
@@ -248,6 +309,9 @@ Timestamped samples remain in the same causal window and are interpolated on
 the model's 20 ms grid. There is no reference-epoch gate, segment-fit cutoff,
 or 0.1 rad all-joint neutral admission rule. The model's 200 ms initial window,
 finite/shape/quaternion checks and strictly increasing source timestamps remain.
+While following, a reference older than `pico_hold_age_s` (250 ms) holds its
+current frame with zero velocity (the training rule beyond a reference's end)
+instead of replaying a frozen moving window; rows record `reference_hold`.
 Pico age exceeding 600 ms or other genuine input faults stop following through
 the existing checked exit; changing input thresholds does not copy HoloMotion's
 separate Velocity-policy fallback into this single-actor deployment.
@@ -276,7 +340,7 @@ remain pinned by this standalone delivery; no monorepo is needed on S100.
 For an explicit target, `auto` selects the same online-reference entry:
 
 ```bash
-bash scripts/start_actor_pico.sh auto --seconds 120 \
+bash scripts/start_actor_pico.sh supermimic auto --seconds 120 \
   --robot-id 10.100.23.96 \
   --robot-config /app/locomotion/config/locomotion_foot_humanoid_asample_none.yaml
 ```
@@ -289,7 +353,7 @@ following a fresh valid reference automatically; it is not enabled by this
 board's selected local profile.
 
 The configured local default uses `seconds=0`: no application duration expiry.
-Use `bash scripts/start_actor_pico.sh --seconds 300` for a five-minute run;
+Use `bash scripts/start_actor_pico.sh sonic --seconds 300` for a five-minute run;
 an explicit duration overrides the local profile. Positive duration counts from
 EXTERNAL entry; damping wait and fixed-stand activation are additional bounded
 time. `STOP` or Ctrl-C sends
@@ -339,7 +403,7 @@ It never edits the file, restarts services or activates an OTA slot.
 From the actual deployment root, for a separately authorized preparation test:
 
 ```bash
-bash scripts/start_actor_pico.sh live --stand-only --seconds 5 \
+bash scripts/start_actor_pico.sh sonic live --stand-only --seconds 5 \
   --robot-id '<actual robot identity>' --confirm-motion \
   --robot-config /absolute/path/to/running/locomotion.yaml
 ```
@@ -347,17 +411,24 @@ bash scripts/start_actor_pico.sh live --stand-only --seconds 5 \
 After reviewing that test and authorizing Pico following, omit `--stand-only`:
 
 ```bash
-bash scripts/start_actor_pico.sh live --seconds 10 \
+bash scripts/start_actor_pico.sh sonic live --seconds 10 \
   --robot-id '<actual robot identity>' --confirm-motion \
   --robot-config /absolute/path/to/running/locomotion.yaml
 ```
+
+This immediate-following mode uses the same isolated Pico/GMR input process as
+the manual mode, without the controller-trigger reader. It connects on the first
+Body31 feedback during preflight; the control loop never runs GMR and only reads
+the latest reference snapshot. Preflight waits for a ready reference window, and
+following starts after the stand preparation with yaw aligned to the measured
+robot heading. A failed worker or stale snapshot cancels the trial.
 
 To enter ONNX stand first and manually attach Pico in the **same EXTERNAL
 session**, use the separately armed interactive mode (on S100, from the actual
 deployment root on persistent `/userdata`, not overlay `/root`):
 
 ```bash
-bash scripts/start_actor_pico.sh live --manual-pico --seconds 120 \
+bash scripts/start_actor_pico.sh sonic live --manual-pico --seconds 120 \
   --robot-id '<actual robot identity>' --confirm-motion \
   --robot-config /absolute/path/to/running/locomotion_foot_humanoid_asample_none.yaml
 ```
@@ -404,7 +475,8 @@ The complete decoded BodyCmd is sent, including ankle compensation torque.
 The unpopulated waist-roll slot remains inert; no hand command is sent.
 
 `--seconds 0` disables only application duration expiry. Body feedback age must
-stay within 100 ms, Pico age within 600 ms, and ControlStatus must advance within
+stay within 100 ms (up to two consecutive stale ticks are skipped), Pico age
+within 600 ms (held beyond 250 ms), and ControlStatus must advance within
 500 ms. The 20 ms period is a
 50 Hz scheduling target, matching the C++ executor's treatment of occasional
 overruns. Compute/full-cycle overruns and skipped ticks are recorded; delayed
@@ -416,8 +488,10 @@ The Body31 actor path validates native arrays directly without materializing
 an unused legacy44 state. Logs use a 1 MiB buffer, flushed on entry, exit,
 candidate capture and errors; abrupt process termination may lose buffered rows.
 Faults, timeouts, command
-rejections/drops, ownership changes and SIGINT/SIGTERM stop the trial without
-automatic retry. Logging records requested commands, session/sequence and
+rejections, ownership changes and SIGINT/SIGTERM stop the trial without
+automatic retry. Firmware `ingress_drop_count` counts a valid command superseded
+by a newer one before its control tick (latest wins); each change is logged as
+`firmware_ingress_drop`, and more than 10 within 1 s cancels. Logging records requested commands, session/sequence and
 input state IDs; publication alone is not proof of actuator execution.
 
 Every attempted entry exits through SDK CANCEL and requires PASSIVE/IDLE.

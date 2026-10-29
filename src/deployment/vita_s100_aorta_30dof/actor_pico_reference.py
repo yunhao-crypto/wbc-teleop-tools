@@ -15,6 +15,10 @@ class CausalActorReference:
     100 ms spacing needs 920 ms. Neither value is measured end-to-end latency.
     No prediction, repeated terminal pose, or invented future velocity is used.
     """
+    # The current reference frame is the first window sample.
+    current_index = 0
+    ref_time = 0.
+
     def __init__(self, contract, math_api, *, capacity=1024):
         if contract.include_z:
             raise ValueError('This Pico retargeter does not supply calibrated robot root height')
@@ -29,7 +33,8 @@ class CausalActorReference:
         self.delay = (self.steps-1)*contract.period
         self.last_receive_monotonic = None
 
-    def append(self, stamp_ns, q, root, *, received_monotonic):
+    def append(self, stamp_ns, q, root, *, received_monotonic, base=None):
+        # base (GMR root position) is unused: this actor has no root-position input.
         if isinstance(stamp_ns, bool) or not isinstance(stamp_ns, (int, np.integer)) or stamp_ns <= 0:
             raise ValueError('Pico timestamp must be positive integer nanoseconds')
         q = np.asarray(q, dtype=np.float64)

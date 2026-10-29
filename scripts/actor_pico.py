@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Pinned actor_g1 offline/shadow checks and an explicitly armed EXTERNAL trial."""
+"""Pinned actor offline/shadow checks and an explicitly armed EXTERNAL trial.
+
+--policy sonic (default) runs the GR00T G1 actor; --policy supermimic runs the
+SuperMimic actor from config/actor_pico_supermimic.json.
+"""
 import argparse
 from contextlib import ExitStack
 import json
@@ -18,7 +22,7 @@ import numpy as np
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT/'src'))
-from deployment.vita_s100_aorta_30dof.actor_pico_runtime import ActorPicoRuntime
+from deployment.vita_s100_aorta_30dof.actor_pico_runtime import ActorPicoRuntime, POLICY_CONFIGS
 
 
 def check(runtime, args, write):
@@ -241,7 +245,6 @@ def live(runtime, args, write):
     write(dict(record_type='control_scheduler', **control_scheduler()))
     stop = threading.Event()
     previous = {n:signal.signal(n, lambda *_:stop.set()) for n in (signal.SIGINT, signal.SIGTERM)}
-    sdk = runtime.root/'vendor_packages/xrobotoolkit-arm64/opt/apps/roboticsservice'
     try:
         with ExitStack() as resources:
             lock_path = runtime.root/'build/operator.lock'
@@ -268,23 +271,13 @@ def live(runtime, args, write):
                 manual.start()
                 resources.callback(manual.close)
             elif not args.stand_only:
-                from deployment.vita_s100_aorta_30dof.pico_input import create_pico_source
-                log = resources.enter_context((runtime.root/'outputs/pico_service_actor.log').open('a'))
-                service = subprocess.Popen([str(sdk/'RoboticsServiceProcess')], cwd=sdk,
-                                           stdout=log, stderr=subprocess.STDOUT)
-                def close_service():
-                    if service.poll() is None:
-                        service.terminate()
-                        try:
-                            service.wait(timeout=3)
-                        except subprocess.TimeoutExpired:
-                            service.kill()
-                            service.wait(timeout=2)
-                resources.callback(close_service)
-                pico = create_pico_source(logger=logging.getLogger('actor-live'), maximum_age=runtime.config['pico_max_age_s'])
-                resources.callback(pico.stop)
+                # Service, Pico reader and GMR run in the worker process; the
+                # control loop only reads its latest reference snapshot.
+                from deployment.vita_s100_aorta_30dof.actor_pico_worker import PicoReferenceProcess
+                pico = PicoReferenceProcess(runtime, buttons=False)
                 pico.start()
-                service_alive = lambda:service.poll() is None
+                resources.callback(pico.close)
+                service_alive = pico.process.is_alive
             transport = RealtimeBodyTransport(group=args.group, node_name='vita-actor-pico-live')
             resources.callback(transport.close)
             controller = PullController(group=args.group, node_name='vita-actor-pico-live', _transport=transport)
@@ -301,6 +294,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('mode', choices=('check', 'replay', 'state-check', 'shadow', 'live'))
     parser.add_argument('--root', type=Path, default=ROOT)
+    parser.add_argument('--policy', choices=tuple(POLICY_CONFIGS), default='sonic',
+                        help='pinned actor configuration: '+', '.join(f'{k}={v}' for k, v in POLICY_CONFIGS.items()))
     parser.add_argument('--backend', choices=('auto', 'sdk', 'ort'), default='auto')
     parser.add_argument('--threads', type=int, default=1)
     parser.add_argument('--human-height', type=float, default=None,
@@ -355,7 +350,7 @@ def main():
         parser.error('Invalid step/duration/startup budget')
     logging.basicConfig(level=logging.INFO)
     runtime = ActorPicoRuntime(args.root, backend=args.backend, threads=args.threads,
-                               human_height=args.human_height)
+                               human_height=args.human_height, policy=args.policy)
     args.log = args.log or args.root/'outputs'/f'actor_pico_{args.mode}_{time.time_ns()}.jsonl'
     args.log.parent.mkdir(parents=True, exist_ok=True)
     with args.log.open('x', buffering=1024*1024) as stream:
@@ -366,10 +361,11 @@ def main():
             if row.get('record_type') in ('external_entered', 'external_exit', 'error', 'summary',
                                         'prepared_policy_candidate', 'startup_exit_failure', 'exit_failure'):
                 stream.flush()
-        write(dict(record_type='header', model=runtime.config['artifacts']['model'],
-                   contract=dict(input_dim=1520, action_dim=28, policy_hz=50),
+        write(dict(record_type='header', model=runtime.config['artifacts']['model'], policy=args.policy,
+                   contract=dict(input_dim=runtime.model.contract.input_dim, action_dim=28, policy_hz=50),
                    scope='supported_external_trial' if args.mode == 'live' else 'inference_only',
                    robot_id=args.robot_id, retargeter=runtime.config['retargeting'],
+                   gmr_engine='accelerated' if runtime.retarget.accelerated else 'pinned',
                    reference_delay_s=runtime.reference.delay, actions_sent=0))
         try:
             report = {'check': check, 'replay': replay, 'state-check': state_check,

@@ -3,6 +3,7 @@
 Importing this module creates no robot handles. Hardware setup belongs to the
 explicit CLI live entry. Injectable I/O lets offline tests exercise failures.
 """
+from collections import deque
 from dataclasses import replace
 import hashlib
 import json
@@ -18,6 +19,22 @@ import numpy as np
 STATE_AGE = .1
 STATUS_AGE = .5
 TARGET_PERIOD = .020
+# Policy ticks skipped in a row on stale BodyState before cancelling. While a
+# tick is skipped the firmware keeps interpolating/holding the last command
+# (interpolation max 100 ms, EXTERNAL watchdog 1000 ms).
+MAX_STALE_TICKS = 2
+# Firmware ingress_drop_count counts a valid command superseded by a newer one
+# before its control tick consumed it (latest wins), plus full control-request
+# queues. Occasional supersession is benign; a sustained rate is a fault.
+INGRESS_DROP_WINDOW = 1.
+MAX_INGRESS_DROPS = 10
+# Measured positions can sit slightly past advertised ranges at hard stops or
+# within calibration error. Commanded q keeps the exact advertised range.
+MEASURED_Q_MARGIN = .03
+
+
+class StaleStateError(TimeoutError):
+    """BodyState too old (or from the future) for this policy tick."""
 
 
 def phase(status):
@@ -169,9 +186,9 @@ class CommandEnvelope:
         command = replace(self.profile_command, joints=tuple(
             replace(j, q=float(state.q[i])) if self.limits[i] else j
             for i, j in enumerate(self.profile_command.joints)))
-        self.check(command)
+        self.check(command, q_margin=MEASURED_Q_MARGIN)
 
-    def check(self, command):
+    def check(self, command, q_margin=0.):
         if len(command.joints) != 31:
             raise ValueError('Command must contain exactly 31 slots')
         for name, joint, ranges in zip(self.body.joint_names, command.joints, self.limits):
@@ -188,15 +205,23 @@ class CommandEnvelope:
                 if bounds is None:
                     continue  # Validated by the firmware's parallel ankle adapter.
                 low, high = bounds
+                if key == 'q':
+                    low, high = low-q_margin, high+q_margin
                 if not low <= value <= high:
                     raise ValueError(f'{name}.{key}={value} outside [{low}, {high}]')
 
 
 class Inputs:
+    """Body31 feedback plus, when following automatically, the Pico worker snapshot.
+
+    ``pico`` is a PicoReferenceProcess-like worker (connect/snapshot). GMR and
+    the reference window run in that process; reading never retargets here.
+    """
     def __init__(self, runtime, controller, pico, clock):
         self.runtime, self.controller, self.pico, self.clock = runtime, controller, pico, clock
         self.previous_stamp = 0
         self.last_pico_received = None
+        self.snapshot = None
         self.pico_max_age = runtime.config['pico_max_age_s']
 
     def validate_state(self, state):
@@ -220,23 +245,30 @@ class Inputs:
         ages = self.ages(state)
         detail = ', '.join(f'{k}={v:.3f}' for k,v in ages.items())
         detail += f', state_id={state.state_id}, limit_ms={STATE_AGE*1000:g}'
+        if state.ts_state_real_us <= 0 or state.ts_state_pub_us <= 0:
+            raise ValueError('BodyState source/publication timestamps are missing: '+detail)
         if not 0 <= ages['receipt_age_ms'] <= STATE_AGE*1000:
-            raise TimeoutError('BodyState local receipt is stale/future: '+detail)
-        for stamp, age in ((state.ts_state_real_us, ages['source_age_ms']),
-                           (state.ts_state_pub_us, ages['publication_age_ms'])):
-            if stamp <= 0 or not -5 <= age <= STATE_AGE*1000:
-                raise TimeoutError('BodyState source is stale or S100 clock contract differs: '+detail)
+            raise StaleStateError('BodyState local receipt is stale/future: '+detail)
+        # As in the SDK WBC demo, gate on local receipt and producer publication
+        # age. The sensor stamp age is reported in the detail only.
+        if not -5 <= ages['publication_age_ms'] <= STATE_AGE*1000:
+            raise StaleStateError('BodyState publication is stale or S100 clock contract differs: '+detail)
 
     def read(self, timeout=0):
         state = self.controller.wait_state(timeout)
         q, dq, root, gyro = self.validate_state(state)
-        sample = self.pico.step() if self.pico is not None else None
-        if sample is not None:
-            body, _, metadata = sample
-            self.runtime.push_pico(body, int(metadata['timestamp_ns']),
-                received_monotonic=float(metadata['timestamp_monotonic']), robot_root=root)
-            self.last_pico_received = float(metadata['timestamp_monotonic'])
+        if self.pico is not None:
+            self.pico.connect(root)  # Idempotent; the worker starts on first feedback.
+            snapshot = self.pico.snapshot()
+            if snapshot.get('state') == 'failed':
+                raise RuntimeError('Pico input worker failed: '+str(snapshot.get('error')))
+            if 'received_monotonic' in snapshot:
+                self.last_pico_received = float(snapshot['received_monotonic'])
+            self.snapshot = snapshot
         return state, q, dq, root, gyro
+
+    def reference_ready(self):
+        return self.snapshot is not None and self.snapshot.get('state') == 'ready'
 
     def require_pico(self):
         stamp = self.last_pico_received
@@ -248,6 +280,21 @@ class StatusGuard:
     def __init__(self, clock, initial_actions=('PASSIVE',)):
         self.clock, self.identity, self.changed = clock, None, clock.monotonic()
         self.initial_actions = initial_actions
+        self.drops = deque()
+
+    def ingress_drops(self, status, entered):
+        total = status.ingress_drop_count-entered.ingress_drop_count
+        if total < 0:
+            raise RuntimeError('EXTERNAL ownership/state or reject/drop counters changed')
+        now = self.clock.monotonic()
+        self.drops.append((now, total))
+        while len(self.drops) > 1 and self.drops[1][0] <= now-INGRESS_DROP_WINDOW:
+            self.drops.popleft()
+        recent = total-self.drops[0][1]
+        if recent > MAX_INGRESS_DROPS:
+            raise RuntimeError(f'Firmware superseded {recent} EXTERNAL commands within '
+                               f'{INGRESS_DROP_WINDOW:g} s (limit {MAX_INGRESS_DROPS})')
+        return total
 
     def check(self, status, entered=None):
         if status is None:
@@ -265,8 +312,10 @@ class StatusGuard:
                                    '/'.join(self.initial_actions)+'/IDLE')
         elif (status.current_action != 'EXTERNAL' or phase(status) != 'RUNNING'
               or status.timeout_hold or any(getattr(status, key) != getattr(entered, key)
-                  for key in ('generation', 'client_id', 'lease_id', 'reject_count', 'ingress_drop_count'))):
+                  for key in ('generation', 'client_id', 'lease_id', 'reject_count'))):
             raise RuntimeError('EXTERNAL ownership/state or reject/drop counters changed')
+        else:
+            self.ingress_drops(status, entered)
         return status
 
 
@@ -304,6 +353,29 @@ def manual_reference(runtime, snapshot, now):
         source_gap_s=float(snapshot.get('source_gap_s',0.)),
         retarget_ms=float(snapshot['retarget_ms']),
         gmr_task_error=float(snapshot['gmr_task_error']))
+
+
+def reference_yaw(runtime, motion, root):
+    """Heading offset aligning the GMR world root to the measured robot heading."""
+    return runtime.math.yaw(root)-runtime.math.yaw(motion.quat[runtime.reference.current_index])
+
+
+def pico_reference_command(runtime, snapshot, now, *, q, dq, root, gyro, yaw_offset=None):
+    """Policy command on a worker snapshot; a late reference holds its current frame."""
+    motion, diagnostics = manual_reference(runtime, snapshot, now)
+    if yaw_offset is None:
+        yaw_offset = reference_yaw(runtime, motion, root)
+    motion, diagnostics['reference_hold'] = runtime.hold_stale_reference(
+        motion, diagnostics['pico_age_s'])
+    command, obs, row = runtime.infer_motion_command(motion, q=q, dq=dq,
+        root=root, gyro=gyro, diagnostics=diagnostics, yaw_offset=yaw_offset,
+        ref_time=runtime.reference.ref_time)
+    row['pico_reference'] = dict(q=motion.q.tolist(), root_wxyz=motion.quat.tolist(),
+        base=motion.base.tolist(), ref_time=runtime.reference.ref_time,
+        raw_body_poses=snapshot.get('raw_body_poses'),
+        source_log=snapshot.get('source_log'),
+        timestamp_ns=snapshot.get('pico_timestamp_ns'), yaw_offset=yaw_offset)
+    return command, obs, row
 
 
 def next_policy_deadline(deadline, now, period):
@@ -378,7 +450,7 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
         status = controller.status
         if status is not None:
             guard.check(status)
-        if (not requires_pico or runtime.reference.ready()) and status is not None:
+        if (not requires_pico or inputs.reference_ready()) and status is not None:
             if requires_pico:
                 inputs.require_pico()
             if auto:
@@ -391,8 +463,8 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
                 break
             started = clock.monotonic()
             if requires_pico:
-                command, obs, row = runtime.infer_command(q=q, dq=dq, root=root, gyro=gyro,
-                    now_monotonic=started, maximum_pico_age=pico_max_age)
+                command, obs, row = pico_reference_command(runtime, inputs.snapshot, started,
+                    q=q, dq=dq, root=root, gyro=gyro)
             else:
                 motion = runtime.math.Motion.hold(runtime.model.contract.default)
                 motion = motion.lead_in(q, root, runtime.config['body_profile']['lead_in'])
@@ -410,7 +482,7 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
     # Display and record actual targets/gains; starting live requests motion
     # directly, without a second typed MOVE prompt.
     print('ACTOR_LIVE_REVIEW '+json.dumps(dict(robot_id=args.robot_id,
-        model=runtime.config['artifacts']['model'], config=receipt,
+        policy=runtime.policy_name, model=runtime.config['artifacts']['model'], config=receipt,
         stand_only=args.stand_only, seconds=args.seconds,
         manual_pico=manual, auto_start=auto, entry_policy='policy-online',
         wait_pico=wait_pico, auto_pico=auto_pico,
@@ -522,6 +594,27 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
             manual_pico.connect(root)
             print('PICO_WAIT: receiver starting; ONNX stand does not depend on receiving Pico',flush=True)
             write(dict(record_type='pico_connect_requested',automatic=True,actions_sent=0))
+        stale_ticks = 0
+        logged_drops = entered.ingress_drop_count
+
+        def skip_stale(phase_name, error, **details):
+            nonlocal stale_ticks
+            stale_ticks += 1
+            cancel = stale_ticks > MAX_STALE_TICKS
+            write(dict(record_type='body_state_age_failure', phase=phase_name,
+                       consecutive_ticks=stale_ticks, action='cancel' if cancel else 'skip_tick',
+                       actions_sent=sent_count, error=str(error), **details))
+            if cancel:
+                raise StaleStateError(f'BodyState stale for {stale_ticks} consecutive policy ticks: {error}')
+
+        def advance(current):
+            following, missed = next_policy_deadline(current, clock.monotonic(), runtime.model.contract.period)
+            report['missed_policy_ticks'] += missed
+            if missed:
+                write(dict(record_type='policy_ticks_skipped', missed_ticks=missed,
+                           total_missed_ticks=report['missed_policy_ticks'], actions_sent=sent_count))
+            return following
+
         while not stop.is_set() and clock.monotonic() < end:
             if requires_pico and not service_alive():
                 raise RuntimeError('Pico service exited')
@@ -531,9 +624,18 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
             cycle = clock.monotonic()
             cpu_clock = getattr(clock,'thread_time',None)
             cpu_start = cpu_clock() if cpu_clock is not None else None
-            guard.check(controller.status, entered)
+            status = guard.check(controller.status, entered)
+            if status.ingress_drop_count != logged_drops:
+                write(dict(record_type='firmware_ingress_drop', previous=logged_drops,
+                           count=status.ingress_drop_count, actions_sent=sent_count))
+                logged_drops = status.ingress_drop_count
             status_end = clock.monotonic()
-            state, q, dq, root, gyro = inputs.read(0)
+            try:
+                state, q, dq, root, gyro = inputs.read(0)
+            except StaleStateError as error:
+                skip_stale('at_read', error)
+                deadline = advance(deadline)
+                continue
             state_age_at_read = inputs.ages(state)
             state_end = clock.monotonic()
             if requires_pico:
@@ -617,27 +719,24 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
                         tracking = True
                         # GMR keeps its world root. Align heading at each new
                         # engagement using the current measured robot heading.
-                        tracking_yaw = runtime.math.yaw(root)-runtime.math.yaw(motion.quat[0])
+                        tracking_yaw = reference_yaw(runtime, motion, root)
                         print('PICO_TRACKING: same EXTERNAL session and policy history.', flush=True)
                         write(dict(record_type='tracking_started',actions_sent=sent_count,
                                    reference_yaw_offset=tracking_yaw))
             if manual and tracking:
-                motion, diagnostics = manual_reference(runtime, snapshot, clock.monotonic())
-                command, obs, row = runtime.infer_motion_command(motion, q=q, dq=dq,
-                    root=root, gyro=gyro, diagnostics=diagnostics, yaw_offset=tracking_yaw)
-                row['pico_reference'] = dict(q=motion.q.tolist(), root_wxyz=motion.quat.tolist(),
-                    raw_body_poses=snapshot.get('raw_body_poses'),
-                    source_log=snapshot.get('source_log'),
-                    timestamp_ns=snapshot.get('pico_timestamp_ns'), yaw_offset=tracking_yaw)
+                command, obs, row = pico_reference_command(runtime, snapshot, clock.monotonic(),
+                    q=q, dq=dq, root=root, gyro=gyro, yaw_offset=tracking_yaw)
             elif requires_pico and elapsed >= preparation:
                 if not tracking:
-                    if not runtime.reference.ready():
+                    if not inputs.reference_ready():
                         raise TimeoutError('Pico reference window not ready after preparation')
-                    runtime.align_reference_yaw(root)
+                    motion, _ = manual_reference(runtime, inputs.snapshot, clock.monotonic())
+                    tracking_yaw = reference_yaw(runtime, motion, root)
                     tracking = True
-                    write(dict(record_type='tracking_started', actions_sent=sent_count))
-                command, obs, row = runtime.infer_command(q=q, dq=dq, root=root, gyro=gyro,
-                    now_monotonic=clock.monotonic(), maximum_pico_age=pico_max_age)
+                    write(dict(record_type='tracking_started', actions_sent=sent_count,
+                               reference_yaw_offset=tracking_yaw))
+                command, obs, row = pico_reference_command(runtime, inputs.snapshot, clock.monotonic(),
+                    q=q, dq=dq, root=root, gyro=gyro, yaw_offset=tracking_yaw)
             else:
                 command, obs, row = runtime.infer_motion_command(lead, q=q, dq=dq,
                     root=root, gyro=gyro, ref_time=reference_time, yaw_offset=offset)
@@ -649,13 +748,13 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
                 thread_cpu_ms=(cpu_clock()-cpu_start)*1000 if cpu_start is not None else None)
             try:
                 inputs.fresh(state)
-            except TimeoutError as error:
-                write(dict(record_type='body_state_age_failure',phase='before_publish',
-                    state_id=int(state.state_id),actions_sent=sent_count,
-                    at_read=state_age_at_read,at_failure=inputs.ages(state),
-                    compute_ms=(compute_end-cycle)*1000,
-                    policy_ms=row.get('total_ms'),error=str(error)))
-                raise
+            except StaleStateError as error:
+                # Policy history already holds this tick; only publication is skipped.
+                skip_stale('before_publish', error, state_id=int(state.state_id),
+                    at_read=state_age_at_read, at_failure=inputs.ages(state),
+                    compute_ms=(compute_end-cycle)*1000, policy_ms=row.get('total_ms'))
+                deadline = advance(deadline)
+                continue
             if requires_pico:
                 inputs.require_pico()
             if manual and tracking:
@@ -673,6 +772,7 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
             before = clock.monotonic()
             sent = controller.publish(command)  # SDK alone owns session + sequence.
             sent_count += 1
+            stale_ticks = 0
             policy_tick += 1
             if not tracking:
                 stand_tick += 1
@@ -700,11 +800,7 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
                 print(f'ACTOR_LIVE steps={sent_count} stage={stage}', flush=True)
             complete = clock.monotonic()
             record_period_overrun(write,'complete_cycle',complete-cycle,sent_count)
-            deadline,missed = next_policy_deadline(deadline,clock.monotonic(),runtime.model.contract.period)
-            report['missed_policy_ticks'] += missed
-            if missed:
-                write(dict(record_type='policy_ticks_skipped',missed_ticks=missed,
-                           total_missed_ticks=report['missed_policy_ticks'],actions_sent=sent_count))
+            deadline = advance(deadline)
         report['stopped_by_signal'] = stop.is_set()
         report['elapsed_s'] = clock.monotonic()-start
         report['stop_reason'] = 'operator_stop' if stop.is_set() else 'duration_elapsed'

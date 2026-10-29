@@ -1,0 +1,247 @@
+{
+  "schema": "vita_actor_pico_shadow_v1",
+  "scope": "inference_only",
+  "policy_kind": "supermimic_vita02a_tracking",
+  "artifacts": {
+    "model": {
+      "path": "artifacts/supermimic/supermimic_vita02a.onnx",
+      "sha256": "94df5db3662d7f30c8ab59c2e21862fc2f70b745d5039691cd4664fa3650d143",
+      "bytes": 36075257,
+      "source_name": "supermimic_vita02a.onnx"
+    },
+    "urdf": {
+      "path": "artifacts/output_envelopes.motion.urdf",
+      "sha256": "83ce0b3ee9758889e398c5c6bb9b59b14347dfbf9a9d3d1602f650d26dade894"
+    },
+    "gmr_source_0": {
+      "path": "third_party/motion_stream_bridge/motion_stream_bridge/gmr_lite/__init__.py",
+      "sha256": "87292d7465ed4e1568c3e3dc1d09679558204edc59f59429c17ff733eacf1f13"
+    },
+    "gmr_source_1": {
+      "path": "third_party/motion_stream_bridge/motion_stream_bridge/gmr_lite/retarget.py",
+      "sha256": "20df57d111055b9a2de0fcaaac115ca8acb8a6659d1d0d989f34f0ca51056d0d"
+    },
+    "gmr_source_2": {
+      "path": "third_party/motion_stream_bridge/motion_stream_bridge/gmr_lite/streamer.py",
+      "sha256": "b61e4b5b3d33ece5b01d3c9254bc1274cf6afb6f78f27a6e354740c64f525f18"
+    },
+    "gmr_source_3": {
+      "path": "third_party/motion_stream_bridge/motion_stream_bridge/gmr_lite/geom_utils.py",
+      "sha256": "cdd7e6c0a3f4d1ef6170864f152f5963e8918d30259e995d13bab1f43d6abf05"
+    },
+    "gmr_source_4": {
+      "path": "third_party/motion_stream_bridge/motion_stream_bridge/gmr_lite/configs/xrobot_to_vita02a.json",
+      "sha256": "5116a7ea3aabd8703c793f6143cbbba73f3bad5bd5c808b605f13b85048949b1"
+    },
+    "gmr_source_5": {
+      "path": "third_party/motion_stream_bridge/motion_stream_bridge/gmr_lite/robots/vita02a/vita02a_nomesh.xml",
+      "sha256": "53e87f274a726e64fe36403be7b24aacb283fb954a4b7c71d877b08f3124769b"
+    }
+  },
+  "sdk_version": "0.2.1",
+  "sdk_commit": "f411caeff5c98a4b933f0cac084b03aabfefd763",
+  "sdk_sources": {
+    "wbc_tracking_policy.py": "8bf9ecbcce9d06fde34eaaa817fe7966354958be012f74af159cfd711ce53b9e",
+    "_policy_state.py": "c416d610d85aec54ac78a3b786aba412273dde945c7dd84329c01d3f0b4aad82",
+    "body_types.py": "1b4fdc11b96d851a0a348b90d8fce8a4d6cfb24ded35827c5b9b7268ea5a16ec"
+  },
+  "body_profile": {
+    "joint_limits": {
+      "left_hip_pitch_joint": [
+        -2.879793,
+        1.745329
+      ],
+      "right_hip_pitch_joint": [
+        -2.879793,
+        1.745329
+      ],
+      "waist_yaw_joint": [
+        -1.570796,
+        1.570796
+      ],
+      "left_hip_roll_joint": [
+        -0.436332,
+        2.181662
+      ],
+      "right_hip_roll_joint": [
+        -2.181662,
+        0.436332
+      ],
+      "waist_pitch_joint": [
+        -0.523599,
+        0.523599
+      ],
+      "left_hip_yaw_joint": [
+        -1.570796,
+        1.570796
+      ],
+      "right_hip_yaw_joint": [
+        -1.570796,
+        1.570796
+      ],
+      "left_shoulder_pitch_joint": [
+        -2.565634,
+        2.565634
+      ],
+      "right_shoulder_pitch_joint": [
+        -2.565634,
+        2.565634
+      ],
+      "left_knee_joint": [
+        0.0,
+        2.181662
+      ],
+      "right_knee_joint": [
+        0.0,
+        2.181662
+      ],
+      "left_shoulder_roll_joint": [
+        -0.235619,
+        2.277655
+      ],
+      "right_shoulder_roll_joint": [
+        -2.277655,
+        0.235619
+      ],
+      "left_ankle_pitch_joint": [
+        -0.751,
+        0.414
+      ],
+      "right_ankle_pitch_joint": [
+        -0.751,
+        0.414
+      ],
+      "left_shoulder_yaw_joint": [
+        -2.45829625,
+        2.4281675
+      ],
+      "right_shoulder_yaw_joint": [
+        -2.4281675,
+        2.45829625
+      ],
+      "left_ankle_roll_joint": [
+        -0.43625,
+        0.43625
+      ],
+      "right_ankle_roll_joint": [
+        -0.43625,
+        0.43625
+      ],
+      "left_elbow_joint": [
+        -0.667414,
+        2.421819
+      ],
+      "right_elbow_joint": [
+        -0.667414,
+        2.421819
+      ],
+      "left_wrist_roll_joint": [
+        -2.321288,
+        2.321288
+      ],
+      "right_wrist_roll_joint": [
+        -2.32129,
+        2.32129
+      ],
+      "left_wrist_yaw_joint": [
+        -0.912807,
+        1.70519
+      ],
+      "right_wrist_yaw_joint": [
+        -1.70519,
+        0.912807
+      ],
+      "left_wrist_pitch_joint": [
+        -1.87099,
+        1.96873
+      ],
+      "right_wrist_pitch_joint": [
+        -1.87099,
+        1.96873
+      ]
+    },
+    "fixed_joints": {
+      "neck_pitch_joint": {
+        "q": 0.0,
+        "kp": 20.0,
+        "kd": 1.0
+      },
+      "neck_yaw_joint": {
+        "q": 0.0,
+        "kp": 20.0,
+        "kd": 1.0
+      }
+    },
+    "ankle_clamp_feedforward": true,
+    "lead_in": {
+      "speed_q_per_s": 1.2,
+      "min_duration_s": 0.3,
+      "max_duration_s": 3.0,
+      "stand_on_activate": true
+    },
+    "fall_tilt_threshold_rad": 0.8,
+    "schema_version": 1,
+    "command_slots": 31,
+    "state_slots": 31,
+    "source": "vita-robot 6f674d249: actions/policy_profiles/vt_human_v2_tracking_asample.yaml",
+    "body_joint_order": [
+      "left_hip_pitch_joint",
+      "left_hip_roll_joint",
+      "left_hip_yaw_joint",
+      "left_knee_joint",
+      "left_ankle_pitch_joint",
+      "left_ankle_roll_joint",
+      "right_hip_pitch_joint",
+      "right_hip_roll_joint",
+      "right_hip_yaw_joint",
+      "right_knee_joint",
+      "right_ankle_pitch_joint",
+      "right_ankle_roll_joint",
+      "waist_yaw_joint",
+      "waist_pitch_joint",
+      "waist_roll_joint",
+      "left_shoulder_pitch_joint",
+      "left_shoulder_roll_joint",
+      "left_shoulder_yaw_joint",
+      "left_elbow_joint",
+      "left_wrist_roll_joint",
+      "left_wrist_yaw_joint",
+      "left_wrist_pitch_joint",
+      "right_shoulder_pitch_joint",
+      "right_shoulder_roll_joint",
+      "right_shoulder_yaw_joint",
+      "right_elbow_joint",
+      "right_wrist_roll_joint",
+      "right_wrist_yaw_joint",
+      "right_wrist_pitch_joint",
+      "neck_pitch_joint",
+      "neck_yaw_joint"
+    ]
+  },
+  "pico_max_age_s": 0.6,
+  "pico_hold_age_s": 0.25,
+  "provenance": {
+    "tracking_checkout_commit": "5eb34b2",
+    "tracking_profile_source": "humanoid-sdk-tracking/examples/groot_tracking_asample.json",
+    "tracking_profile_sha256": "7969af4d52d44e7a0ac4c6060a74300b233715c6a0430080c06c843629f2b1e7",
+    "model_source": "trackerlab-supermimic scripts/rls/supermimic/export_vita_deployment.py",
+    "retargeter": "Unmodified motion-stream-bridge Vita02A GMR, named-joint selection",
+    "training_checkpoint": {
+      "run": "logs/vita02a_full_library/resume_nopush_8gpu_24h_20261025",
+      "iteration": 72188,
+      "sha256": "a024ba154a4fc791f9ecfaceeffb7c84faad40967cf2fe535a4b978c0aef3e3b"
+    }
+  },
+  "retargeting": {
+    "implementation": "motion_stream_bridge_gmr_vita02a",
+    "source_commit": "763f5607c3f0accb61a415cfd676af54b72e1232",
+    "human_height_m": 1.75,
+    "robot": "vita02a",
+    "offset_to_ground": true
+  },
+  "reference_window": {
+    "past_frames": 8,
+    "tail_frames": 1,
+    "note": "Past frames feed the SONIC sigma-2 reference velocity filters without latency; one tail frame gives an exact forward difference at goal frame f+10. Delay 220 ms."
+  }
+}

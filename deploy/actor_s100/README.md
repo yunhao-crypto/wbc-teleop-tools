@@ -8,6 +8,10 @@ separately and are excluded from Git. The model identity,
 size, SHA256 and installation path are pinned in `config/actor_pico.json`
 (`artifacts.model`) and `manifest.json` (`external_resources`). Supply the separately delivered
 model matching those records; the local filename does not select its version.
+The optional SuperMimic actor has its own pinned model in
+`config/actor_pico_supermimic.json`; install it with
+`--policy supermimic --model /path/to/supermimic_vita02a.onnx` (see
+[policy selection](../../README_ACTOR_PICO.md#policy-selection)).
 Use a fresh checkout for a changed model delivery. A different existing
 model/environment is preserved rather than overwritten.
 The URDF, source code, tests and configuration are tracked. No original `venv`, `reference`,
@@ -71,9 +75,9 @@ source /app/script/env.sh
 python3.10 scripts/bootstrap_actor_s100.py --model /path/to/policy.onnx
 # Optional alternative, compiling the binding locally:
 # python3.10 scripts/bootstrap_actor_s100.py --model /path/to/policy.onnx --build-pico
-bash scripts/start_actor_pico.sh check --steps 100
-bash scripts/start_actor_pico.sh state-check --seconds 5
-bash scripts/start_actor_pico.sh shadow --seconds 60 --group default
+bash scripts/start_actor_pico.sh sonic check --steps 100
+bash scripts/start_actor_pico.sh sonic state-check --seconds 5
+bash scripts/start_actor_pico.sh sonic shadow --seconds 60 --group default
 ```
 
 Supply the model from your model delivery location. The bootstrap validates its
@@ -124,7 +128,8 @@ For the reviewed no-gripper setup the effective file was
 `/app/locomotion/config/locomotion_foot_humanoid_asample_none.yaml`; do not assume
 that selection on another robot. No hardware configuration is changed here.
 
-The no-argument launcher subsequently requests FIXED_STAND and EXTERNAL motion.
+The launcher subsequently requests FIXED_STAND and EXTERNAL motion with
+`bash scripts/start_actor_pico.sh sonic` or `supermimic`; it has no default policy.
 That requires current on-site authorization/support, independent of configuration.
 Height defaults to 1.75 m; use `--human-height` for the actual operator.
 See the [run guide](../../README_ACTOR_PICO.md#default-local-startup).
@@ -156,7 +161,8 @@ pick a new SDK just by version date or bypass its schema guard.
 
 Stage intended changes, run `scripts/seal_actor_delivery.py`, stage the regenerated
 manifest and `ACTOR-PICO-MANIFEST.json`, then run
-`scripts/verify_actor_delivery.py --host-inference --model /path/to/policy.onnx`.
+`scripts/verify_actor_delivery.py --host-inference --model /path/to/policy.onnx`
+(add `--supermimic-model /path/to/supermimic_vita02a.onnx` to also check that actor).
 For host inference, first install the separate
 `requirements-host-check.txt` into a clean Linux x86_64 Python 3.10 venv; it
 includes NumPy, ONNX Runtime, GMR and their host dependencies, not ARM binaries.

@@ -218,6 +218,7 @@
     ]
   },
   "pico_max_age_s": 0.6,
+  "pico_hold_age_s": 0.25,
   "provenance": {
     "tracking_checkout_commit": "5eb34b2",
     "tracking_profile_source": "humanoid-sdk-tracking/examples/groot_tracking_asample.json",

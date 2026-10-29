@@ -6,20 +6,20 @@
   "files": [
     {
       "path": "README_ACTOR_PICO.md",
-      "sha256": "05c33cc1e05ba9ca9d8503a806b4b1d88f75ef75b8ffb2b9535658b002bd9ab6",
-      "bytes": 28861,
+      "sha256": "8543fdb3436aa86d78bc0f62e89f6645e3e08dd9baee746e9d997d0e6ea974e4",
+      "bytes": 33671,
       "mode": "0o644"
     },
     {
       "path": "config/actor_pico.json",
-      "sha256": "3398a2e4b5669ffd957221061c03652b34e7ead536a46163087d3858b5deef47",
-      "bytes": 6549,
+      "sha256": "65ba2f9fe5add753964ed6e5706332d2f96df66105da6ab0e1b5a1de7a45f1e8",
+      "bytes": 6576,
       "mode": "0o644"
     },
     {
       "path": "scripts/actor_pico.py",
-      "sha256": "c584ddba9ec79740dd3113be32aafca8175789ee4704bfbf7561c44a841c47b6",
-      "bytes": 22737,
+      "sha256": "298a943fd3655ec5d01da385a03b0031c2217893726b59240bb3acd573a3559d",
+      "bytes": 22570,
       "mode": "0o755"
     },
     {
@@ -30,20 +30,20 @@
     },
     {
       "path": "scripts/start_actor_pico.sh",
-      "sha256": "6916057605a256e30f2e22eec416a1eb97e5c198a6223db67667dc537bc62557",
-      "bytes": 2364,
+      "sha256": "d832e1dd6c6a174712f459df3eb2ebf0dd73ef5d8bd2d7059718fb14b192ab73",
+      "bytes": 4166,
       "mode": "0o755"
     },
     {
       "path": "src/deployment/vita_s100_aorta_30dof/actor_pico_reference.py",
-      "sha256": "7a927e9c9cf8150e56f7b196834ab518a8641ac5640c88a234f03e54d45f019a",
-      "bytes": 3190,
+      "sha256": "7788ae57558ef2d1035126a2b6341768dda953df8105081804522188c36208c8",
+      "bytes": 3389,
       "mode": "0o644"
     },
     {
       "path": "src/deployment/vita_s100_aorta_30dof/actor_pico_runtime.py",
-      "sha256": "e8caa9abf36f26384b8858e5c507f3c388b4cae62d8ae8110e1061f61d6714b0",
-      "bytes": 9094,
+      "sha256": "763f7cd54bd18c57037b4ee287594a3c883b2ad33e399d012763a08ac95c95f6",
+      "bytes": 11545,
       "mode": "0o644"
     },
     {
@@ -66,32 +66,32 @@
     },
     {
       "path": "tests/test_actor_pico.py",
-      "sha256": "f900efbd8add0d48e5ebe8ec22b33e3bdc11d4b215347aa223654e528a53a9f8",
-      "bytes": 10914,
+      "sha256": "db6b4667749bd1fc40aaf27e5494c1acda55a295a3a75c7ad8669769eb7bd04d",
+      "bytes": 13227,
       "mode": "0o644"
     },
     {
       "path": "src/deployment/vita_s100_aorta_30dof/actor_pico_live.py",
-      "sha256": "0dd2e8abd10254a7f4c1cdc935e3a2bdc2267a61ddb3602483b81b4db60c035d",
-      "bytes": 41421,
+      "sha256": "51228b3fc279594b4389151a8abcb233ac822628e2ec76d551b17a63c8bc974e",
+      "bytes": 46070,
       "mode": "0o644"
     },
     {
       "path": "tests/test_actor_pico_live.py",
-      "sha256": "25a792daf9d025f14275684729b2ecd117d0db2ce19fa22f13ae6fc0f217ad58",
-      "bytes": 76023,
+      "sha256": "71cfff7d9c3082616c479f2b5f04a7d852149dae45113ff98b5132175a8366e6",
+      "bytes": 89193,
       "mode": "0o644"
     },
     {
       "path": "src/deployment/vita_s100_aorta_30dof/actor_pico_worker.py",
-      "sha256": "ecf7d6a0510e276335cac613b1832917463d67bc5edbf5c452bc62d6438c2215",
-      "bytes": 7973,
+      "sha256": "0c15a63f7d91488d02917effc6d97082ce4d364d508714234351f36666fbd761",
+      "bytes": 8796,
       "mode": "0o644"
     },
     {
       "path": "src/deployment/vita_s100_aorta_30dof/actor_pico_startup.py",
-      "sha256": "a850b9d96c231b8b9ccdcc9b09c4316a196a58ef8c5731a06074ca28ed57d19a",
-      "bytes": 12813,
+      "sha256": "c2decfaf4d287ed02956c14841f2a341cad7678d52def8e9ab291373eccc1f91",
+      "bytes": 12958,
       "mode": "0o644"
     },
     {
@@ -102,8 +102,8 @@
     },
     {
       "path": "scripts/replay_actor_candidate.py",
-      "sha256": "1ec2884096853e496b76206e31215b23f3fd939b10bc3a995cc6b6d89490e59f",
-      "bytes": 2450,
+      "sha256": "86a97cad758c8a88b78b713343a2290ea93d070617dd6019c6845eae95397d05",
+      "bytes": 2633,
       "mode": "0o644"
     },
     {
@@ -126,8 +126,8 @@
     },
     {
       "path": "src/deployment/vita_s100_aorta_30dof/actor_pico_gmr.py",
-      "sha256": "253dd60f3b3d46208cb13ac3077c17dc9328ef35b08ba735f0a30cd0100712c5",
-      "bytes": 3660,
+      "sha256": "8ea1da8c7ae89cdba26bf716d59251307bdde4ac6f70ddccf2a2d2cb49cb592d",
+      "bytes": 13312,
       "mode": "0o644"
     },
     {
@@ -213,6 +213,30 @@
       "sha256": "4cb5388e2da1c9fe039c3bcb421594b9ef85e0c9e7ca7efa23e4037da68e9364",
       "bytes": 4472,
       "mode": "0o644"
+    },
+    {
+      "path": "config/actor_pico_supermimic.json",
+      "sha256": "34ce91bbb9a7914006b2107e5aa0058a882fdc5903f5b48f59439b396e7c402f",
+      "bytes": 7141,
+      "mode": "0o644"
+    },
+    {
+      "path": "src/deployment/vita_s100_aorta_30dof/actor_supermimic.py",
+      "sha256": "d264d25178d445bb4e610727739c635ec28ff3a4990edb9584e26f8bcee461ef",
+      "bytes": 16154,
+      "mode": "0o644"
+    },
+    {
+      "path": "tests/test_actor_supermimic.py",
+      "sha256": "cb5515bc0568d6700bc2330dbb554f79f3edb680db69e6c3f5f15c11ccaefb68",
+      "bytes": 12228,
+      "mode": "0o644"
+    },
+    {
+      "path": "tests/fixtures/actor_pico/supermimic_fixture.npz",
+      "sha256": "d03e3675b9877b6c5cdf7d37c916d85a2f7ea6f7ee195b63112c6c0bc7953be7",
+      "bytes": 67210,
+      "mode": "0o644"
     }
   ],
   "permissions_restored": [
@@ -233,7 +257,13 @@
       "path": "artifacts/actor_g1/actor_g1.onnx",
       "sha256": "a341391a346e050caf11c40c6989336c658c445e3e124f12dcbe292d91324474",
       "bytes": 57652911,
-      "provision": "Supply separately using bootstrap_actor_s100.py --model"
+      "provision": "Supply separately using bootstrap_actor_s100.py --policy sonic --model"
+    },
+    {
+      "path": "artifacts/supermimic/supermimic_vita02a.onnx",
+      "sha256": "94df5db3662d7f30c8ab59c2e21862fc2f70b745d5039691cd4664fa3650d143",
+      "bytes": 36075257,
+      "provision": "Supply separately using bootstrap_actor_s100.py --policy supermimic --model"
     }
   ]
 }
