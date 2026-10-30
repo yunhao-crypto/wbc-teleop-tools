@@ -606,6 +606,57 @@ needed, profile the Python/NumPy task-objective assembly (about 41% of GMR
 CPU in the calibration); DAQP itself was about 5%. Historical logs lack
 per-frame GMR thread CPU/placement, so their entire delay cannot be attributed
 retroactively to one cause.
+
+### Full-compute shadow replay and alternating trials
+
+The [full-load replay receipt](deploy/actor_s100/full_load_replay_20261030.json)
+retains 25 trials of 1000 frozen GMR inputs and 18,821 native inference ticks
+from 2026-10-30. Pico was unavailable and the real right-wrist pitch feedback
+reported TIMEOUT (8), so these measurements use recorded robot feedback and
+a 90 Hz replay SDK shim. They do not validate live Pico reception, healthy
+real-time joint feedback or EXTERNAL motion.
+
+The committed runner reproduces the 13-trial placement matrix: N is the
+read-only subscription/queue/log baseline; A adds 50 Hz policy compute with
+unrestricted control threads; B restricts control to CPU 2–4 with GMR on
+CPU 1; C uses the same control mask with GMR allowed on CPU 0–1. Each trial
+uses a fresh process and records actual masks, frequency, temperature,
+wall/thread CPU time, full observations and skipped ticks. It uses only
+`PullStateSource`, rejects control publishers, and never sends actions.
+
+On the installed S100 checkout, use the deployment venv/model and the private
+peer configuration prepared by the documented state-check/shadow startup:
+
+```bash
+venv/bin/python scripts/bench_pico_full_load.py \
+  --pico replay --feedback recorded --frames 1000 \
+  --sequence NABABABACACAC --output /tmp/gmr_full_load_new
+```
+
+The output directory must be empty. `--pico live` tests actual reception;
+`--feedback live` requires healthy real feedback and does not fall back to
+recordings. The runner retains one receiver service across trials to avoid
+headset reconnects, and closes its owned processes on completion or failure.
+Input starts **before** control affinity is narrowed: applying `taskset` to
+the entire launcher would also restrict the input child's inherited mask.
+
+| Replay condition | Trials | Pooled mean GMR ms | Pooled P99 GMR ms |
+| --- | ---: | ---: | ---: |
+| A: unrestricted control, GMR CPU 1 | 6 | 17.880 | 36.782 |
+| B: control CPU 2–4, GMR CPU 1 | 9 | 12.675 | 24.628 |
+| C: control CPU 2–4, GMR CPU 0–1 | 3 | 14.037 | 27.218 |
+
+All 25,000 GMR qpos hashes matched and the shadow loops had no skipped ticks
+or compute cycles over 20 ms. The receipt also preserves six **experimental**
+native-objective trials: the second prototype reached pooled 10.118 ms mean
+and 19.464 ms P99, but only one of its three runs met both targets. Its native
+code, build scripts and binaries are excluded from this delivery, and D/E
+are not supported runner conditions. Large logs and prototype sources remain
+in the separately checksummed archive identified by the receipt.
+
+These results support testing layout B next with live Pico; they do not change
+the production control-affinity defaults or establish stable timing acceptance.
+
 ### TODO: robot42 hardware and deployment follow-ups
 
 Status: open. Source: session `robot42_test_20261029T220318`. Training-side

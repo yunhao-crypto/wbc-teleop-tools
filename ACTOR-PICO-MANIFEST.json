@@ -6,8 +6,8 @@
   "files": [
     {
       "path": "README_ACTOR_PICO.md",
-      "sha256": "d04ea8fedcd484d0ea59f74e6da57f1d60efb6ec545f766844e49c9e73e235bc",
-      "bytes": 40970,
+      "sha256": "77e2ab1efe9505d0b2d4355040cb93b3dc0e889c05f5c04b41ed548b83773922",
+      "bytes": 43725,
       "mode": "0o644"
     },
     {
@@ -290,6 +290,24 @@
       "path": "deploy/actor_s100/gmr_benchmark_20261030.json",
       "sha256": "a3ea0a9d632e49d6e6963f57693914ef61b64e7006432024b899e01085543fc3",
       "bytes": 3106,
+      "mode": "0o644"
+    },
+    {
+      "path": "scripts/bench_pico_full_load.py",
+      "sha256": "43eefcc7907f211d8f4eb820be5e4e5fec8c2e6c4b36064c11a3c9df273bab6b",
+      "bytes": 20263,
+      "mode": "0o644"
+    },
+    {
+      "path": "tests/test_actor_pico_full_load.py",
+      "sha256": "8089692f5e640b49674455c806dbd674e3d56a45f0ad2635a5d0d189741423c1",
+      "bytes": 3573,
+      "mode": "0o644"
+    },
+    {
+      "path": "deploy/actor_s100/full_load_replay_20261030.json",
+      "sha256": "8be3eaf3d3c039df024221ad1a67e020abe643123370b477240e08754ce6dcfa",
+      "bytes": 10947,
       "mode": "0o644"
     }
   ],

@@ -1,0 +1,412 @@
+{
+  "schema": "vita_s100_full_load_replay_verification_v1",
+  "date": "2026-10-30",
+  "base_commit": "fbd45604f0260c96d54b8d4b6b2afe4245ffdc54",
+  "scope": "Pico replay plus recorded robot feedback, real read-only Body31 subscriptions, 50Hz native inference/observation/DTO and full JSON logging; no actuation",
+  "constraints": {
+    "pico_live_unavailable": true,
+    "live_feedback_error": {
+      "body_slot": 28,
+      "joint": "right_wrist_pitch_joint",
+      "error": 8,
+      "error_name": "TIMEOUT"
+    },
+    "feedback_mode_authorized": "recorded",
+    "no_control_publishers": true,
+    "frequency_khz": 1500000
+  },
+  "frequency_changed": false,
+  "production_changed_during_measurement": false,
+  "total_trials": 25,
+  "gmr_frames": 25000,
+  "inference_ticks": 18821,
+  "control_skipped_ticks": 0,
+  "control_overruns": 0,
+  "all_gmr_outputs_identical": true,
+  "qpos_sha256": "846e629a40cb58e9755565f7e08ab30b8ae0876b0e384a9ba7eb8b70b9e39529",
+  "matrix_sequences": [
+    "NABABABACACAC",
+    "BDBDBD",
+    "BEBEBE"
+  ],
+  "included_runner": {
+    "path": "scripts/bench_pico_full_load.py",
+    "conditions": [
+      "N",
+      "A",
+      "B",
+      "C"
+    ],
+    "sequence": "NABABABACACAC",
+    "measured_trials": 13,
+    "measured_frames": 13000,
+    "measured_source_archive_member": "full_load_20261030/bench_full_load.py",
+    "measured_source_sha256": "f49281e2052c1099f7dfa3b3f1c51072fa085d0f3b76d2379c65b462a6c249e9",
+    "checkout_adaptations": [
+      "resolve root from scripts directory",
+      "reject existing result directories and invalid timeouts before startup",
+      "enforce readonly source and comparable non-actuating reports with explicit runtime errors"
+    ]
+  },
+  "experimental_measurements": {
+    "conditions": [
+      "D",
+      "E"
+    ],
+    "native_implementations_included": false,
+    "default_enabled": false,
+    "scope": "Historical measurements only; experimental native code/build/binaries remain in external archive and cannot be reproduced by this delivery runner.",
+    "numerical_equivalence": {
+      "host_full_clip_frames": 5107,
+      "native1_host": {
+        "calls": 18928,
+        "exact": true,
+        "max_H": 0.0,
+        "max_c": 0.0
+      },
+      "native2_host": {
+        "calls": 18928,
+        "exact": true,
+        "max_H": 0.0,
+        "max_c": 0.0
+      },
+      "native1_arm": {
+        "calls": 3876,
+        "exact": true,
+        "max_H": 0.0,
+        "max_c": 0.0
+      },
+      "native2_arm": {
+        "calls": 3876,
+        "exact": true,
+        "max_H": 0.0,
+        "max_c": 0.0
+      }
+    }
+  },
+  "aggregation": "Pooled per-frame statistics within each condition; per-trial means/P99 retained below. Initialization frames are included.",
+  "groups": {
+    "N": {
+      "label": "只读订阅/队列/日志，无50Hz推理",
+      "runs": 1,
+      "frames": 1000,
+      "run_mean_range_ms": [
+        13.658823,
+        13.658823
+      ],
+      "run_p99_range_ms": [
+        26.827987,
+        26.827987
+      ],
+      "target_pass_runs": 0,
+      "gmr_mean_ms": 13.658823,
+      "gmr_p99_ms": 26.827987,
+      "gmr_cpu_mean_ms": 10.634046
+    },
+    "A": {
+      "label": "50Hz推理，控制不绑核，GMR CPU1",
+      "runs": 6,
+      "frames": 6000,
+      "run_mean_range_ms": [
+        17.425632,
+        18.43345
+      ],
+      "run_p99_range_ms": [
+        34.829859,
+        37.906178
+      ],
+      "target_pass_runs": 0,
+      "gmr_mean_ms": 17.879794,
+      "gmr_p99_ms": 36.782048,
+      "gmr_cpu_mean_ms": 11.059994
+    },
+    "B": {
+      "label": "50Hz推理，控制CPU2–4，GMR CPU1",
+      "runs": 9,
+      "frames": 9000,
+      "run_mean_range_ms": [
+        12.191989,
+        12.981501
+      ],
+      "run_p99_range_ms": [
+        23.284536,
+        25.284866
+      ],
+      "target_pass_runs": 0,
+      "gmr_mean_ms": 12.674976,
+      "gmr_p99_ms": 24.627837,
+      "gmr_cpu_mean_ms": 9.965618
+    },
+    "C": {
+      "label": "50Hz推理，控制CPU2–4，GMR CPU0–1",
+      "runs": 3,
+      "frames": 3000,
+      "run_mean_range_ms": [
+        13.926303,
+        14.100329
+      ],
+      "run_p99_range_ms": [
+        26.881138,
+        27.88581
+      ],
+      "target_pass_runs": 0,
+      "gmr_mean_ms": 14.036889,
+      "gmr_p99_ms": 27.218233,
+      "gmr_cpu_mean_ms": 10.542982
+    },
+    "D": {
+      "label": "布局B + 原生FrameTask组装原型",
+      "runs": 3,
+      "frames": 3000,
+      "run_mean_range_ms": [
+        11.002745,
+        11.297497
+      ],
+      "run_p99_range_ms": [
+        21.353535,
+        21.578301
+      ],
+      "target_pass_runs": 0,
+      "gmr_mean_ms": 11.195487,
+      "gmr_p99_ms": 21.544456,
+      "gmr_cpu_mean_ms": 8.836156
+    },
+    "E": {
+      "label": "布局B + 原生FrameTask/Posture组装原型",
+      "runs": 3,
+      "frames": 3000,
+      "run_mean_range_ms": [
+        9.942893,
+        10.266102
+      ],
+      "run_p99_range_ms": [
+        18.720324,
+        19.920168
+      ],
+      "target_pass_runs": 1,
+      "gmr_mean_ms": 10.118473,
+      "gmr_p99_ms": 19.463666,
+      "gmr_cpu_mean_ms": 7.955012
+    }
+  },
+  "trials": [
+    {
+      "phase": "layout",
+      "index": 0,
+      "condition": "N",
+      "gmr_mean_ms": 13.658823,
+      "gmr_p99_ms": 26.827987,
+      "gmr_cpu_mean_ms": 10.634046
+    },
+    {
+      "phase": "layout",
+      "index": 1,
+      "condition": "A",
+      "gmr_mean_ms": 18.269035,
+      "gmr_p99_ms": 37.561487,
+      "gmr_cpu_mean_ms": 11.212321
+    },
+    {
+      "phase": "layout",
+      "index": 2,
+      "condition": "B",
+      "gmr_mean_ms": 12.430292,
+      "gmr_p99_ms": 23.756679,
+      "gmr_cpu_mean_ms": 9.798031
+    },
+    {
+      "phase": "layout",
+      "index": 3,
+      "condition": "A",
+      "gmr_mean_ms": 17.514133,
+      "gmr_p99_ms": 34.829859,
+      "gmr_cpu_mean_ms": 10.92244
+    },
+    {
+      "phase": "layout",
+      "index": 4,
+      "condition": "B",
+      "gmr_mean_ms": 12.981501,
+      "gmr_p99_ms": 24.730762,
+      "gmr_cpu_mean_ms": 10.197792
+    },
+    {
+      "phase": "layout",
+      "index": 5,
+      "condition": "A",
+      "gmr_mean_ms": 18.43345,
+      "gmr_p99_ms": 37.906178,
+      "gmr_cpu_mean_ms": 11.330829
+    },
+    {
+      "phase": "layout",
+      "index": 6,
+      "condition": "B",
+      "gmr_mean_ms": 12.692683,
+      "gmr_p99_ms": 24.558841,
+      "gmr_cpu_mean_ms": 9.935879
+    },
+    {
+      "phase": "layout",
+      "index": 7,
+      "condition": "A",
+      "gmr_mean_ms": 17.810265,
+      "gmr_p99_ms": 36.613772,
+      "gmr_cpu_mean_ms": 10.964661
+    },
+    {
+      "phase": "layout",
+      "index": 8,
+      "condition": "C",
+      "gmr_mean_ms": 13.926303,
+      "gmr_p99_ms": 27.88581,
+      "gmr_cpu_mean_ms": 10.476882
+    },
+    {
+      "phase": "layout",
+      "index": 9,
+      "condition": "A",
+      "gmr_mean_ms": 17.425632,
+      "gmr_p99_ms": 35.840023,
+      "gmr_cpu_mean_ms": 10.810792
+    },
+    {
+      "phase": "layout",
+      "index": 10,
+      "condition": "C",
+      "gmr_mean_ms": 14.100329,
+      "gmr_p99_ms": 27.195554,
+      "gmr_cpu_mean_ms": 10.580364
+    },
+    {
+      "phase": "layout",
+      "index": 11,
+      "condition": "A",
+      "gmr_mean_ms": 17.826251,
+      "gmr_p99_ms": 36.795876,
+      "gmr_cpu_mean_ms": 11.118924
+    },
+    {
+      "phase": "layout",
+      "index": 12,
+      "condition": "C",
+      "gmr_mean_ms": 14.084034,
+      "gmr_p99_ms": 26.881138,
+      "gmr_cpu_mean_ms": 10.571698
+    },
+    {
+      "phase": "native1",
+      "index": 0,
+      "condition": "B",
+      "gmr_mean_ms": 12.813558,
+      "gmr_p99_ms": 24.644991,
+      "gmr_cpu_mean_ms": 10.02583
+    },
+    {
+      "phase": "native1",
+      "index": 1,
+      "condition": "D",
+      "gmr_mean_ms": 11.297497,
+      "gmr_p99_ms": 21.384877,
+      "gmr_cpu_mean_ms": 8.863582
+    },
+    {
+      "phase": "native1",
+      "index": 2,
+      "condition": "B",
+      "gmr_mean_ms": 12.191989,
+      "gmr_p99_ms": 23.284536,
+      "gmr_cpu_mean_ms": 9.653926
+    },
+    {
+      "phase": "native1",
+      "index": 3,
+      "condition": "D",
+      "gmr_mean_ms": 11.002745,
+      "gmr_p99_ms": 21.353535,
+      "gmr_cpu_mean_ms": 8.804147
+    },
+    {
+      "phase": "native1",
+      "index": 4,
+      "condition": "B",
+      "gmr_mean_ms": 12.883232,
+      "gmr_p99_ms": 24.631488,
+      "gmr_cpu_mean_ms": 10.147439
+    },
+    {
+      "phase": "native1",
+      "index": 5,
+      "condition": "D",
+      "gmr_mean_ms": 11.286218,
+      "gmr_p99_ms": 21.578301,
+      "gmr_cpu_mean_ms": 8.84074
+    },
+    {
+      "phase": "native2",
+      "index": 0,
+      "condition": "B",
+      "gmr_mean_ms": 12.564141,
+      "gmr_p99_ms": 24.934433,
+      "gmr_cpu_mean_ms": 9.876437
+    },
+    {
+      "phase": "native2",
+      "index": 1,
+      "condition": "E",
+      "gmr_mean_ms": 10.146423,
+      "gmr_p99_ms": 19.802021,
+      "gmr_cpu_mean_ms": 7.968869
+    },
+    {
+      "phase": "native2",
+      "index": 2,
+      "condition": "B",
+      "gmr_mean_ms": 12.742511,
+      "gmr_p99_ms": 25.284866,
+      "gmr_cpu_mean_ms": 10.045042
+    },
+    {
+      "phase": "native2",
+      "index": 3,
+      "condition": "E",
+      "gmr_mean_ms": 9.942893,
+      "gmr_p99_ms": 19.920168,
+      "gmr_cpu_mean_ms": 7.826215
+    },
+    {
+      "phase": "native2",
+      "index": 4,
+      "condition": "B",
+      "gmr_mean_ms": 12.774874,
+      "gmr_p99_ms": 24.542981,
+      "gmr_cpu_mean_ms": 10.01019
+    },
+    {
+      "phase": "native2",
+      "index": 5,
+      "condition": "E",
+      "gmr_mean_ms": 10.266102,
+      "gmr_p99_ms": 18.720324,
+      "gmr_cpu_mean_ms": 8.069952
+    }
+  ],
+  "limitations": [
+    "No live Pico network reception: body/trigger readers use a 90Hz replay SDK shim. Native RPC/packet parsing overhead is absent.",
+    "Current real right-wrist feedback has TIMEOUT. Policy inputs use the recorded feedback, so this cannot validate live feedback health or EXTERNAL motion.",
+    "No control publisher, wire publication, firmware ingress/ack, or closed-loop physical response.",
+    "Three repeats per challenger with fixed order ABAB reduce order/temperature uncertainty but are not a randomized long-duration acceptance.",
+    "Native objective code is an isolated prototype, not part of the sealed production delivery. Full integration/version guards and live validation remain."
+  ],
+  "recommendation": "For the next live read-only trial, spawn input before pinning control to CPU2-4; retain GMR CPU1. Test the native2 prototype only after integration/guard checks. Do not claim stable <10ms/<20ms acceptance.",
+  "external_archive": {
+    "name": "robot_full_load_complete.tar.gz",
+    "distributed_in_git": false,
+    "files_verified": 187,
+    "bytes_verified": 1157186082,
+    "sha256": "42aae89b64a3d5fdab482f71eb100b903b92f389f76b458b0dc6f1cb7d436a97",
+    "gmr_runs": 25
+  },
+  "frames_per_trial": 1000,
+  "rounding": "Compact measurements use six decimal places in milliseconds; full precision is in the external raw archive."
+}

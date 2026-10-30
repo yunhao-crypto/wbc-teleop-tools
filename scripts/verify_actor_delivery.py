@@ -115,14 +115,16 @@ def main():
                  '--model', str(args.supermimic_model)], cwd=export, env=env)
         installer_tests = run_tests('tests/test_actor_delivery.py', cwd=export, env=env)
         for entry in ['scripts/bootstrap_actor_s100.py', 'scripts/configure_actor_s100.py',
-                      'scripts/bench_pico_gmr_live.py']:
+                      'scripts/bench_pico_gmr_live.py', 'scripts/bench_pico_full_load.py']:
             run([sys.executable, entry, '--help'], cwd=export, env=env)
+        full_load_tests = run_tests('tests/test_actor_pico_full_load.py', cwd=export, env=env)
         # Compile actual callback/parser/getter source without Python or ARM
         # libraries; no vendor SDK init or service is run by this regression.
         run([sys.executable, 'scripts/state_test_pico_snapshot.py'], cwd=export, env=env)
         result = dict(status='PASS_STAGED_GIT_DELIVERY', offline_wheels=wheel_count,
                       runtime_archives_verified=True, pico_snapshot_cpp='PASS',
-                      installer_tests=installer_tests, local_provision_tests='not_measured',
+                      installer_tests=installer_tests, full_load_benchmark_tests=full_load_tests,
+                      local_provision_tests='not_measured',
                       documentation_files=3, documentation_links=documentation_links,
                       external_model_supplied=bool(args.model),
                       delivery_manifest_sha256=hashlib.sha256((export/'deploy/actor_s100/manifest.json').read_bytes()).hexdigest(),
