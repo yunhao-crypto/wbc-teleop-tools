@@ -630,6 +630,9 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
         policy_tick = 0
         stand_tick = 0
         tracking = False
+        last_inferred_identity = None
+        last_inferred_receipt_ns = None
+        report['duplicate_body_ticks'] = 0
         if auto:
             print('POLICY_LEAD_IN: ONNX runs from measured-pose reference toward model stand; awaiting Pico',flush=True)
         if manual:
@@ -686,6 +689,25 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
                 continue
             state_age_at_read = inputs.ages(state)
             state_end = clock.monotonic()
+            identity = (int(state.state_id), int(state.ts_state_real_us))
+            if identity == last_inferred_identity:
+                # PullStateSource returns the cached snapshot when its keep-last
+                # ring is empty. Do not advance model history/reference or issue
+                # a new action from that same measurement. A republished heartbeat
+                # may refresh receipt/publication clocks without new feedback;
+                # bound it by the original receipt and the existing age budget.
+                unchanged_ms = (round(clock.monotonic()*1e9)-last_inferred_receipt_ns)/1e6
+                if unchanged_ms > STATE_AGE*1000:
+                    skip_stale('at_read', StaleStateError(
+                        f'BodyState identity did not advance: state_id={state.state_id}, '
+                        f'unchanged_age_ms={unchanged_ms:.3f}, limit_ms={STATE_AGE*1000:g}'))
+                else:
+                    report['duplicate_body_ticks'] += 1
+                    write(dict(record_type='body_state_not_advanced', state_id=int(state.state_id),
+                        source_state_us=int(state.ts_state_real_us), ages=state_age_at_read,
+                        unchanged_age_ms=unchanged_ms, action='skip_tick', actions_sent=sent_count))
+                deadline = advance(deadline)
+                continue
             if requires_pico:
                 inputs.require_pico()
             # Match SDK ReferenceSession: one reference frame per successful
@@ -789,6 +811,8 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
             else:
                 command, obs, row = runtime.infer_motion_command(lead, q=q, dq=dq,
                     root=root, gyro=gyro, ref_time=reference_time, yaw_offset=offset)
+            last_inferred_identity = identity
+            last_inferred_receipt_ns = int(state.received_monotonic_ns)
             # SDK decode updates last_action. Commit that candidate only after
             # publication succeeds; skipped ticks keep the last published action.
             pending_action = runtime.policy.last_action.copy()
@@ -822,6 +846,7 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
             command = replace(command, input_state_id=int(state.state_id),
                 input_state_ts_real_us=int(state.ts_state_real_us),
                 ts_client_created_us=clock.time_ns()//1000)
+            state_age_before_publish = inputs.ages(state)
             before = clock.monotonic()
             sent = controller.publish(command)  # SDK alone owns session + sequence.
             runtime.policy.last_action = pending_action
@@ -840,6 +865,10 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
                 reference_time_s=0. if tracking else reference_time,
                 reference_frame=0 if tracking else reference_frame,
                 state_id=int(state.state_id), source_state_us=int(state.ts_state_real_us),
+                feedback_timing=dict(at_read=state_age_at_read, before_publish=state_age_before_publish,
+                    publication_us=int(state.ts_state_pub_us),
+                    received_monotonic_ns=int(state.received_monotonic_ns),
+                    pull_context_receive_stamp_ns=int(state.pull_context_receive_stamp_ns)),
                 feedback=dict(q_body=state.q.tolist(),dq_body=state.dq.tolist(),
                     root_wxyz=root.tolist(),gyro=gyro.tolist(),
                     applied_session_id=int(state.applied_session_id),

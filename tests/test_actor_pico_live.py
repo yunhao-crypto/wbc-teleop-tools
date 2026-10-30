@@ -1051,6 +1051,66 @@ class LiveTests(unittest.TestCase):
             with self.subTest(name=name),self.assertRaises(ValueError):
                 validate_body_arrays(replace(state,**{name:data}))
 
+    def test_native_body_fault_names_joint_slot_code_and_state(self):
+        from deployment.vita_s100_aorta_30dof.sdkmain_adapter import validate_body_arrays
+        state=self.transport.wait_state()
+        errors=state.error_code.copy();errors[1]=13;errors[28]=8
+        with self.assertRaisesRegex(ValueError, 'Policy joint Q/Dq unavailable') as caught:
+            validate_body_arrays(replace(state,error_code=errors))
+        detail=str(caught.exception)
+        for expected in ('left_hip_roll_joint(body_slot=1, error_code=13, error=STALL)',
+                         'right_wrist_pitch_joint(body_slot=28, error_code=8, error=TIMEOUT)',
+                         f'state_id={state.state_id}'):
+            self.assertIn(expected,detail)
+
+    def test_duplicate_feedback_does_not_infer_publish_or_advance_history(self):
+        from copy import deepcopy
+        self.args.stand_only=True
+        frozen={}
+        def after(command):
+            if command.sequence==1:
+                state=self.transport.wait_state()
+                frozen.update(state=state,until=self.clock.monotonic()+.08,
+                              history=deepcopy(list(self.runtime.policy.history)))
+                def cached_or_fresh(current):
+                    if self.clock.monotonic()<frozen['until']:
+                        for actual,expected in zip(self.runtime.policy.history,frozen['history']):
+                            if isinstance(actual,tuple):
+                                for a,e in zip(actual,expected):np.testing.assert_array_equal(a,e)
+                            else:np.testing.assert_array_equal(actual,expected)
+                        return frozen['state']
+                    return current
+                self.transport.state_fault=cached_or_fresh
+            elif command.sequence==2:
+                self.stop.set()
+        self.transport.after_publish=after
+        result=self.run_trial()
+        duplicate=[r for r in self.rows if r.get('record_type')=='body_state_not_advanced']
+        self.assertGreaterEqual(len(duplicate),3)
+        self.assertEqual(result['duplicate_body_ticks'],len(duplicate))
+        self.assertEqual(len(self.transport.commands),2)
+        inference=[r for r in self.rows if r.get('record_type')=='actor_inference']
+        self.assertEqual([r['reference_frame'] for r in inference],[0,1])
+        self.assertNotEqual(inference[0]['state_id'],inference[1]['state_id'])
+        self.assertTrue(all('feedback_timing' in r for r in inference))
+        self.assert_cancelled()
+
+    def test_republished_same_frame_cannot_refresh_unchanged_feedback_budget(self):
+        from deployment.vita_s100_aorta_30dof.actor_pico_live import MAX_STALE_TICKS
+        self.args.stand_only=True
+        def freeze(command):
+            cached=self.transport.wait_state()
+            self.transport.state_fault=lambda fresh:replace(cached,
+                received_monotonic_ns=fresh.received_monotonic_ns,
+                received_realtime_ns=fresh.received_realtime_ns,ts_state_pub_us=fresh.ts_state_pub_us)
+        self.transport.after_publish=freeze
+        with self.assertRaisesRegex(TimeoutError,'identity did not advance'):
+            self.run_trial()
+        self.assertEqual(len(self.transport.commands),1)
+        failures=[r for r in self.rows if r.get('record_type')=='body_state_age_failure']
+        self.assertEqual([r['action'] for r in failures],['skip_tick']*MAX_STALE_TICKS+['cancel'])
+        self.assert_cancelled()
+
     def test_joint_ramp_option_fails_before_any_motion(self):
         self.online_setup();self.args.entry_policy='joint-ramp'
         with self.assertRaisesRegex(ValueError,'removed'):self.auto_trial()

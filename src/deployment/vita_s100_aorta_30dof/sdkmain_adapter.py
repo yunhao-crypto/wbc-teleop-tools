@@ -34,6 +34,8 @@ BODY_TO_LEGACY = tuple(VITA_COMMAND_SLOT_NAMES.index(n) if n in VITA_COMMAND_SLO
                        else None for n in BODY_NAMES)
 BODY_POPULATED = np.array([i for i, slot in enumerate(BODY_TO_LEGACY) if slot is not None])
 LEGACY_POPULATED = np.array([slot for slot in BODY_TO_LEGACY if slot is not None])
+JOINT_ERROR_NAMES = {v: k for k, v in vars(JointError).items()
+                     if k.isupper() and isinstance(v, int)}
 
 
 def verify_state_decoder():
@@ -125,8 +127,12 @@ def validate_body_arrays(state):
         value = getattr(state, name)
         if not isinstance(value, np.ndarray) or value.shape != shape or value.dtype != dtype:
             raise ValueError('Unexpected native array: ' + name)
-    if np.any(state.error_code[BODY_POPULATED] != JointError.NONE):
-        raise ValueError('Policy joint Q/Dq unavailable')
+    bad = BODY_POPULATED[state.error_code[BODY_POPULATED] != JointError.NONE]
+    if len(bad):
+        details = ', '.join(f'{BODY_NAMES[i]}(body_slot={i}, error_code={int(state.error_code[i])}, '
+                            f'error={JOINT_ERROR_NAMES.get(int(state.error_code[i]), "UNKNOWN")})'
+                            for i in bad)
+        raise ValueError(f'Policy joint Q/Dq unavailable: {details}; state_id={state.state_id}')
     if not np.isfinite(state.q[BODY_POPULATED]).all() or not np.isfinite(state.dq[BODY_POPULATED]).all():
         raise ValueError('Body q/dq contains NaN or Inf')
     count = len(state.imu_location)

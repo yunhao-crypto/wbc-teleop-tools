@@ -22,6 +22,7 @@
     "src/deployment/vita_s100_aorta_30dof/actor_pico_worker.py",
     "src/deployment/vita_s100_aorta_30dof/actor_pico_buttons.py",
     "src/deployment/vita_s100_aorta_30dof/actor_supermimic.py",
+    "src/deployment/vita_s100_aorta_30dof/actor_parallel_ankle.py",
     "src/deployment/vita_s100_aorta_30dof/actor_pico_stream.py",
     "tests/test_actor_pico_live.py",
     "third_party/pico_binding/bindings/py_bindings.cpp",
@@ -64,8 +65,8 @@
     },
     {
       "path": "artifacts/supermimic/supermimic_vita02a.onnx",
-      "sha256": "94df5db3662d7f30c8ab59c2e21862fc2f70b745d5039691cd4664fa3650d143",
-      "bytes": 36075257,
+      "sha256": "40896a887dadebf2af6419a7ed662ab9164c41a63f49de112fd643202ef7e63c",
+      "bytes": 36075606,
       "provision": "Supply separately using bootstrap_actor_s100.py --policy supermimic --model"
     }
   ],
@@ -105,8 +106,8 @@
     },
     {
       "path": "ACTOR-PICO-MANIFEST.json",
-      "bytes": 11887,
-      "sha256": "ccd928320350f6f06ae3b49aba5d384d8166687dc16546be87e88da36f066757"
+      "bytes": 12105,
+      "sha256": "6d9679c42b7d5bc2aefdefe69b6b3c582028605765527560deba2df583deffbe"
     },
     {
       "path": "README.md",
@@ -115,8 +116,8 @@
     },
     {
       "path": "README_ACTOR_PICO.md",
-      "bytes": 45028,
-      "sha256": "aa4738a64e4c1a2ea17bf1da28c7cae5286f13bf669a94b7477c7c4752934647"
+      "bytes": 47053,
+      "sha256": "6e9c4effb8d7cb2e71ad4027c78db7caf75b6cd9ad5481fd2304f1b7779cf84b"
     },
     {
       "path": "artifacts/model_motion/pools_nk/manifest.json",
@@ -165,8 +166,8 @@
     },
     {
       "path": "config/actor_pico_supermimic.json",
-      "bytes": 8228,
-      "sha256": "28296fe9e1a5ddc93a5d7df364fecadfd84bc8954569fdd05cd0ab14e33cdc7f"
+      "bytes": 8332,
+      "sha256": "93af71560c28fd1963597f9202f92554ab77e1d2e41c6b4ec5b7e482320f45bc"
     },
     {
       "path": "config/motion_groups.json",
@@ -182,6 +183,11 @@
       "path": "deploy/actor_s100/README.md",
       "bytes": 9906,
       "sha256": "8723cef8de98ac2e1f41a35deda4e0f949a711d94dcdc58c099d459a8d319160"
+    },
+    {
+      "path": "deploy/actor_s100/body_state_diagnosis_20261030.json",
+      "bytes": 9929,
+      "sha256": "62a13633e0d778a578d33b1afa9232db986e7a8e97df9a6c24d3c802570bbf76"
     },
     {
       "path": "deploy/actor_s100/full_load_replay_20261030.json",
@@ -395,8 +401,8 @@
     },
     {
       "path": "scripts/actor_pico.py",
-      "bytes": 23530,
-      "sha256": "4165387cc01809dc30c1f2ad80fb45b822c53d1e7f97a8e6d02d2b9210a01225"
+      "bytes": 23539,
+      "sha256": "f8da9a4987c2b74dbe7c636aead0b92d2fb2efa5d3b09d2b8e99307b076be6e8"
     },
     {
       "path": "scripts/analyze_latest_live_logs.py",
@@ -780,8 +786,8 @@
     },
     {
       "path": "scripts/seal_actor_delivery.py",
-      "bytes": 7460,
-      "sha256": "38fb374e9f5ccc67d5d7a34d2a85366c14c8063cab21e0c49dd5f7990e1bc0ef"
+      "bytes": 7622,
+      "sha256": "056d43f83d3e1fa51e14b79aa292d4c6394a360319309de81606faadcf0739b4"
     },
     {
       "path": "scripts/send_fake_pico_via_robot_ssh.py",
@@ -1219,6 +1225,11 @@
       "sha256": "629d1d30a4f3ccf264355907f63070fc40b6f6b30ed633b8ed6f866a63413542"
     },
     {
+      "path": "src/deployment/vita_s100_aorta_30dof/actor_parallel_ankle.py",
+      "bytes": 7482,
+      "sha256": "be714e4a3a6cc7451e4444f450de3fec05562a3f90dbee7382ecbb333f794e39"
+    },
+    {
       "path": "src/deployment/vita_s100_aorta_30dof/actor_pico_buttons.py",
       "bytes": 2830,
       "sha256": "2eaab3793cd3f292bc366cecacb298eb47953a0e88807ee8e4374836ceb3981a"
@@ -1230,8 +1241,8 @@
     },
     {
       "path": "src/deployment/vita_s100_aorta_30dof/actor_pico_live.py",
-      "bytes": 47309,
-      "sha256": "70a0dc2519bbe47aedfaa13022f6767e3c98fabdf8a9537a67512814c61deb3a"
+      "bytes": 51562,
+      "sha256": "1e39559c17dd67336a75428ae5846d238e44a8adfd1e2b476536292cee4aa3a2"
     },
     {
       "path": "src/deployment/vita_s100_aorta_30dof/actor_pico_local.py",
@@ -1275,8 +1286,8 @@
     },
     {
       "path": "src/deployment/vita_s100_aorta_30dof/actor_supermimic.py",
-      "bytes": 18388,
-      "sha256": "fc60a1757b0a61ca64fe4ed4ec0aa393f63dd333c041efe8d69b93da1f319171"
+      "bytes": 23673,
+      "sha256": "60379502d77729a99600f1bb63cfd2e31b3b32801e19c3d9d3078598bc245549"
     },
     {
       "path": "src/deployment/vita_s100_aorta_30dof/aorta_adapter.py",
@@ -1520,8 +1531,8 @@
     },
     {
       "path": "src/deployment/vita_s100_aorta_30dof/sdkmain_adapter.py",
-      "bytes": 11094,
-      "sha256": "15eeafa88afca3f0ca9c3786c3a8dee8beb424103eab61f9a9fb63ecf207463f"
+      "bytes": 11526,
+      "sha256": "5891379e26444cf1ed0155cb7c1a6b071d5e3fd04836ba9ada9a364edcfa851b"
     },
     {
       "path": "src/deployment/vita_s100_aorta_30dof/shadow_adapter.py",
@@ -3370,8 +3381,8 @@
     },
     {
       "path": "tests/fixtures/actor_pico/supermimic_fixture.npz",
-      "bytes": 67210,
-      "sha256": "d03e3675b9877b6c5cdf7d37c916d85a2f7ea6f7ee195b63112c6c0bc7953be7"
+      "bytes": 67366,
+      "sha256": "89060e512a3d4584d5494057cd2ac42ec7ca21ae221b22a74b1aa586ef020362"
     },
     {
       "path": "tests/fixtures/actor_pico/tracking_fixture_provenance.json",
@@ -3435,18 +3446,18 @@
     },
     {
       "path": "tests/test_actor_pico_live.py",
-      "bytes": 94750,
-      "sha256": "2d7b39bd4a8997523d2de4ecf7a75401ed0659393e642ef5893cd973f5a3df4e"
+      "bytes": 99092,
+      "sha256": "1aad2fa8fab9690e12fb93b8932bd1b48178f3e3d27b1982aeabe2b4162bf78c"
     },
     {
       "path": "tests/test_actor_pico_session.py",
-      "bytes": 16897,
-      "sha256": "7ef5fba23c031ed01237a57ab30bd89c618bcb9da6f14774873733cce91c2dd0"
+      "bytes": 17031,
+      "sha256": "ab3c22f78988224bf06a7a8439304f9b557de5179c7a3963ebcb4216fc2edc55"
     },
     {
       "path": "tests/test_actor_supermimic.py",
-      "bytes": 12228,
-      "sha256": "cb5515bc0568d6700bc2330dbb554f79f3edb680db69e6c3f5f15c11ccaefb68"
+      "bytes": 19239,
+      "sha256": "59d79619841bcb9eca64a67c95a7fb405a62ad07b993245d355a6c032515c544"
     },
     {
       "path": "tests/wifi_offline_test.py",

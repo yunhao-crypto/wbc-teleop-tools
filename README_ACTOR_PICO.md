@@ -309,6 +309,20 @@ the last one (interpolation max 100 ms, watchdog 1000 ms). The third
 consecutive stale tick cancels. Each `body_state_age_failure` record holds
 phase, ages, compute/policy time and `action` (`skip_tick` or `cancel`).
 A stale command is never published or retried.
+When `(state_id, ts_state_real_us)` repeats, the loop records
+`body_state_not_advanced` and waits for a new measurement without advancing
+policy history, the stand reference or the command sequence. Heartbeat copies
+cannot extend this wait indefinitely by refreshing their receipt/publication
+clocks: the original sample receipt still has the same 100 ms budget and the
+existing consecutive-stale cancellation rule applies. This protects the model
+from treating cached feedback as new observations; it does not repair delayed
+feedback delivery.
+Successful inference records include `feedback_timing` with the ages at read
+and before send, producer publication time and local receipt time. The Core
+pull-context stamp is an assembly/dequeue diagnostic, not a network-arrival
+measurement. Native joint-input failures name the affected joints, body slots,
+numeric/symbolic error codes and state ID (for example `STALL=13`), so a motor
+fault is distinguishable from delayed delivery.
 If computation finishes on an expired state, its measured observation remains
 in policy history, but `last_action` stays at the last successfully published
 action. The next tick never uses an unsent candidate as its previous action.
