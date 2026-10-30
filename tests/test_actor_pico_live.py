@@ -31,11 +31,18 @@ class Clock:
     def sleep(self, seconds): self.now += max(0., seconds)
 
 
-def robot_config():
-    config = dict(parallel_ankle=dict(pd=dict(strategy='virtual_pd'),
-                geometry=dict(lx=.05, ly=.02175, z_top=.31, z_bot=.235)),
+def motor_theta(runtime):
+    return getattr(runtime.model.contract, 'ankle', None) is not None
+
+
+def robot_config(runtime=None):
+    """A-sample effective config; EXTERNAL ankle mode as the runtime's model needs."""
+    config = dict(parallel_ankle=dict(pd=dict(strategy='virtual_pd', kp_motor=20., kd_motor=1.),
+                geometry=dict(lx=.05, ly=.02175, z_top=.31, z_bot=.235),
+                caps=dict(theta_min=-.95975, theta_max=.61075),
+                virtual_limits=dict(pitch=[-.751, .414], roll=[-.43625, .43625])),
         actions=dict(EXTERNAL=dict(generator='builtin::external', params=dict(
-            ankle_virtual_pd_intent=True, command_timeout_ms=1000,
+            ankle_virtual_pd_intent=not (runtime is not None and motor_theta(runtime)), command_timeout_ms=1000,
             recover_valid_frames=1, interpolation=dict(min_period_ms=2, max_period_ms=100),
             safe_hold=dict(kp=[10.]*42, kd=[1.]*42)))))
     config['actions']['FIXED_STAND'] = dict(generator='builtin::keyframe', params=dict(
@@ -190,7 +197,7 @@ class LiveTests(unittest.TestCase):
         self.runtime.reset_inputs()
         self.tmp = tempfile.TemporaryDirectory(); self.addCleanup(self.tmp.cleanup)
         self.config = Path(self.tmp.name)/'locomotion.yaml'
-        self.config.write_text(json.dumps(robot_config()))  # JSON is YAML, no parser stubs.
+        self.config.write_text(json.dumps(robot_config(self.runtime)))  # JSON is YAML, no parser stubs.
         self.clock, self.stop, self.rows = Clock(), threading.Event(), []
         self.transport = Loopback(self.runtime, self.clock)
         self.controller = PullController(group='default', client_id='mock-client', _transport=self.transport)
@@ -504,7 +511,8 @@ class LiveTests(unittest.TestCase):
         cli=importlib.util.module_from_spec(spec);spec.loader.exec_module(cli)
         profile=Path(self.tmp.name)/'peer.json5';profile.touch(mode=0o600);profile.write_text('{mode:"peer"}')
         from deployment.vita_s100_aorta_30dof.actor_pico_stream import WorkerSettings
-        runtime=NS(root=Path(self.tmp.name),model=NS(backend='sdk'),config={},worker=WorkerSettings())
+        runtime=NS(root=Path(self.tmp.name),model=NS(backend='sdk',contract=self.runtime.model.contract),
+                   config=dict(body_profile=self.runtime.config['body_profile']),worker=WorkerSettings())
         self.args.stand_only=True;self.args.manual_pico=False;self.args.group='default'
         with (patch.dict(os.environ,ZENOH_SESSION_CONFIG_URI=str(profile)),
               patch.object(cli.platform,'machine',return_value='aarch64'),
@@ -529,7 +537,8 @@ class LiveTests(unittest.TestCase):
         cli=importlib.util.module_from_spec(spec);spec.loader.exec_module(cli)
         profile=Path(self.tmp.name)/'peer.json5';profile.touch(mode=0o600);profile.write_text('{mode:"peer"}')
         from deployment.vita_s100_aorta_30dof.actor_pico_stream import WorkerSettings
-        runtime=NS(root=Path(self.tmp.name),model=NS(backend='sdk'),
+        runtime=NS(root=Path(self.tmp.name),model=NS(backend='sdk',contract=self.runtime.model.contract),
+                   config=dict(body_profile=self.runtime.config['body_profile']),
                    worker=WorkerSettings(3,.002,(0,1,2,3,4),(1,),(2,3,4)))
         self.args.stand_only=False;self.args.manual_pico=False;self.args.group='default'
         worker=Mock();events=[];rows=[]
@@ -855,11 +864,12 @@ class LiveTests(unittest.TestCase):
         original=self.runtime.infer_motion
         def changed(*a,**kw):
             result=original(*a,**kw)
-            root = robot_config(); root['parallel_ankle']['pd']['strategy'] = 'position_motor_gains'
+            root = robot_config(self.runtime); params = root['actions']['EXTERNAL']['params']
+            params['ankle_virtual_pd_intent'] = not params['ankle_virtual_pd_intent']
             self.config.write_text(json.dumps(root))
             return result
         with patch.object(self.runtime,'infer_motion',changed):
-            with self.assertRaisesRegex(ValueError, 'virtual_pd'): self.run_trial()
+            with self.assertRaisesRegex(ValueError, 'ankle_virtual_pd_intent'): self.run_trial()
         self.assertEqual(self.transport.requests, [])
 
     def test_full_body_compensation_command_is_preserved(self):
@@ -918,11 +928,12 @@ class LiveTests(unittest.TestCase):
         self.assertTrue(any(r.get('record_type') == 'exit_failure' for r in self.rows))
         self.assertEqual(self.controller.status.current_action, 'FIXED_STAND')
 
-    def test_disabled_virtual_pd_refuses_before_any_request(self):
-        config = robot_config()
-        config['actions']['EXTERNAL']['params']['ankle_virtual_pd_intent'] = False
+    def test_wrong_ankle_pd_mode_refuses_before_any_request(self):
+        config = robot_config(self.runtime)
+        params = config['actions']['EXTERNAL']['params']
+        params['ankle_virtual_pd_intent'] = not params['ankle_virtual_pd_intent']
         self.config.write_text(json.dumps(config))
-        with self.assertRaisesRegex(ValueError, 'virtual_pd'): self.run_trial()
+        with self.assertRaisesRegex(ValueError, 'ankle_virtual_pd_intent'): self.run_trial()
         self.assertEqual((self.transport.requests, self.transport.commands), ([], []))
 
     def test_measured_pose_has_small_margin_but_commands_use_exact_ranges(self):
@@ -960,7 +971,7 @@ class LiveTests(unittest.TestCase):
         for changes in (dict(command_limits={}), dict(command_timeout_ms=True),
                         dict(recover_valid_frames=0),
                         dict(interpolation=dict(min_period_ms=100, max_period_ms=2))):
-            config = robot_config()
+            config = robot_config(self.runtime)
             config['actions']['EXTERNAL']['params'].update(changes)
             self.config.write_text(json.dumps(config))
             with self.assertRaises(ValueError): self.run_trial()
@@ -1170,7 +1181,7 @@ class LiveTests(unittest.TestCase):
 
     def test_auto_invalid_fixed_gains_reject_before_motion(self):
         self.auto_setup()
-        config=robot_config()
+        config=robot_config(self.runtime)
         config['actions']['FIXED_STAND']['params']['keyframes'][0]['kp']=[999.]*42
         self.config.write_text(json.dumps(config))
         with self.assertRaisesRegex(ValueError,'outside'):self.auto_trial()
@@ -1200,7 +1211,7 @@ class LiveTests(unittest.TestCase):
         original=startup.fixed_stand_startup
         def changed(*a,**kw):
             result=original(*a,**kw)
-            config=robot_config();config['actions']['EXTERNAL']['params']['command_timeout_ms']=2000
+            config=robot_config(self.runtime);config['actions']['EXTERNAL']['params']['command_timeout_ms']=2000
             self.config.write_text(json.dumps(config))
             return result
         with patch.object(startup,'fixed_stand_startup',changed):

@@ -239,7 +239,7 @@ def live(runtime, args, write):
     if not os.environ.get('ZENOH_SESSION_CONFIG_URI'):
         raise RuntimeError('Use start_actor_pico.sh live with the reviewed S100 peer profile')
     require_peer_profile(os.environ['ZENOH_SESSION_CONFIG_URI'])
-    load_robot_config(args.robot_config)  # Fail before any control/Pico handle.
+    load_robot_config(args.robot_config, runtime)  # Fail before any control/Pico handle.
     verify_vendor_sources()
     verify_state_decoder()
     from deployment.vita_s100_aorta_30dof.actor_pico_scheduling import control_scheduler

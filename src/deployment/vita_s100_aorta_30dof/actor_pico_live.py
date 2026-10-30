@@ -74,11 +74,15 @@ def require_peer_profile(path):
         raise ValueError('Effective JSON5 profile must explicitly select exactly one top-level mode=peer')
 
 
-def load_robot_config(path):
+def load_robot_config(path, runtime=None):
     """Read the deployment-selected effective YAML; never patch robot config.
 
     This is not discovery of the running process's selected configuration.
     The attendant must verify that selection in the interactive confirmation.
+    With a runtime, the EXTERNAL ankle mode must match its model: virtual
+    pitch/roll actors need virtual PD; motor_theta actors need PD-A with the
+    trained motor gains, motor limits and virtual box. Without one (local
+    start configuration) either boolean is accepted.
     """
     import yaml
     path = Path(path)
@@ -92,7 +96,13 @@ def load_robot_config(path):
         params = external['params']
         if external['generator'] != 'builtin::external':
             raise ValueError('EXTERNAL must use builtin::external')
-        if ankle['pd']['strategy'] != 'virtual_pd' or params['ankle_virtual_pd_intent'] is not True:
+        intent = params['ankle_virtual_pd_intent']
+        motor_theta = runtime is not None and getattr(runtime.model.contract, 'ankle', None) is not None
+        if type(intent) is not bool:
+            raise ValueError('EXTERNAL ankle_virtual_pd_intent must be a boolean')
+        if motor_theta:
+            check_motor_theta_ankle(ankle, intent, runtime)
+        elif runtime is not None and (ankle['pd']['strategy'] != 'virtual_pd' or intent is not True):
             raise ValueError('Requires virtual_pd and EXTERNAL ankle_virtual_pd_intent=true; no config is changed')
         unknown = set(params)-{'command_timeout_ms', 'recover_valid_frames',
                               'interpolation', 'safe_hold', 'ankle_virtual_pd_intent'}
@@ -125,6 +135,30 @@ def load_robot_config(path):
     except (KeyError, TypeError) as error:
         raise ValueError('Incomplete effective A-sample robot configuration') from error
     return params, dict(path=str(path), sha256=hashlib.sha256(payload).hexdigest())
+
+
+def check_motor_theta_ankle(ankle, intent, runtime):
+    """PD-A must track the IK of the actor's virtual targets with the trained motor PD."""
+    contract, profile = runtime.model.contract, runtime.config['body_profile']
+    if intent is not False:
+        raise ValueError('motor_theta actor requires EXTERNAL ankle_virtual_pd_intent=false (motor PD); '
+                         'no config is changed')
+    slots = contract.ankle.slots
+    gains = [(float(ankle['pd']['kp_motor']), float(ankle['pd']['kd_motor']))]
+    if {(float(contract.kp[i]), float(contract.kd[i])) for i in slots} != set(gains):
+        raise ValueError(f'Robot ankle motor gains {gains[0]} differ from the trained motor PD')
+    caps = (float(ankle['caps']['theta_min']), float(ankle['caps']['theta_max']))
+    if not np.allclose(caps, contract.ankle.motor_limits, rtol=0, atol=1e-9):
+        raise ValueError('Robot ankle motor limits differ from the model')
+    for name, value in contract.ankle.geometry.items():
+        if not math.isclose(ankle['geometry'][name], value, rel_tol=0, abs_tol=1e-9):
+            raise ValueError('Model/robot ankle geometry differs: '+name)
+    # The actor's clamp feedforward assumes the robot clamps to this same box.
+    for axis in ('pitch', 'roll'):
+        box = [float(x) for x in ankle['virtual_limits'][axis]]
+        for side in ('left', 'right'):
+            if not np.allclose(profile['joint_limits'][f'{side}_ankle_{axis}_joint'], box, rtol=0, atol=1e-9):
+                raise ValueError(f'Robot virtual ankle {axis} limits differ from the actor profile')
 
 
 class CommandEnvelope:
@@ -418,7 +452,7 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
     """
     if not math.isfinite(args.seconds) or args.seconds < 0:
         raise ValueError('Live duration must be finite and nonnegative; 0 means until STOP')
-    params, receipt = load_robot_config(args.robot_config)
+    params, receipt = load_robot_config(args.robot_config, runtime)
     envelope = CommandEnvelope(runtime, controller.get_robot_info(args.startup_timeout), params)
     pico_max_age = runtime.config['pico_max_age_s']
     auto = bool(getattr(args, 'auto_start', False))
@@ -511,7 +545,7 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
     if stop.is_set():
         return dict(mode='live', actions_sent=0, control_handles_created=1, entered=False)
     # Refresh effective configuration before requesting any motion.
-    if load_robot_config(args.robot_config)[1] != receipt:
+    if load_robot_config(args.robot_config, runtime)[1] != receipt:
         raise RuntimeError('Effective config file changed during preflight')
     if auto:
         if not fixed_stand_startup(startup, envelope, runtime, args, controller, inputs,
@@ -521,7 +555,7 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
     startup_generation = controller.status.generation if auto else None
     cancel_action = (request_action or FirmwareActions(stop, clock, lambda:inputs.read(.1))) if auto else None
     try:
-        if auto and load_robot_config(args.robot_config)[1] != receipt:
+        if auto and load_robot_config(args.robot_config, runtime)[1] != receipt:
             raise RuntimeError('Effective config file changed during startup')
         runtime.reset_inputs()
         state, q, dq, root, gyro = inputs.read(STATE_AGE)

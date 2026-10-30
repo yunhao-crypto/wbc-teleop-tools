@@ -2,8 +2,19 @@
 
 The exported model states its observation/goal layout in
 ``supermimic.tracking_contract.v1`` metadata. The SDK's quaternion math,
-feedback validation, Body31 mapping, joint limits and ankle feedforward are
-reused unchanged; only the observation builder differs from the G1 actor.
+feedback validation, Body31 mapping and joint limits are reused unchanged;
+the observation builder differs from the G1 actor.
+
+Two ankle contracts exist. ``virtual_pitch_roll`` (serial-ankle plant) reuses
+the SDK decode, including its ankle clamp feedforward. ``motor_theta``
+(closed-loop plant) observes and commands the Achilles motor angles in the
+ankle slots: measured state and references are mapped to motor space, and the
+motor-angle targets are mapped back to virtual pitch/roll through the forward
+kinematics, because Body31 EXTERNAL takes only virtual targets. The robot's
+motor PD (EXTERNAL ``ankle_virtual_pd_intent=false``) then re-solves the same
+IK, which reproduces the trained motor PD inside the virtual ankle box. Outside
+it the robot clamps the virtual target first; with ``ankle_clamp_feedforward``
+the motor PD torque that clamp removes is sent back as virtual ankle torque.
 """
 from dataclasses import dataclass
 import functools
@@ -13,6 +24,8 @@ import math
 from collections import deque
 
 import numpy as np
+
+from .actor_parallel_ankle import MotorThetaAnkle
 
 CONTRACT_KEY = 'supermimic.tracking_contract.v1'
 POLICY_KIND = 'supermimic_vita02a_tracking'
@@ -57,6 +70,13 @@ class SuperMimicContract:
     joint_velocity_scale: float
     include_z: bool = False
     policy_kind: str = POLICY_KIND
+    # Policy joint space. Equal to default/lower/upper for virtual ankles;
+    # motor_theta contracts hold motor angles and motor limits in the ankle
+    # slots, while default/lower/upper above stay virtual pitch/roll.
+    policy_default: np.ndarray = None
+    policy_lower: np.ndarray = None
+    policy_upper: np.ndarray = None
+    ankle: MotorThetaAnkle = None
 
     @classmethod
     def from_metadata(cls, metadata):
@@ -100,10 +120,27 @@ class SuperMimicContract:
                 or raw['input_dim'] != history*frame_dim+count*goal_dim
                 or float(goal['joint_velocity_scale']) != .1):
             raise ValueError('SuperMimic metadata timing or dimensions disagree')
-        if raw.get('ankle', {}).get('control_space') != 'virtual_pitch_roll':
-            raise ValueError('Body31 tracking requires virtual pitch/roll ankles')
-        return cls(names, default, scale, kp, kd, lower, upper, clip, period, count, period,
-                   history, raw['input_dim'], frame_dim, goal_dim, float(goal['joint_velocity_scale']))
+        space = raw.get('ankle', {}).get('control_space')
+        if space == 'virtual_pitch_roll':
+            return cls(names, default, scale, kp, kd, lower, upper, clip, period, count, period,
+                       history, raw['input_dim'], frame_dim, goal_dim, float(goal['joint_velocity_scale']),
+                       policy_default=default, policy_lower=lower, policy_upper=upper)
+        if space != 'motor_theta':
+            raise ValueError('Body31 tracking requires virtual pitch/roll or motor_theta ankles')
+        ankle = MotorThetaAnkle(names, raw['ankle'])
+        slots = ankle.slots
+        if (not np.allclose(lower[slots], ankle.motor_limits[0], rtol=0, atol=1e-9)
+                or not np.allclose(upper[slots], ankle.motor_limits[1], rtol=0, atol=1e-9)):
+            raise ValueError('motor_theta ankle slot limits must equal the motor limits')
+        virtual_default, residual = ankle.to_virtual(default)
+        if residual > 1e-8:
+            raise ValueError('motor_theta default ankle pose has no forward-kinematics solution')
+        # Virtual ankle bounds come from the robot profile's joint_limits.
+        virtual_lower, virtual_upper = lower.copy(), upper.copy()
+        virtual_lower[slots], virtual_upper[slots] = -math.pi/2, math.pi/2
+        return cls(names, virtual_default, scale, kp, kd, virtual_lower, virtual_upper, clip, period, count,
+                   period, history, raw['input_dim'], frame_dim, goal_dim, float(goal['joint_velocity_scale']),
+                   policy_default=default, policy_lower=lower, policy_upper=upper, ankle=ankle)
 
 
 def is_supermimic(contract):
@@ -150,8 +187,12 @@ def heading(R):
     return np.array([[c, -s, 0.], [s, c, 0.], [0., 0., 1.]])
 
 
-def goal_features(base, R, v, w, q, qd, frame, count, joint_velocity_scale=.1):
-    """Training MotionLib.goal for one frame of a [N] reference."""
+def goal_features(base, R, v, w, q, qd, frame, count, joint_velocity_scale=.1, ankle=None):
+    """Training MotionLib.goal for one frame of a [N] reference.
+
+    With a motor_theta ``ankle`` the joint columns go to policy space as in
+    training's PolicyJointGoals (rates through the Jacobian at the same frame).
+    """
     n = len(q)
     requested = frame+np.arange(1, count+1)
     future = np.minimum(requested, n-1)
@@ -162,9 +203,10 @@ def goal_features(base, R, v, w, q, qd, frame, count, joint_velocity_scale=.1):
     Rt = R[future].transpose(0, 2, 1)
     v_local = np.where(recorded, np.einsum('kij,kj->ki', Rt, v[future]), 0.)
     w_local = np.where(recorded, np.einsum('kij,kj->ki', Rt, w[future]), 0.)
-    qd_future = np.where(recorded, qd[future], 0.)
-    return np.concatenate((dp, rot, v_local, w_local, q[future],
-                           qd_future*joint_velocity_scale), axis=1).ravel()
+    q_future, qd_future = q[future], np.where(recorded, qd[future], 0.)*joint_velocity_scale
+    if ankle is not None:
+        q_future, qd_future = ankle.to_policy(q_future), ankle.velocity_to_policy(q_future, qd_future)
+    return np.concatenate((dp, rot, v_local, w_local, q_future, qd_future), axis=1).ravel()
 
 
 @functools.cache
@@ -189,7 +231,7 @@ def policy_class(math_api):
             R = np.stack([m.rotation(x) for x in quat])
             # Goals past the window end are held only when the motion itself ends.
             return goal_features(motion.base[span], R, v, w, motion.q[span], qd, frame-lo,
-                                 c.future_frames, c.joint_velocity_scale)
+                                 c.future_frames, c.joint_velocity_scale, c.ankle)
 
         def observe(self, motion, ref_time, q, dq, quat, gyro, yaw_offset=0.):
             c, m = self.contract, math_api
@@ -199,7 +241,9 @@ def policy_class(math_api):
             frame = int(np.clip(round(ref_time/c.period), 0, len(motion.q)-1))
             robot = m.rotation(quat)
             reference = m.rotation(m.multiply(m.yaw_quaternion(yaw_offset), motion.quat[frame]))
-            current = np.concatenate((q-c.default, dq, gyro, -robot[2], self.last_action,
+            if c.ankle is not None:
+                q, dq = c.ankle.to_policy(q), c.ankle.velocity_to_policy(q, dq)
+            current = np.concatenate((q-c.policy_default, dq, gyro, -robot[2], self.last_action,
                                       (robot.T @ reference)[:, :2].ravel())).astype(np.float32)
             if not self.history:
                 self.history.extend([current]*c.history_length)
@@ -209,6 +253,44 @@ def policy_class(math_api):
             if obs.shape != (c.input_dim,) or not np.isfinite(obs).all():
                 raise ValueError('constructed observation is invalid')
             return obs
+
+        def decode(self, raw_action, **timing):
+            c = self.contract
+            if c.ankle is None:
+                return super().decode(raw_action, **timing)
+            action = _finite(raw_action, 'model action')
+            if action.shape != (28,):
+                raise ValueError('model output must have 28 actions')
+            self.last_action = np.clip(action, -c.action_clip, c.action_clip).astype(np.float32)
+            raw_q = c.policy_default+c.scale*self.last_action.astype(np.float64)
+            # Motor angles stop at the motor travel, as in the vita-robot
+            # passthrough; the robot clamps the virtual pose to its ankle box.
+            motor_q = raw_q.copy()
+            slots = c.ankle.slots
+            motor_q[slots] = np.clip(raw_q[slots], c.policy_lower[slots], c.policy_upper[slots])
+            virtual_q, residual = c.ankle.to_virtual(motor_q)
+            target = np.clip(virtual_q, self.lower, self.upper)
+            tau = np.zeros(28)
+            if self.profile['ankle_clamp_feedforward']:
+                # Motor angles the robot will track: IK of the clamped virtual
+                # target, then its motor-limit clamp (vita-robot PD-A).
+                tracked = np.clip(c.ankle.to_policy(target)[slots], *c.ankle.motor_limits)
+                missing = np.zeros(28)
+                missing[slots] = c.kp[slots]*(motor_q[slots]-tracked)
+                tau[slots] = c.ankle.torque_to_virtual(target, missing)[slots]
+            motors = [math_api.BodyJointCmd() for _ in range(31)]
+            for p, slot in enumerate(self.mapping):
+                motors[slot] = math_api.BodyJointCmd(float(np.float32(target[p])), 0., float(np.float32(tau[p])),
+                                                     float(np.float32(c.kp[p])), float(np.float32(c.kd[p])))
+            for name, fixed in self.profile['fixed_joints'].items():
+                motors[self.order.index(name)] = math_api.BodyJointCmd(fixed['q'], 0., 0., fixed['kp'], fixed['kd'])
+            clamped = target != virtual_q
+            clamped[slots] |= motor_q[slots] != raw_q[slots]
+            return math_api.BodyCmd(joints=tuple(motors), **timing), {
+                'action': self.last_action.tolist(), 'raw_target': raw_q.tolist(),
+                'motor_target': motor_q[slots].tolist(), 'ankle_fk_residual': residual,
+                'target': target.tolist(), 'tau_ff': tau.tolist(), 'clamped': clamped.tolist(),
+            }
 
     return SuperMimicTrackingPolicy
 

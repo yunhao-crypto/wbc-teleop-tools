@@ -5,8 +5,8 @@
   "artifacts": {
     "model": {
       "path": "artifacts/supermimic/supermimic_vita02a.onnx",
-      "sha256": "94df5db3662d7f30c8ab59c2e21862fc2f70b745d5039691cd4664fa3650d143",
-      "bytes": 36075257,
+      "sha256": "40896a887dadebf2af6419a7ed662ab9164c41a63f49de112fd643202ef7e63c",
+      "bytes": 36075606,
       "source_name": "supermimic_vita02a.onnx"
     },
     "urdf": {
@@ -227,9 +227,10 @@
     "model_source": "trackerlab-supermimic scripts/rls/supermimic/export_vita_deployment.py",
     "retargeter": "Unmodified motion-stream-bridge Vita02A GMR, named-joint selection",
     "training_checkpoint": {
-      "run": "logs/vita02a_full_library/resume_nopush_8gpu_24h_20261025",
-      "iteration": 72188,
-      "sha256": "a024ba154a4fc791f9ecfaceeffb7c84faad40967cf2fe535a4b978c0aef3e3b"
+      "run": "logs/vita02a_curated_v2/train_v3_8gpu_24h_20261029",
+      "iteration": 23000,
+      "sha256": "9eb1ebf7f15761eb5bbe05071f11509c5e10c8b3c4cfb3506751ff0055e15944",
+      "ankle": "closed-loop plant; motor_theta contract, robot EXTERNAL ankle_virtual_pd_intent=false (PD-A)"
     }
   },
   "retargeting": {

@@ -33,11 +33,21 @@ and startup/live guards are unchanged.
 | Reference delay | 200 ms | 220 ms (10 future goal frames + 1 velocity tail frame) |
 | Root input | quaternion only | quaternion plus GMR base position |
 
-The SuperMimic model is the serial-ankle `resume_nopush` training checkpoint
-(iteration 72188) exported by trackerlab-supermimic
+The SuperMimic model is the closed-loop-ankle checkpoint
+`train_v3_8gpu_24h_20261029` iteration 23000, exported by trackerlab-supermimic
 `scripts/rls/supermimic/export_vita_deployment.py`; its observation/goal contract
-is embedded in the ONNX metadata and checked at load. It needs the firmware's
-virtual ankle PD path, exactly as the SONIC actor does. Provision it with
+is embedded in the ONNX metadata and checked at load. Its ankle contract is
+`motor_theta`: the policy observes and commands the two Achilles motor angles in
+the ankle pitch/roll slots. The actor maps measured state and references to
+motor angles (training IK and Jacobian, `actor_parallel_ankle.py`) and maps the
+motor targets back to virtual pitch/roll by forward kinematics for Body31.
+The robot must run PD-A (`actions.EXTERNAL.params.ankle_virtual_pd_intent: false`),
+which clamps the virtual target to its ankle box, solves IK and tracks the motor
+angles with `kp_motor`/`kd_motor` 20/1, the trained motor PD. With
+`ankle_clamp_feedforward` the actor sends the motor PD torque removed by that
+clamp as virtual ankle torque (mapped to motors by the adapter's J^-T), so the
+robot applies the trained motor torque outside the box too. The SONIC actor
+still needs virtual PD (`true`). Provision it with
 `bootstrap_actor_s100.py --policy supermimic --model /path/to/supermimic_vita02a.onnx`
 and pass the same `--policy` to `check`, `replay`, `shadow` and `live`:
 
@@ -399,8 +409,12 @@ bounded `shadow` commands first. Verify the matching robot release/schema,
 the full A-sample hardware configuration and the **running effective** YAML.
 Supply its absolute path below; do not use an old checkout/config snapshot.
 This program reads that file but cannot prove which file a running service
-loaded. Missing/disabled `parallel_ankle.pd.strategy=virtual_pd` or
-`actions.EXTERNAL.params.ankle_virtual_pd_intent=true` stops the trial.
+loaded. For `sonic`, missing/disabled `parallel_ankle.pd.strategy=virtual_pd` or
+`actions.EXTERNAL.params.ankle_virtual_pd_intent=true` stops the trial. For the
+`motor_theta` SuperMimic model, `ankle_virtual_pd_intent` must be `false` and
+`kp_motor`/`kd_motor`, motor limits, geometry and `virtual_limits` must match the
+model and actor profile. The two actors therefore need different EXTERNAL
+settings in the running YAML.
 It never edits the file, restarts services or activates an OTA slot.
 
 From the actual deployment root, for a separately authorized preparation test:
