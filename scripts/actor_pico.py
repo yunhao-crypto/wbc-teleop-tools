@@ -33,7 +33,14 @@ def check(runtime, args, write):
                                         root=[1., 0., 0., 0.], gyro=np.zeros(3))
         write(row, obs)
     runtime.policy.reset()
-    return dict(mode='offline_model_check', steps=args.steps, hardware_inputs_checked=False)
+    return dict(mode='offline_model_check', steps=args.steps, hardware_inputs_checked=False, **ankle_type(runtime))
+
+
+def ankle_type(runtime):
+    """The model's ankle control space and the robot EXTERNAL mode it needs."""
+    motor = getattr(runtime.model.contract, 'ankle', None) is not None
+    return dict(ankle_control_space='motor_theta' if motor else 'virtual_pitch_roll',
+                required_ankle_virtual_pd_intent=not motor)
 
 
 def replay(runtime, args, write):
@@ -372,7 +379,8 @@ def main():
                                         'prepared_policy_candidate', 'startup_exit_failure', 'exit_failure'):
                 stream.flush()
         write(dict(record_type='header', model=runtime.config['artifacts']['model'], policy=args.policy,
-                   contract=dict(input_dim=runtime.model.contract.input_dim, action_dim=28, policy_hz=50),
+                   contract=dict(input_dim=runtime.model.contract.input_dim, action_dim=28, policy_hz=50,
+                                 **ankle_type(runtime)),
                    scope='supported_external_trial' if args.mode == 'live' else 'inference_only',
                    robot_id=args.robot_id, retargeter=runtime.config['retargeting'],
                    gmr_engine='accelerated' if runtime.retarget.accelerated else 'pinned',

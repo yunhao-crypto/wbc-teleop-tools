@@ -25,7 +25,8 @@ from collections import deque
 
 import numpy as np
 
-from .actor_parallel_ankle import MotorThetaAnkle
+from .actor_groot_ankle import create_policy as create_groot_policy
+from .actor_parallel_ankle import MotorThetaAnkle, decode_motor_theta
 
 CONTRACT_KEY = 'supermimic.tracking_contract.v1'
 POLICY_KIND = 'supermimic_vita02a_tracking'
@@ -255,55 +256,22 @@ def policy_class(math_api):
             return obs
 
         def decode(self, raw_action, **timing):
-            c = self.contract
-            if c.ankle is None:
+            if self.contract.ankle is None:
                 return super().decode(raw_action, **timing)
-            action = _finite(raw_action, 'model action')
-            if action.shape != (28,):
-                raise ValueError('model output must have 28 actions')
-            self.last_action = np.clip(action, -c.action_clip, c.action_clip).astype(np.float32)
-            raw_q = c.policy_default+c.scale*self.last_action.astype(np.float64)
-            # Motor angles stop at the motor travel, as in the vita-robot
-            # passthrough; the robot clamps the virtual pose to its ankle box.
-            motor_q = raw_q.copy()
-            slots = c.ankle.slots
-            motor_q[slots] = np.clip(raw_q[slots], c.policy_lower[slots], c.policy_upper[slots])
-            virtual_q, residual = c.ankle.to_virtual(motor_q)
-            target = np.clip(virtual_q, self.lower, self.upper)
-            tau = np.zeros(28)
-            if self.profile['ankle_clamp_feedforward']:
-                # Motor angles the robot will track: IK of the clamped virtual
-                # target, then its motor-limit clamp (vita-robot PD-A).
-                tracked = np.clip(c.ankle.to_policy(target)[slots], *c.ankle.motor_limits)
-                missing = np.zeros(28)
-                missing[slots] = c.kp[slots]*(motor_q[slots]-tracked)
-                tau[slots] = c.ankle.torque_to_virtual(target, missing)[slots]
-            motors = [math_api.BodyJointCmd() for _ in range(31)]
-            for p, slot in enumerate(self.mapping):
-                motors[slot] = math_api.BodyJointCmd(float(np.float32(target[p])), 0., float(np.float32(tau[p])),
-                                                     float(np.float32(c.kp[p])), float(np.float32(c.kd[p])))
-            for name, fixed in self.profile['fixed_joints'].items():
-                motors[self.order.index(name)] = math_api.BodyJointCmd(fixed['q'], 0., 0., fixed['kp'], fixed['kd'])
-            clamped = target != virtual_q
-            clamped[slots] |= motor_q[slots] != raw_q[slots]
-            return math_api.BodyCmd(joints=tuple(motors), **timing), {
-                'action': self.last_action.tolist(), 'raw_target': raw_q.tolist(),
-                'motor_target': motor_q[slots].tolist(), 'ankle_fk_residual': residual,
-                'target': target.tolist(), 'tau_ff': tau.tolist(), 'clamped': clamped.tolist(),
-            }
+            return decode_motor_theta(self, math_api, raw_action, **timing)
 
     return SuperMimicTrackingPolicy
 
 
 class NativeModel:
-    """SDK 0.2.1 native ONNX session with SuperMimic metadata (mirrors SDK Model)."""
+    """SDK 0.2.1 native ONNX session with a metadata contract parser (mirrors SDK Model)."""
 
-    def __init__(self, path, math_api, threads=1):
+    def __init__(self, path, math_api, threads=1, parse=SuperMimicContract.from_metadata):
         session_type = importlib.import_module(math_api.__name__.rpartition('.')[0]+'._onnx').Session
         if threads < 1:
             raise ValueError('threads must be positive')
         self.session = session_type(str(path), intra_threads=threads, inter_threads=1)
-        self.contract = SuperMimicContract.from_metadata(self.session.metadata)
+        self.contract = parse(self.session.metadata)
         inputs, outputs = self.session.inputs, self.session.outputs
         if (len(inputs) != 1 or len(outputs) != 1
                 or inputs[0].shape != [1, self.contract.input_dim] or outputs[0].shape != [1, 28]
@@ -424,7 +392,7 @@ def reference_window(config):
 
 def create_policy(contract, profile, math_api, config):
     if not is_supermimic(contract):
-        return math_api.WbcTrackingPolicy(contract, profile)
+        return create_groot_policy(contract, profile, math_api)
     past, tail = reference_window(config)
     return policy_class(math_api)(contract, profile, past_frames=past, tail_frames=tail)
 

@@ -165,3 +165,50 @@ class MotorThetaAnkle:
             q[p], q[r] = pitch, sign*roll
             residual = max(residual, error)
         return q, residual
+
+
+def decode_motor_theta(policy, math_api, raw_action, **timing):
+    """Body31 command of a motor_theta policy (SDK ``WbcTrackingPolicy`` subclass).
+
+    Motor-angle targets are mapped back to virtual pitch/roll through the
+    forward kinematics, because Body31 EXTERNAL takes only virtual targets.
+    The robot's motor PD (EXTERNAL ``ankle_virtual_pd_intent=false``) re-solves
+    the same IK, which reproduces the trained motor PD inside the virtual
+    ankle box. Outside it the robot clamps the virtual target first; with
+    ``ankle_clamp_feedforward`` the motor PD torque that clamp removes is sent
+    back as virtual ankle torque.
+    """
+    c = policy.contract
+    action = np.asarray(raw_action, dtype=np.float64)
+    if action.shape != (28,) or not np.isfinite(action).all():
+        raise ValueError('model output must have 28 finite actions')
+    policy.last_action = np.clip(action, -c.action_clip, c.action_clip).astype(np.float32)
+    raw_q = c.policy_default+c.scale*policy.last_action.astype(np.float64)
+    # Motor angles stop at the policy's motor travel, as in the vita-robot
+    # passthrough; the robot clamps the virtual pose to its ankle box.
+    motor_q = raw_q.copy()
+    slots = c.ankle.slots
+    motor_q[slots] = np.clip(raw_q[slots], c.policy_lower[slots], c.policy_upper[slots])
+    virtual_q, residual = c.ankle.to_virtual(motor_q)
+    target = np.clip(virtual_q, policy.lower, policy.upper)
+    tau = np.zeros(28)
+    if policy.profile['ankle_clamp_feedforward']:
+        # Motor angles the robot will track: IK of the clamped virtual
+        # target, then its motor-limit clamp (vita-robot PD-A).
+        tracked = np.clip(c.ankle.to_policy(target)[slots], *c.ankle.motor_limits)
+        missing = np.zeros(28)
+        missing[slots] = c.kp[slots]*(motor_q[slots]-tracked)
+        tau[slots] = c.ankle.torque_to_virtual(target, missing)[slots]
+    motors = [math_api.BodyJointCmd() for _ in range(31)]
+    for p, slot in enumerate(policy.mapping):
+        motors[slot] = math_api.BodyJointCmd(float(np.float32(target[p])), 0., float(np.float32(tau[p])),
+                                             float(np.float32(c.kp[p])), float(np.float32(c.kd[p])))
+    for name, fixed in policy.profile['fixed_joints'].items():
+        motors[policy.order.index(name)] = math_api.BodyJointCmd(fixed['q'], 0., 0., fixed['kp'], fixed['kd'])
+    clamped = target != virtual_q
+    clamped[slots] |= motor_q[slots] != raw_q[slots]
+    return math_api.BodyCmd(joints=tuple(motors), **timing), {
+        'action': policy.last_action.tolist(), 'raw_target': raw_q.tolist(),
+        'motor_target': motor_q[slots].tolist(), 'ankle_fk_residual': residual,
+        'target': target.tolist(), 'tau_ff': tau.tolist(), 'clamped': clamped.tolist(),
+    }

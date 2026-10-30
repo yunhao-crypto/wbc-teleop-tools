@@ -23,6 +23,7 @@
     "src/deployment/vita_s100_aorta_30dof/actor_pico_buttons.py",
     "src/deployment/vita_s100_aorta_30dof/actor_supermimic.py",
     "src/deployment/vita_s100_aorta_30dof/actor_parallel_ankle.py",
+    "src/deployment/vita_s100_aorta_30dof/actor_groot_ankle.py",
     "src/deployment/vita_s100_aorta_30dof/actor_pico_stream.py",
     "tests/test_actor_pico_live.py",
     "third_party/pico_binding/bindings/py_bindings.cpp",
@@ -106,8 +107,8 @@
     },
     {
       "path": "ACTOR-PICO-MANIFEST.json",
-      "bytes": 12105,
-      "sha256": "6d9679c42b7d5bc2aefdefe69b6b3c582028605765527560deba2df583deffbe"
+      "bytes": 12511,
+      "sha256": "832a6019efe331213c7103842fd586958f8219d3949cbfaf0982ba820aaa99c2"
     },
     {
       "path": "README.md",
@@ -116,8 +117,8 @@
     },
     {
       "path": "README_ACTOR_PICO.md",
-      "bytes": 47053,
-      "sha256": "6e9c4effb8d7cb2e71ad4027c78db7caf75b6cd9ad5481fd2304f1b7779cf84b"
+      "bytes": 50099,
+      "sha256": "37b8ce4f28d12c48cebaf62b032195096055bb39c54e0af71019b1c27781c3c8"
     },
     {
       "path": "artifacts/model_motion/pools_nk/manifest.json",
@@ -401,8 +402,8 @@
     },
     {
       "path": "scripts/actor_pico.py",
-      "bytes": 23539,
-      "sha256": "f8da9a4987c2b74dbe7c636aead0b92d2fb2efa5d3b09d2b8e99307b076be6e8"
+      "bytes": 23942,
+      "sha256": "48b680ba1fbf7f1d9aa0be64bf3333ee76b721c7f380eec37a702ec0f6268b4b"
     },
     {
       "path": "scripts/analyze_latest_live_logs.py",
@@ -786,8 +787,8 @@
     },
     {
       "path": "scripts/seal_actor_delivery.py",
-      "bytes": 7622,
-      "sha256": "056d43f83d3e1fa51e14b79aa292d4c6394a360319309de81606faadcf0739b4"
+      "bytes": 7813,
+      "sha256": "7dc5bb5458b247704926bf9aacc8e01c3936335c3e6bc5774690d93ad8eb8f3d"
     },
     {
       "path": "scripts/send_fake_pico_via_robot_ssh.py",
@@ -1225,9 +1226,14 @@
       "sha256": "629d1d30a4f3ccf264355907f63070fc40b6f6b30ed633b8ed6f866a63413542"
     },
     {
+      "path": "src/deployment/vita_s100_aorta_30dof/actor_groot_ankle.py",
+      "bytes": 5905,
+      "sha256": "895d1ccdcebaa9daba8e67a67e7bf0fddcd15a8ef5aff301f73bd9c63dd9a877"
+    },
+    {
       "path": "src/deployment/vita_s100_aorta_30dof/actor_parallel_ankle.py",
-      "bytes": 7482,
-      "sha256": "be714e4a3a6cc7451e4444f450de3fec05562a3f90dbee7382ecbb333f794e39"
+      "bytes": 10251,
+      "sha256": "3ec1bf0465cd01a21a7185dd54722c17581887ec71f0e9779a41ed6794f5f545"
     },
     {
       "path": "src/deployment/vita_s100_aorta_30dof/actor_pico_buttons.py",
@@ -1256,8 +1262,8 @@
     },
     {
       "path": "src/deployment/vita_s100_aorta_30dof/actor_pico_runtime.py",
-      "bytes": 12315,
-      "sha256": "0f432b7531bbb7934bd630e947d618137e14fbed1467fa9c69766f67887ea838"
+      "bytes": 12440,
+      "sha256": "a1408286611570b16977da66b5a015a7e3871d740054e1f1888aec51d29a9649"
     },
     {
       "path": "src/deployment/vita_s100_aorta_30dof/actor_pico_scheduling.py",
@@ -1286,8 +1292,8 @@
     },
     {
       "path": "src/deployment/vita_s100_aorta_30dof/actor_supermimic.py",
-      "bytes": 23673,
-      "sha256": "60379502d77729a99600f1bb63cfd2e31b3b32801e19c3d9d3078598bc245549"
+      "bytes": 21555,
+      "sha256": "0c16f72d6f01cf0a8762ddafc58e31a52ee7d68456f1364cfbd68e27cb6e53ae"
     },
     {
       "path": "src/deployment/vita_s100_aorta_30dof/aorta_adapter.py",
@@ -3428,6 +3434,11 @@
       "path": "tests/test_actor_delivery.py",
       "bytes": 8701,
       "sha256": "c23d5ee2cce8ed4b943f805c32e3d984d7810c823de0761040735fc2b12861b5"
+    },
+    {
+      "path": "tests/test_actor_groot_ankle.py",
+      "bytes": 13052,
+      "sha256": "3b79eca44d44886010eeced1f97d4e6fd3d00fa00cdc1df1b734435331b34aad"
     },
     {
       "path": "tests/test_actor_local_provision.py",

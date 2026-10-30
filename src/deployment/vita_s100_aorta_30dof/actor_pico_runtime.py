@@ -7,12 +7,14 @@ import hashlib
 import importlib
 import json
 from pathlib import Path
+import functools
 import platform
 import sys
 import time
 
 import numpy as np
 
+from .actor_groot_ankle import contract_from_metadata as groot_contract
 from .actor_pico_gmr import create_retargeter
 from .actor_pico_stream import stream_settings, worker_settings
 from .actor_supermimic import (POLICY_KIND as SUPERMIMIC_KIND, NativeModel, SuperMimicContract,
@@ -80,10 +82,11 @@ class ActorModel:
         if backend == 'auto':
             backend = 'sdk' if platform.machine() == 'aarch64' else 'ort'
         self.backend = backend
-        supermimic = policy_kind == SUPERMIMIC_KIND
+        # The GR00T ankle control space comes only from the ONNX metadata.
+        parse = (SuperMimicContract.from_metadata if policy_kind == SUPERMIMIC_KIND
+                 else functools.partial(groot_contract, math_api))
         if backend == 'sdk':
-            self.model = (NativeModel(path, math_api, threads=threads) if supermimic
-                          else math_api.Model(path, threads=threads))
+            self.model = NativeModel(path, math_api, threads=threads, parse=parse)
             self.contract = self.model.contract
         elif backend == 'ort':
             import onnxruntime as ort
@@ -95,7 +98,7 @@ class ActorModel:
             self.session = ort.InferenceSession(str(path), options,
                                                 providers=['CPUExecutionProvider'])
             metadata = self.session.get_modelmeta().custom_metadata_map
-            self.contract = (SuperMimicContract if supermimic else math_api.Contract).from_metadata(metadata)
+            self.contract = parse(metadata)
             inputs, outputs = self.session.get_inputs(), self.session.get_outputs()
             if (len(inputs) != 1 or len(outputs) != 1
                     or inputs[0].shape != [1, self.contract.input_dim]
