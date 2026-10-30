@@ -253,6 +253,7 @@
     "worker_cpus": [0, 1, 2, 3, 4],
     "gmr_cpus": [1],
     "reader_poll_interval_s": 0.002,
-    "note": "Worker ships conditioned raw GMR samples for control-clock playback. S100 robot42 calibration: SDK/readers inherit worker_cpus; only the GMR calling thread narrows to gmr_cpus after receivers start. These CPU indices require the reviewed six-core S100 layout. Frequency is unchanged."
+    "control_cpus": [2, 3, 4],
+    "note": "Worker ships conditioned raw GMR samples for control-clock playback. S100 robot42 calibration: SDK/readers inherit worker_cpus; only the GMR calling thread narrows to gmr_cpus after receivers start. Live control threads move to control_cpus after the worker is spawned, keeping the real-time loop off the GMR CPU (full-load layout B). These CPU indices require the reviewed six-core S100 layout. Frequency is unchanged."
   }
 }

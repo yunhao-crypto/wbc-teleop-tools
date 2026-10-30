@@ -278,6 +278,13 @@ def live(runtime, args, write):
                 pico.start()
                 resources.callback(pico.close)
                 service_alive = pico.process.is_alive
+            # Only now, with the worker spawned on the unrestricted mask, may
+            # control narrow away from the GMR CPU.
+            from deployment.vita_s100_aorta_30dof.actor_pico_scheduling import control_affinity
+            from deployment.vita_s100_aorta_30dof.actor_pico_stream import stream_settings
+            settings = stream_settings(runtime.config)
+            write(dict(record_type='control_affinity',
+                       cpus=control_affinity(() if settings is None else settings.control_cpus)))
             transport = RealtimeBodyTransport(group=args.group, node_name='vita-actor-pico-live')
             resources.callback(transport.close)
             controller = PullController(group=args.group, node_name='vita-actor-pico-live', _transport=transport)

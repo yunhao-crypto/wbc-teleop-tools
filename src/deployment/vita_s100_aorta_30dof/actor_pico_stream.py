@@ -32,6 +32,7 @@ class StreamSettings:
     worker_cpus: tuple = ()
     gmr_cpus: tuple = ()
     reader_poll_interval_s: float = .002
+    control_cpus: tuple = ()
 
 
 def _euro(raw, name):
@@ -52,7 +53,7 @@ def stream_settings(config):
     if raw is None:
         return None
     known = {'ik_max_iter', 'playback_margin_s', 'joint_filter', 'root_filter',
-             'root_max_tilt_deg', 'worker_cpus', 'gmr_cpus', 'reader_poll_interval_s', 'note'}
+             'root_max_tilt_deg', 'worker_cpus', 'gmr_cpus', 'reader_poll_interval_s', 'control_cpus', 'note'}
     if not isinstance(raw, dict):
         raise ValueError('pico_stream must be an object')
     if set(raw)-known or not {'ik_max_iter', 'playback_margin_s'} <= set(raw):
@@ -79,9 +80,14 @@ def stream_settings(config):
     if (isinstance(poll, bool) or not isinstance(poll, (int, float))
             or not math.isfinite(poll) or not 0 < poll <= .01):
         raise ValueError('pico_stream.reader_poll_interval_s must lie in (0, 0.01] seconds')
+    control = raw.get('control_cpus', [])
+    if (not isinstance(control, list) or any(type(c) is not int or c < 0 for c in control)
+            or len(set(control)) != len(control) or set(control) & set(gmr)):
+        raise ValueError('pico_stream.control_cpus must list distinct CPU indices outside gmr_cpus')
     return StreamSettings(iterations, float(margin), _euro(raw.get('joint_filter'), 'joint_filter'),
                           _euro(raw.get('root_filter'), 'root_filter'),
-                          None if tilt is None else math.radians(tilt), tuple(cpus), tuple(gmr), float(poll))
+                          None if tilt is None else math.radians(tilt), tuple(cpus), tuple(gmr), float(poll),
+                          tuple(control))
 
 
 def _smoothing(cutoff, dt):

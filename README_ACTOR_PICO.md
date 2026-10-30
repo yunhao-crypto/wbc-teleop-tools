@@ -538,6 +538,13 @@ starts only after the full model-derived window is available (200 ms for the cur
   CPU 5's measured contention. These indices must be reviewed on other CPU
   layouts; unavailable CPUs fail startup. The vendor service keeps its
   inherited mask. No CPU frequency or vendor-service affinity is changed.
+- `control_cpus` pins every thread of the live control process (SCHED_RR
+  policy loop, native inference, transport) after the Pico worker has been
+  spawned, so the worker and vendor service keep the unrestricted mask. It
+  must not overlap `gmr_cpus`: a real-time control thread on the GMR CPU
+  preempts the pinned GMR thread, which cannot migrate. The S100 profile uses
+  CPU 2–4 (layout B in the full-load replay below). The live log records the
+  applied mask as `control_affinity`. Stand-only runs apply it too.
 
 Without the block, the previous newest-sample window is used unchanged.
 
@@ -654,8 +661,9 @@ code, build scripts and binaries are excluded from this delivery, and D/E
 are not supported runner conditions. Large logs and prototype sources remain
 in the separately checksummed archive identified by the receipt.
 
-These results support testing layout B next with live Pico; they do not change
-the production control-affinity defaults or establish stable timing acceptance.
+Production live now uses layout B through `pico_stream.control_cpus` (see
+above). It has not yet been timed with live Pico reception and live feedback,
+and stable timing acceptance remains open.
 
 ### TODO: robot42 hardware and deployment follow-ups
 

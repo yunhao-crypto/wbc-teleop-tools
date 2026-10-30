@@ -41,9 +41,19 @@ class StreamSettingsTests(unittest.TestCase):
                        dict(joint_filter=dict(min_cutoff_hz=0, beta=0, d_cutoff_hz=1)), dict(unknown=1),
                        dict(gmr_cpus=[True]), dict(gmr_cpus=[1,1]), dict(gmr_cpus=[-1]),
                        dict(worker_cpus=[0],gmr_cpus=[1]), dict(reader_poll_interval_s=0),
-                       dict(reader_poll_interval_s=float('nan')), dict(reader_poll_interval_s=float('inf'))):
+                       dict(reader_poll_interval_s=float('nan')), dict(reader_poll_interval_s=float('inf')),
+                       dict(control_cpus=2), dict(control_cpus=[True]), dict(control_cpus=[2, 2]),
+                       dict(control_cpus=[-1]), dict(gmr_cpus=[1], control_cpus=[1, 2])):
             with self.subTest(change=change), self.assertRaises(ValueError):
                 stream.stream_settings(dict(pico_stream=dict(good, **change)))
+
+    def test_shipped_profile_keeps_control_off_the_gmr_cpu(self):
+        config = ActorPicoRuntime(ROOT, backend='auto', policy='supermimic').config
+        settings = stream.stream_settings(config)
+        self.assertEqual(settings.control_cpus, (2, 3, 4))
+        self.assertEqual(settings.gmr_cpus, (1,))
+        self.assertTrue(set(settings.gmr_cpus) <= set(settings.worker_cpus))
+        self.assertFalse(set(settings.control_cpus) & set(settings.gmr_cpus))
 
     def test_one_euro_holds_constants_and_follows_steps_with_bounded_lag(self):
         f = stream.OneEuro(stream.OneEuroSettings(3., .5, 1.))

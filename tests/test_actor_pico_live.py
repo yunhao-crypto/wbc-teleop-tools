@@ -503,7 +503,7 @@ class LiveTests(unittest.TestCase):
         spec=importlib.util.spec_from_file_location('actor_cli_no_pico_test',ROOT/'scripts/actor_pico.py')
         cli=importlib.util.module_from_spec(spec);spec.loader.exec_module(cli)
         profile=Path(self.tmp.name)/'peer.json5';profile.touch(mode=0o600);profile.write_text('{mode:"peer"}')
-        runtime=NS(root=Path(self.tmp.name),model=NS(backend='sdk'))
+        runtime=NS(root=Path(self.tmp.name),model=NS(backend='sdk'),config={})
         self.args.stand_only=True;self.args.manual_pico=False;self.args.group='default'
         with (patch.dict(os.environ,ZENOH_SESSION_CONFIG_URI=str(profile)),
               patch.object(cli.platform,'machine',return_value='aarch64'),
@@ -527,21 +527,32 @@ class LiveTests(unittest.TestCase):
         spec=importlib.util.spec_from_file_location('actor_cli_worker_test',ROOT/'scripts/actor_pico.py')
         cli=importlib.util.module_from_spec(spec);spec.loader.exec_module(cli)
         profile=Path(self.tmp.name)/'peer.json5';profile.touch(mode=0o600);profile.write_text('{mode:"peer"}')
-        runtime=NS(root=Path(self.tmp.name),model=NS(backend='sdk'))
+        runtime=NS(root=Path(self.tmp.name),model=NS(backend='sdk'),
+                   config=dict(pico_stream=dict(ik_max_iter=3,playback_margin_s=.06,
+                       worker_cpus=[0,1,2,3,4],gmr_cpus=[1],control_cpus=[2,3,4])))
         self.args.stand_only=False;self.args.manual_pico=False;self.args.group='default'
-        worker=Mock()
+        worker=Mock();events=[];rows=[]
+        worker.start.side_effect=lambda:events.append('worker_start')
+        def pin(cpus):
+            events.append(('control_affinity',tuple(cpus)));return list(cpus)
+        def transport(**_):
+            events.append('transport');return self.transport
         with (patch.dict(os.environ,ZENOH_SESSION_CONFIG_URI=str(profile)),
               patch.object(cli.platform,'machine',return_value='aarch64'),
               patch.object(sdk021_guard,'verify_vendor_sources',return_value={}),
               patch.object(sdkmain_adapter,'verify_state_decoder'),
               patch('deployment.vita_s100_aorta_30dof.actor_pico_scheduling.control_scheduler',return_value={'policy':'SCHED_RR','priority':1}),
-              patch.object(sdkmain_adapter,'RealtimeBodyTransport',return_value=self.transport),
+              patch('deployment.vita_s100_aorta_30dof.actor_pico_scheduling.control_affinity',side_effect=pin),
+              patch.object(sdkmain_adapter,'RealtimeBodyTransport',side_effect=transport),
               patch('locomotion_aorta.pull.PullController',return_value=self.controller),
               patch.object(actor_pico_worker,'PicoReferenceProcess',return_value=worker) as process,
               patch.object(pico_input,'create_pico_source',side_effect=AssertionError('control-side Pico reader')),
               patch.object(cli.subprocess,'Popen',side_effect=AssertionError('control-side Pico service')),
               patch.object(actor_pico_live,'run_live',return_value={'actions_sent':0}) as runner):
-            cli.live(runtime,self.args,lambda *_:None)
+            cli.live(runtime,self.args,lambda row,*_:rows.append(row))
+        # The worker must spawn on the unrestricted mask before control narrows.
+        self.assertEqual(events,['worker_start',('control_affinity',(2,3,4)),'transport'])
+        self.assertIn(dict(record_type='control_affinity',cpus=[2,3,4]),rows)
         process.assert_called_once_with(runtime,buttons=False)
         worker.start.assert_called_once();worker.close.assert_called_once()
         self.assertIs(runner.call_args.args[4],worker)
@@ -1683,6 +1694,37 @@ class SchedulingTests(unittest.TestCase):
             sched.input_worker_scheduler()
         self.assertEqual(set_policy.call_args.args[0:2],(0,os.SCHED_OTHER))
         self.assertEqual(set_policy.call_args.args[2].sched_priority,0)
+
+    def test_control_affinity_moves_existing_threads_and_new_threads_inherit(self):
+        from deployment.vita_s100_aorta_30dof import actor_pico_scheduling as sched
+        original=os.sched_getaffinity(0)
+        if len(original)<2:self.skipTest('Needs two allowed CPUs')
+        target=[sorted(original)[-1]];seen={};release=threading.Event();ready=threading.Event()
+        def existing():
+            seen['tid']=threading.get_native_id();ready.set();release.wait(5.)
+            seen['existing_after']=sorted(os.sched_getaffinity(0))
+        before=threading.Thread(target=existing);before.start();ready.wait(5.)
+        try:
+            self.assertEqual(sched.control_affinity(()),sorted(original))
+            self.assertEqual(sorted(os.sched_getaffinity(seen['tid'])),sorted(original))
+            self.assertEqual(sched.control_affinity(target),target)
+            release.set();before.join(5.)
+            later=threading.Thread(target=lambda:seen.update(new=sorted(os.sched_getaffinity(0))))
+            later.start();later.join(5.)
+            self.assertEqual(seen['existing_after'],target)
+            self.assertEqual(seen['new'],target)
+            with self.assertRaisesRegex(ValueError,'outside available'):
+                sched.control_affinity([max(original)+64])
+        finally:
+            release.set();before.join(5.)
+            os.sched_setaffinity(0,original)
+
+    def test_control_affinity_rejects_unavailable_cpus_before_changing_any_thread(self):
+        from deployment.vita_s100_aorta_30dof import actor_pico_scheduling as sched
+        with patch.object(sched.os,'sched_setaffinity') as pin:
+            with self.assertRaisesRegex(ValueError,'outside available'):
+                sched.control_affinity([max(os.sched_getaffinity(0))+64])
+        pin.assert_not_called()
 
     def test_missing_realtime_permission_is_a_startup_error(self):
         from deployment.vita_s100_aorta_30dof import actor_pico_scheduling as sched
