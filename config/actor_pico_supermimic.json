@@ -250,7 +250,9 @@
     "joint_filter": {"min_cutoff_hz": 3.0, "beta": 0.5, "d_cutoff_hz": 1.0},
     "root_filter": {"min_cutoff_hz": 1.5, "beta": 0.3, "d_cutoff_hz": 1.0},
     "root_max_tilt_deg": 25.0,
-    "worker_cpus": [],
-    "note": "Worker ships conditioned raw GMR samples; the control loop resamples the window at now - clock offset - playback_margin_s - reference delay, so the reference advances 20 ms per tick. ik_max_iter caps GMR refinement passes per frame (pinned default 10). worker_cpus optionally pins the GMR process."
+    "worker_cpus": [0, 1, 2, 3, 4],
+    "gmr_cpus": [1],
+    "reader_poll_interval_s": 0.002,
+    "note": "Worker ships conditioned raw GMR samples for control-clock playback. S100 robot42 calibration: SDK/readers inherit worker_cpus; only the GMR calling thread narrows to gmr_cpus after receivers start. These CPU indices require the reviewed six-core S100 layout. Frequency is unchanged."
   }
 }

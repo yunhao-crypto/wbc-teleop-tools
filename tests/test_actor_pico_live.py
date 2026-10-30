@@ -392,7 +392,8 @@ class LiveTests(unittest.TestCase):
         pico=Mock();pico.step.side_effect=step
         service=Mock();service.poll.return_value=None
         with (patch.object(worker.os,'setsid'),patch.object(worker.subprocess,'Popen',return_value=service),
-              patch.object(pico_input,'create_pico_source',return_value=pico)):
+              patch.object(pico_input,'create_pico_source',return_value=pico),
+              patch.object(worker,'thread_affinity',return_value=[0])):
             worker._capture(str(ROOT),self.runtime.config,self.runtime.model.contract,
                 self.runtime.policy.lower,self.runtime.policy.upper,commands,output,stop)
         rows=[]

@@ -53,6 +53,8 @@ def main():
                   'src/deployment/vita_s100_aorta_30dof/actor_pico_stream.py',
                   'src/deployment/vita_s100_aorta_30dof/actor_pico_session_replay.py',
                   'scripts/freeze_pico_session.py', 'scripts/replay_pico_session.py', 'scripts/bench_pico_gmr.py',
+                  'scripts/bench_pico_gmr_live.py',
+                  'deploy/actor_s100/gmr_benchmark_20261030.json',
                   'tests/test_actor_pico_session.py',
                   'tests/fixtures/actor_pico/robot42_pico_session_20261029.npz']
     additional += [str(p.relative_to(root)) for p in (root/'third_party/motion_stream_bridge').rglob('*')

@@ -114,7 +114,8 @@ def main():
             run([sys.executable, 'scripts/bootstrap_actor_s100.py', '--unpack-only', '--policy', 'supermimic',
                  '--model', str(args.supermimic_model)], cwd=export, env=env)
         installer_tests = run_tests('tests/test_actor_delivery.py', cwd=export, env=env)
-        for entry in ['scripts/bootstrap_actor_s100.py', 'scripts/configure_actor_s100.py']:
+        for entry in ['scripts/bootstrap_actor_s100.py', 'scripts/configure_actor_s100.py',
+                      'scripts/bench_pico_gmr_live.py']:
             run([sys.executable, entry, '--help'], cwd=export, env=env)
         # Compile actual callback/parser/getter source without Python or ARM
         # libraries; no vendor SDK init or service is run by this regression.
@@ -147,6 +148,7 @@ def main():
                  'tests/fixtures/actor_pico/pico_replay.npz', '--steps', '100'], cwd=export, env=env)
             if args.supermimic_model:
                 result['supermimic_tests'] = run_tests('tests/test_actor_supermimic.py', cwd=export, env=env)
+                result['pico_session_tests'] = run_tests('tests/test_actor_pico_session.py', cwd=export, env=env)
                 run([sys.executable, 'scripts/actor_pico.py', 'check', '--policy', 'supermimic', '--steps', '100'],
                     cwd=export, env=env)
                 run([sys.executable, 'scripts/actor_pico.py', 'replay', '--policy', 'supermimic', '--input',

@@ -530,8 +530,14 @@ starts only after the full model-derived window is available (200 ms for the cur
 - `ik_max_iter` caps GMR refinement passes per frame. The pinned default is 10.
 - `joint_filter`/`root_filter` are One-Euro filters. `root_max_tilt_deg` clamps
   the reference root tilt and keeps its heading.
-- `worker_cpus` optionally pins the GMR worker process. It is empty until the
-  S100 core layout has been measured (see the TODO below).
+- `reader_poll_interval_s` waits between duplicate body snapshots (2 ms on
+  SuperMimic); new frames are processed immediately when observed.
+- `worker_cpus` is inherited by SDK/body/trigger threads. Only after those
+  threads start does `gmr_cpus` narrow the calling GMR thread. The reviewed
+  six-core S100 profile uses CPU 0–4 for receivers and CPU 1 for GMR, avoiding
+  CPU 5's measured contention. These indices must be reviewed on other CPU
+  layouts; unavailable CPUs fail startup. The vendor service keeps its
+  inherited mask. No CPU frequency or vendor-service affinity is changed.
 
 Without the block, the previous newest-sample window is used unchanged.
 
@@ -553,39 +559,53 @@ It closes the loop in MuJoCo with the deployed ONNX. The `legacy` variant
 reproduces the robot's per-segment pitch std, >1 Hz pitch power, roll std and
 action step RMS. This is simulation, not hardware validation.
 
-### TODO: on-robot GMR is ~12x slower than x86
+### TODO: GMR timing under full control load
 
-Status: open; owner to be assigned. Not caused by this repository's Python
-changes, which were verified on host only.
+Status: root cause calibrated and receiver/thread changes verified on S100
+on 2026-10-30. Full control-load acceptance remains open.
 
-Evidence from `robot42_test_20261029T220318`:
+The earlier 33–36 ms online versus 2.7 ms x86 comparison did not isolate
+input-thread contention. CPU 5 placement, repeated full-snapshot copies and
+SDK/reader/GMR sharing a core all increased latency in controlled tests.
+Putting the whole worker on a single core made live reception slower. The
+reader now waits 2 ms on duplicate packets; SDK/readers retain CPU 0–4 while
+only the GMR calling thread narrows to CPU 1. OpenBLAS stays single-threaded.
 
-- On-robot `retarget_ms` averages 36.5 ms per Pico frame. Replaying the same
-  frames through the same pinned GMR on x86 takes 2.7 ms, and the output is
-  bit-identical (max difference 4e-14).
-- This is roughly 5.8 ms per IK solve plus about 10 ms of fixed per-frame time
-  on the robot. Solves per frame average 3.9 (p99 14). `ik_max_iter: 3` cuts
-  p99 to 8 but does not fix the per-solve cost.
-- The worker already runs with OpenBLAS threads = 1.
+The [on-robot verification receipt](deploy/actor_s100/gmr_benchmark_20261030.json)
+records the same 1000 frozen inputs with real Pico reception, trigger reader,
+50 Hz queue draining and raw GMR logging, at unchanged 1.5 GHz:
 
-Steps:
+| Receiver configuration | Mean GMR ms | P99 GMR ms | Mean thread CPU ms |
+| --- | ---: | ---: | ---: |
+| 0.1 ms duplicate polling, unrestricted threads | 21.167 | 47.763 | 13.079 |
+| 2 ms duplicate polling, receiver CPU 0–4 / GMR CPU 1 | 12.834 | 29.212 | 9.798 |
 
-1. On S100 run `python3 scripts/bench_pico_gmr.py --frames 1000`. It pushes
-   the frozen session through the live worker code without robot or Pico and
-   prints wall and thread-CPU ms per frame next to the robot's recorded
-   `retarget_ms` (x86 reference: about 2.9 ms mean, 5.9 ms p99). CPU time
-   close to wall time means compute-bound (slow core, frequency governor, or
-   unoptimized aarch64 numpy/daqp/mujoco wheels). CPU time well below wall
-   time means preemption by other processes. Run it once on an idle robot
-   and once while the actor and vendor services run.
-2. Record `lscpu` and per-core `scaling_cur_freq`/governor. Repeat step 1
-   with `--cpus <id>` for each core type to find the fastest idle core.
-3. Put that core in `pico_stream.worker_cpus`. Live logs then show
-   `worker_affinity` in the GMR input header and `retarget_ms`/`retarget_cpu_ms`
-   per control tick. If no core helps, profile one frame (`py-spy` or
-   `cProfile`) to split time between mujoco kinematics, DAQP and Python.
-4. Target: mean `retarget_ms` under 10 ms and p99 under 20 ms, then rerun
-   the frozen session replay with `--gmr <measured ms>` to confirm.
+Mean and P99 improved 39.37% and 38.84%; all 1000 GMR qpos outputs have the
+same SHA-256. IK iterations, filters and weights were identical. This is a
+read-only performance comparison, not an EXTERNAL motion trial. The prior
+short calibration at 2 GHz is not a production frequency change.
+
+To reproduce, connect Pico Full body/Send for each run; neither command opens
+a robot controller. Reports refuse to overwrite an existing file:
+
+```bash
+venv/bin/python scripts/bench_pico_gmr_live.py --baseline --frames 1000 --output /tmp/gmr_baseline.json
+venv/bin/python scripts/bench_pico_gmr_live.py --frames 1000 --output /tmp/gmr_configured.json
+```
+
+The offline-only `scripts/bench_pico_gmr.py` remains available and now selects
+the native SDK backend on ARM. Capture headers report both `worker_affinity`
+and `gmr_affinity`, plus the duplicate poll interval. Session regressions,
+including stale-hold freezing and late-sample clock behavior, are included
+in `verify_actor_delivery.py --host-inference --supermimic-model ...`.
+
+Remaining: mean GMR below 10 ms and P99 below 20 ms at 1.5 GHz are **not yet
+achieved** in this measurement. Validate sustained timing with the full
+control/inference/logging load and physical Pico A/B. If further CPU work is
+needed, profile the Python/NumPy task-objective assembly (about 41% of GMR
+CPU in the calibration); DAQP itself was about 5%. Historical logs lack
+per-frame GMR thread CPU/placement, so their entire delay cannot be attributed
+retroactively to one cause.
 ### TODO: robot42 hardware and deployment follow-ups
 
 Status: open. Source: session `robot42_test_20261029T220318`. Training-side
@@ -593,8 +613,9 @@ items (fore-aft sway, learned standing asymmetry, ankle roll at its limit,
 missing joint friction) are in trackerlab-supermimic
 `docs/vita02a_robot42_followups.md`.
 
-1. **Robot A/B of `pico_stream`.** So far it is validated only in the frozen
-   session replay. There, action step RMS drops about 32% and the
+1. **Robot A/B of `pico_stream`.** Read-only receiver performance A/B is now
+   recorded above; EXTERNAL motion A/B remains pending. In frozen
+   session simulation, action step RMS drops about 32% and the
    per-segment sway (pitch std, >1 Hz pitch power) is unchanged. Run the same
    motions with this config, then freeze the new session with
    `scripts/freeze_pico_session.py --gmr-input ... --actor-log ... --session ... --output ...`.

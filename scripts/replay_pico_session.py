@@ -38,7 +38,7 @@ def main():
     parser.add_argument('--gmr', default='robot', help="'robot' recorded GMR durations, or a constant in ms")
     args = parser.parse_args()
     fixture = SessionFixture(args.fixture)
-    runtime = ActorPicoRuntime(ROOT, backend='ort', policy='supermimic', human_height=fixture.human_height_m)
+    runtime = ActorPicoRuntime(ROOT, backend='auto', policy='supermimic', human_height=fixture.human_height_m)
     arrays, report = {}, dict(fixture=str(args.fixture), session=fixture.meta['session'], gmr=args.gmr,
                               pico_stream=runtime.config.get('pico_stream'), variants={})
     for variant in args.variants:

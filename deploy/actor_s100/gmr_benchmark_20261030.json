@@ -1,0 +1,90 @@
+{
+  "schema": "vita_s100_pico_gmr_verification_v1",
+  "date": "2026-10-30",
+  "base_commit": "580c619",
+  "device": "robot42",
+  "scope": "read-only real Pico receiver with frozen GMR inputs; no EXTERNAL/control commands",
+  "frames_per_variant": 1000,
+  "cpu_frequency_khz": 1500000,
+  "frequency_changed": false,
+  "fixture_sha256": "7aebe6267eed6ac870001f99ba989df9b27d5677a8adcf00f408a11756920400",
+  "qpos_sha256": "846e629a40cb58e9755565f7e08ab30b8ae0876b0e384a9ba7eb8b70b9e39529",
+  "all_qpos_identical": true,
+  "baseline": {
+    "worker_cpus": [],
+    "gmr_cpus": [],
+    "reader_poll_interval_s": 0.0001,
+    "wall_ms": {
+      "mean": 21.167,
+      "p50": 19.32,
+      "p95": 36.031,
+      "p99": 47.763,
+      "max": 92.674
+    },
+    "thread_cpu_ms": {
+      "mean": 13.079,
+      "p50": 12.63,
+      "p95": 21.663,
+      "p99": 24.6,
+      "max": 62.274
+    },
+    "snapshot_ms": {
+      "mean": 22.676,
+      "p50": 20.895,
+      "p95": 38.418,
+      "p99": 52.132,
+      "max": 93.128
+    }
+  },
+  "configured": {
+    "worker_cpus": [
+      0,
+      1,
+      2,
+      3,
+      4
+    ],
+    "gmr_cpus": [
+      1
+    ],
+    "reader_poll_interval_s": 0.002,
+    "wall_ms": {
+      "mean": 12.834,
+      "p50": 11.762,
+      "p95": 21.703,
+      "p99": 29.212,
+      "max": 52.182
+    },
+    "thread_cpu_ms": {
+      "mean": 9.798,
+      "p50": 9.496,
+      "p95": 16.04,
+      "p99": 18.519,
+      "max": 44.499
+    },
+    "snapshot_ms": {
+      "mean": 13.749,
+      "p50": 12.685,
+      "p95": 22.691,
+      "p99": 29.939,
+      "max": 52.732
+    }
+  },
+  "mean_reduction_percent": 39.37,
+  "p99_reduction_percent": 38.84,
+  "method": "Production capture worker including native SDK, body/trigger threads, bounded multiprocessing queue drained at 50Hz and GMR logging. No robot controller/transport constructed. Same IK iterations, filters and frozen frames in both variants.",
+  "remaining": [
+    "mean <10ms and p99 <20ms at 1.5GHz not achieved in this measurement",
+    "full EXTERNAL/Pico motion A/B and sustained complete control-load validation pending",
+    "single 1000-frame run per variant; not a long-duration thermal acceptance"
+  ],
+  "source_sha256": {
+    "config/actor_pico_supermimic.json": "f8c622c5e60cd6cc4c9cc4c64893141d87358069e8574fba282f34cf8ad70a5c",
+    "src/deployment/vita_s100_aorta_30dof/actor_pico_stream.py": "59400db201743147bdf8efd34bd9ef0b6d03e68ea879116361cf49b18e84983d",
+    "src/deployment/vita_s100_aorta_30dof/actor_pico_worker.py": "e55e8a666c40395dbe4db32d17938e84ed27157a95ded8c55a9bf00eb1a7f3f7",
+    "src/deployment/vita_s100_aorta_30dof/pico_input.py": "5fb2d3a6dc7b5aef5e35bc0a7cf01015768a3426e4da95b2c47cd19ca79dca1c",
+    "src/deployment/unitree_g1_ros2_29dof/src/humanoid_policy/pico_body_pose_reader.py": "740eff848de0f8192cc23b90065337b528f21ce34108b63225cc5a0cd2e73227",
+    "src/deployment/unitree_g1_ros2_29dof/src/humanoid_policy/local_smpl_source.py": "fc6bc3b2edca4464bda5c3139bdf9e4307e7e15c4c973916d8f0cbe489a3f2bc",
+    "scripts/bench_pico_gmr_live.py": "1307df9257542d569c141818703dd4f960b598bf10cccb0245371513ce0907fe"
+  }
+}

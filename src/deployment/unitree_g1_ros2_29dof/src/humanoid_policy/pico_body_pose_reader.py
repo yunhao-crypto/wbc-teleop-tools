@@ -3,12 +3,19 @@
 from __future__ import annotations
 import threading
 import time
+import math
 
 import numpy as np
 
 
 class PicoBodyPoseReader:
-    def __init__(self, *, logger, sdk=None) -> None:
+    def __init__(self, *, logger, sdk=None, duplicate_poll_interval_s=0.0001) -> None:
+        if (isinstance(duplicate_poll_interval_s, bool)
+                or not isinstance(duplicate_poll_interval_s, (int, float))
+                or not math.isfinite(duplicate_poll_interval_s)
+                or not 0 < duplicate_poll_interval_s <= .01):
+            raise ValueError('Pico duplicate poll interval must be in (0, 0.01] seconds')
+        self.duplicate_poll_interval_s = float(duplicate_poll_interval_s)
         if sdk is None:
             try:
                 import xrobotoolkit_sdk as sdk
@@ -39,7 +46,9 @@ class PicoBodyPoseReader:
                 stamp_ns = int(stamp_ns)
                 previous = self._last_stamp_ns
                 if previous is not None and stamp_ns == previous:
-                    self._stop_event.wait(0.0001)
+                    # Cached snapshots still copy all 24x7 poses through the
+                    # binding. Avoid competing with IK for CPU/GIL on repeats.
+                    self._stop_event.wait(self.duplicate_poll_interval_s)
                     continue
                 dt = (stamp_ns - previous) * 1.0e-9 if previous else 0.0
                 if dt > 0.0:

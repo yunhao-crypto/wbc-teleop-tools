@@ -1,6 +1,13 @@
 """Pico stream conditioning, control-clock playback and the frozen robot42 session."""
 import copy
 import math
+import json
+import os
+import queue
+import tempfile
+import threading
+from types import SimpleNamespace
+from unittest.mock import Mock, patch
 from pathlib import Path
 import sys
 import unittest
@@ -31,7 +38,10 @@ class StreamSettingsTests(unittest.TestCase):
         self.assertEqual(stream.stream_settings(dict(pico_stream=good)).ik_max_iter, 3)
         for change in (dict(ik_max_iter=11), dict(ik_max_iter=True), dict(playback_margin_s=-.01),
                        dict(playback_margin_s=.5), dict(root_max_tilt_deg=0), dict(worker_cpus=[1, 1]),
-                       dict(joint_filter=dict(min_cutoff_hz=0, beta=0, d_cutoff_hz=1)), dict(unknown=1)):
+                       dict(joint_filter=dict(min_cutoff_hz=0, beta=0, d_cutoff_hz=1)), dict(unknown=1),
+                       dict(gmr_cpus=[True]), dict(gmr_cpus=[1,1]), dict(gmr_cpus=[-1]),
+                       dict(worker_cpus=[0],gmr_cpus=[1]), dict(reader_poll_interval_s=0),
+                       dict(reader_poll_interval_s=float('nan')), dict(reader_poll_interval_s=float('inf'))):
             with self.subTest(change=change), self.assertRaises(ValueError):
                 stream.stream_settings(dict(pico_stream=dict(good, **change)))
 
@@ -81,10 +91,52 @@ class StreamSettingsTests(unittest.TestCase):
         self.assertAlmostEqual(c.update(5., 15.03+.9), before+c.RISE*c.RESET_S)
 
 
+class CaptureSchedulingTests(unittest.TestCase):
+    def test_sdk_readers_keep_their_mask_when_only_gmr_is_narrowed(self):
+        from deployment.vita_s100_aorta_30dof import actor_pico_worker as worker, pico_input
+        from deployment.vita_s100_aorta_30dof import actor_pico_scheduling as scheduling
+        original=os.sched_getaffinity(0)
+        if len(original)<2:self.skipTest('Needs two allowed CPUs for the inheritance regression')
+        cpus=sorted(original)[:2];seen={};stop=threading.Event();reader_stop=threading.Event()
+        commands=queue.Queue();commands.put((1.,0.,0.,0.));output=queue.Queue()
+        settings=stream.StreamSettings(3,.06,worker_cpus=tuple(cpus),gmr_cpus=(cpus[0],))
+        class Source:
+            def start(self):
+                def receive():
+                    seen['sdk']=sorted(os.sched_getaffinity(0))
+                    reader_stop.wait(2.)
+                self.thread=threading.Thread(target=receive);self.thread.start()
+            def step(self):
+                seen['gmr']=sorted(os.sched_getaffinity(0));stop.set();return None
+            def stop(self):reader_stop.set();self.thread.join(timeout=2.)
+        source=Source();service=Mock();service.poll.return_value=None
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                (Path(tmp)/'outputs').mkdir()
+                config=dict(pico_max_age_s=.6,retargeting={},artifacts={'model':{}},pico_stream={})
+                with (patch.object(worker.os,'setsid'),patch.object(scheduling,'input_worker_scheduler'),
+                      patch.object(worker,'sdk_math',return_value=object()),
+                      patch.object(worker,'ReferenceStream',return_value=SimpleNamespace(settings=settings)),
+                      patch.object(worker.subprocess,'Popen',return_value=service),
+                      patch.object(pico_input,'create_pico_source',return_value=source) as factory):
+                    worker._capture(tmp,config,None,None,None,commands,output,stop)
+                header=json.loads(next((Path(tmp)/'outputs').glob('actor_pico_gmr_input_*.jsonl')).read_text())
+                self.assertEqual(seen,dict(sdk=cpus,gmr=[cpus[0]]))
+                self.assertEqual(header['worker_affinity'],cpus)
+                self.assertEqual(header['gmr_affinity'],[cpus[0]])
+                self.assertEqual(factory.call_args.kwargs['duplicate_poll_interval_s'],.002)
+                self.assertFalse(any(r.get('state')=='failed' for r in list(output.queue)))
+                self.assertFalse(source.thread.is_alive())
+                service.terminate.assert_called_once()
+        finally:
+            reader_stop.set()
+            os.sched_setaffinity(0,original)
+
+
 class PlaybackTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.runtime = ActorPicoRuntime(ROOT, backend='ort', policy='supermimic')
+        cls.runtime = ActorPicoRuntime(ROOT, backend='auto', policy='supermimic')
 
     def test_same_worker_snapshot_advances_the_reference_with_the_control_clock(self):
         r = self.runtime
@@ -115,7 +167,7 @@ class FrozenSessionTests(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.runtime = ActorPicoRuntime(ROOT, backend='ort', policy='supermimic')
+        cls.runtime = ActorPicoRuntime(ROOT, backend='auto', policy='supermimic')
         cls.fixture = SessionFixture(SESSION)
         cls.legacy = copy.deepcopy(cls.runtime.config)
         cls.legacy.pop('pico_stream')

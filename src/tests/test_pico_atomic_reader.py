@@ -21,6 +21,26 @@ class TornLegacySDK:
     def get_body_pose_snapshot(self):return True,1772,np.full((24,7),1772.,np.float64)
 
 class AtomicReaderTests(unittest.TestCase):
+    def test_duplicate_poll_waits_without_delaying_new_frames(self):
+        sdk=TornLegacySDK();stamps=iter((1772,1773,1773))
+        sdk.get_body_pose_snapshot=lambda:(True,next(stamps),np.zeros((24,7)))
+        reader=module.PicoBodyPoseReader(logger=Logger(),sdk=sdk,duplicate_poll_interval_s=.002)
+        waits=[]
+        class Stop:
+            stopped=False
+            def is_set(self):return self.stopped
+            def wait(self,seconds):
+                waits.append((seconds,reader.latest()['timestamp_ns']))
+                self.stopped=True
+        reader._stop_event=Stop();reader._run()
+        self.assertEqual(waits,[(.002,1773)])
+        self.assertEqual(reader._read_errors,0)
+
+    def test_invalid_duplicate_poll_interval_is_rejected(self):
+        for value in (0.,-.001,.1,float('nan'),float('inf'),True):
+            with self.subTest(value=value),self.assertRaises(ValueError):
+                module.PicoBodyPoseReader(logger=Logger(),sdk=TornLegacySDK(),duplicate_poll_interval_s=value)
+
     def test_torn_legacy_state_is_never_read(self):
         reader=module.PicoBodyPoseReader(logger=Logger(),sdk=TornLegacySDK())
         reader.start()

@@ -47,7 +47,7 @@ def main():
     if args.cpus:
         os.sched_setaffinity(0, args.cpus)
     fixture = SessionFixture(args.fixture)
-    runtime = ActorPicoRuntime(ROOT, backend='ort', policy='supermimic', human_height=fixture.human_height_m)
+    runtime = ActorPicoRuntime(ROOT, backend='auto', policy='supermimic', human_height=fixture.human_height_m)
     config = copy.deepcopy(runtime.config)
     if args.legacy:
         config.pop('pico_stream', None)

@@ -6,8 +6,8 @@
   "files": [
     {
       "path": "README_ACTOR_PICO.md",
-      "sha256": "2dd4296a78df932918149d312439c143d008a4e0101009960a4eefc1d0dbc392",
-      "bytes": 39644,
+      "sha256": "d04ea8fedcd484d0ea59f74e6da57f1d60efb6ec545f766844e49c9e73e235bc",
+      "bytes": 40970,
       "mode": "0o644"
     },
     {
@@ -78,14 +78,14 @@
     },
     {
       "path": "tests/test_actor_pico_live.py",
-      "sha256": "0b821d279eead3ba390ef5668be16ef0639b3eff50afc95b904fe877a70d21bc",
-      "bytes": 91938,
+      "sha256": "f73446983fd82d1af6402da2b4f0f4adab66df5dfd6835f12af3d132b57b7818",
+      "bytes": 92009,
       "mode": "0o644"
     },
     {
       "path": "src/deployment/vita_s100_aorta_30dof/actor_pico_worker.py",
-      "sha256": "d946db6c7103fa46bd16806253ef1f63888f30466d950071e56f7b3025e6f0d7",
-      "bytes": 10954,
+      "sha256": "e55e8a666c40395dbe4db32d17938e84ed27157a95ded8c55a9bf00eb1a7f3f7",
+      "bytes": 11611,
       "mode": "0o644"
     },
     {
@@ -216,8 +216,8 @@
     },
     {
       "path": "config/actor_pico_supermimic.json",
-      "sha256": "8136d63ca67a833f1a377b8b56b57fd3a1a3b4b1d8eb1d510e32ae8020330b4b",
-      "bytes": 7737,
+      "sha256": "f8c622c5e60cd6cc4c9cc4c64893141d87358069e8574fba282f34cf8ad70a5c",
+      "bytes": 7794,
       "mode": "0o644"
     },
     {
@@ -240,8 +240,8 @@
     },
     {
       "path": "src/deployment/vita_s100_aorta_30dof/actor_pico_stream.py",
-      "sha256": "9676fe3b3b65ae8d03a19e1d873751ded205db77cc8232185ec510906096a91d",
-      "bytes": 9033,
+      "sha256": "59400db201743147bdf8efd34bd9ef0b6d03e68ea879116361cf49b18e84983d",
+      "bytes": 9738,
       "mode": "0o644"
     },
     {
@@ -258,26 +258,38 @@
     },
     {
       "path": "scripts/replay_pico_session.py",
-      "sha256": "40af32c410b24010a356db363100a62e9a55ccd121b9f792e488eb127538dd8d",
-      "bytes": 3444,
+      "sha256": "86da15ad219f0470165f8efee7314bdf37058b6f88d24f60498b659ffc733327",
+      "bytes": 3445,
       "mode": "0o644"
     },
     {
       "path": "scripts/bench_pico_gmr.py",
-      "sha256": "88b43ab93c8f3a4558f99e78fec27c7e93add1fdce3acaf545d77fb4a4bfdbbb",
-      "bytes": 3722,
+      "sha256": "cc2886dd8119a3994feae59f6aad8defe49da0fa889aef0c6f881b61066bf14f",
+      "bytes": 3723,
       "mode": "0o755"
     },
     {
       "path": "tests/test_actor_pico_session.py",
-      "sha256": "0312e94733cc45724271fbb0ff2f58f3df68480a6d2995aaf8b3a0e9c009806c",
-      "bytes": 11116,
+      "sha256": "f65336dc505fa16ee4702140ad72236fd4879220687312b982b733b3be25fad9",
+      "bytes": 14260,
       "mode": "0o644"
     },
     {
       "path": "tests/fixtures/actor_pico/robot42_pico_session_20261029.npz",
       "sha256": "7aebe6267eed6ac870001f99ba989df9b27d5677a8adcf00f408a11756920400",
       "bytes": 4856421,
+      "mode": "0o644"
+    },
+    {
+      "path": "scripts/bench_pico_gmr_live.py",
+      "sha256": "1307df9257542d569c141818703dd4f960b598bf10cccb0245371513ce0907fe",
+      "bytes": 8485,
+      "mode": "0o644"
+    },
+    {
+      "path": "deploy/actor_s100/gmr_benchmark_20261030.json",
+      "sha256": "a3ea0a9d632e49d6e6963f57693914ef61b64e7006432024b899e01085543fc3",
+      "bytes": 3106,
       "mode": "0o644"
     }
   ],
