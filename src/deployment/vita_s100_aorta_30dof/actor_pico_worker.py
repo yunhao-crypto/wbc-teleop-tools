@@ -16,7 +16,7 @@ import time
 
 from .actor_supermimic import create_reference
 from .actor_pico_gmr import create_retargeter
-from .actor_pico_stream import SourceClock, StreamFilter, stream_settings
+from .actor_pico_stream import SourceClock, StreamFilter, stream_settings, worker_settings
 from .actor_pico_buttons import TriggerReader
 from .actor_pico_runtime import sdk_math
 
@@ -145,19 +145,20 @@ def _capture(root, config, contract, lower, upper, commands, output, stop, contr
                                    stdout=log, stderr=subprocess.STDOUT)
         # The vendor process keeps the inherited mask. SDK and reader threads
         # inherit worker_cpus; narrow only the GMR thread after they start.
-        settings = stream.settings
-        worker_affinity = thread_affinity(() if settings is None else settings.worker_cpus)
-        poll = .0001 if settings is None else settings.reader_poll_interval_s
+        settings = worker_settings(config)
+        worker_affinity = thread_affinity(settings.worker_cpus)
+        poll = settings.reader_poll_interval_s
         pico = create_pico_source(logger=logging.getLogger('actor-manual-pico'),
             maximum_age=config['pico_max_age_s'], duplicate_poll_interval_s=poll)
         pico.start()
         if controls is not None:
             buttons = TriggerReader(pico.reader.sdk,controls,maximum_age=config['pico_max_age_s'])
             buttons.start()
-        gmr_affinity = thread_affinity(() if settings is None else settings.gmr_cpus)
+        gmr_affinity = thread_affinity(settings.gmr_cpus)
         source_log.write(json.dumps(dict(record_type='header',
             retargeting=config['retargeting'], model=config['artifacts']['model'],
-            pico_stream=config.get('pico_stream'), worker_affinity=worker_affinity,
+            pico_stream=config.get('pico_stream'), pico_worker=config.get('pico_worker'),
+            worker_affinity=worker_affinity,
             gmr_affinity=gmr_affinity, reader_poll_interval_s=poll))+'\n')
         stream.source_log, stream.source_path = source_log, source_path
         _latest(output, dict(state='waiting_pico'))

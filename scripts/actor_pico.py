@@ -146,7 +146,8 @@ def shadow(runtime, args, write):
             resources.callback(source.close)
             if source.group != args.group:
                 raise RuntimeError('SDK source group mismatch')
-            pico = create_pico_source(logger=logging.getLogger('actor-pico'), maximum_age=runtime.config['pico_max_age_s'])
+            pico = create_pico_source(logger=logging.getLogger('actor-pico'), maximum_age=runtime.config['pico_max_age_s'],
+                                      duplicate_poll_interval_s=runtime.worker.reader_poll_interval_s)
             resources.callback(pico.stop)
             pico.start()
             start = deadline = time.monotonic()
@@ -281,10 +282,7 @@ def live(runtime, args, write):
             # Only now, with the worker spawned on the unrestricted mask, may
             # control narrow away from the GMR CPU.
             from deployment.vita_s100_aorta_30dof.actor_pico_scheduling import control_affinity
-            from deployment.vita_s100_aorta_30dof.actor_pico_stream import stream_settings
-            settings = stream_settings(runtime.config)
-            write(dict(record_type='control_affinity',
-                       cpus=control_affinity(() if settings is None else settings.control_cpus)))
+            write(dict(record_type='control_affinity', cpus=control_affinity(runtime.worker.control_cpus)))
             transport = RealtimeBodyTransport(group=args.group, node_name='vita-actor-pico-live')
             resources.callback(transport.close)
             controller = PullController(group=args.group, node_name='vita-actor-pico-live', _transport=transport)
@@ -379,6 +377,7 @@ def main():
                    robot_id=args.robot_id, retargeter=runtime.config['retargeting'],
                    gmr_engine='accelerated' if runtime.retarget.accelerated else 'pinned',
                    reference_delay_s=runtime.reference.delay, pico_stream=runtime.config.get('pico_stream'),
+                   pico_worker=runtime.config.get('pico_worker'),
                    actions_sent=0))
         try:
             report = {'check': check, 'replay': replay, 'state-check': state_check,

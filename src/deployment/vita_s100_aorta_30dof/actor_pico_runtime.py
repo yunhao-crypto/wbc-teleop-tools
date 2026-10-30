@@ -14,7 +14,7 @@ import time
 import numpy as np
 
 from .actor_pico_gmr import create_retargeter
-from .actor_pico_stream import stream_settings
+from .actor_pico_stream import stream_settings, worker_settings
 from .actor_supermimic import (POLICY_KIND as SUPERMIMIC_KIND, NativeModel, SuperMimicContract,
                                create_policy, create_reference, reference_window)
 
@@ -49,6 +49,7 @@ def load_actor_config(root, policy='sonic'):
         raise ValueError('Pico reference hold age must be positive and below pico_max_age_s')
     if stream_settings(config) is not None and policy != 'supermimic':
         raise ValueError('pico_stream playback is only implemented for the SuperMimic reference')
+    worker_settings(config)
     for item in config['artifacts'].values():
         path = (root/item['path']).resolve()
         if not path.is_relative_to(root) or digest(path) != item['sha256']:
@@ -126,6 +127,7 @@ class ActorPicoRuntime:
         if human_height is not None:
             self.config['retargeting']['human_height_m'] = float(human_height)
         self.stream = stream_settings(self.config)
+        self.worker = worker_settings(self.config)
         self.math = sdk_math(root, self.config)
         self.model = ActorModel(self.root/self.config['artifacts']['model']['path'],
                                 self.math, backend=backend, threads=threads,

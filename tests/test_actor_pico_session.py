@@ -34,26 +34,43 @@ def tilt_of(q):
 class StreamSettingsTests(unittest.TestCase):
     def test_absent_block_keeps_original_stream_and_invalid_values_fail(self):
         self.assertIsNone(stream.stream_settings({}))
-        good = dict(ik_max_iter=3, playback_margin_s=.06)
-        self.assertEqual(stream.stream_settings(dict(pico_stream=good)).ik_max_iter, 3)
-        for change in (dict(ik_max_iter=11), dict(ik_max_iter=True), dict(playback_margin_s=-.01),
-                       dict(playback_margin_s=.5), dict(root_max_tilt_deg=0), dict(worker_cpus=[1, 1]),
-                       dict(joint_filter=dict(min_cutoff_hz=0, beta=0, d_cutoff_hz=1)), dict(unknown=1),
-                       dict(gmr_cpus=[True]), dict(gmr_cpus=[1,1]), dict(gmr_cpus=[-1]),
-                       dict(worker_cpus=[0],gmr_cpus=[1]), dict(reader_poll_interval_s=0),
-                       dict(reader_poll_interval_s=float('nan')), dict(reader_poll_interval_s=float('inf')),
-                       dict(control_cpus=2), dict(control_cpus=[True]), dict(control_cpus=[2, 2]),
-                       dict(control_cpus=[-1]), dict(gmr_cpus=[1], control_cpus=[1, 2])):
+        good = dict(playback_margin_s=.06)
+        self.assertEqual(stream.stream_settings(dict(pico_stream=good)).playback_margin_s, .06)
+        for change in (dict(playback_margin_s=-.01), dict(playback_margin_s=.5), dict(root_max_tilt_deg=0),
+                       dict(joint_filter=dict(min_cutoff_hz=0, beta=0, d_cutoff_hz=1)), dict(unknown=1)):
             with self.subTest(change=change), self.assertRaises(ValueError):
                 stream.stream_settings(dict(pico_stream=dict(good, **change)))
+        for moved in stream.WORKER_KEYS:
+            with self.subTest(moved=moved), self.assertRaisesRegex(ValueError, 'to pico_worker'):
+                stream.stream_settings(dict(pico_stream=dict(good, **{moved: 3})))
 
-    def test_shipped_profile_keeps_control_off_the_gmr_cpu(self):
-        config = ActorPicoRuntime(ROOT, backend='auto', policy='supermimic').config
-        settings = stream.stream_settings(config)
-        self.assertEqual(settings.control_cpus, (2, 3, 4))
-        self.assertEqual(settings.gmr_cpus, (1,))
+    def test_absent_worker_block_keeps_the_original_worker_and_invalid_values_fail(self):
+        self.assertEqual(stream.worker_settings({}),
+                         stream.WorkerSettings(None, .0001, (), (), ()))
+        good = dict(ik_max_iter=3, worker_cpus=[0, 1, 2], gmr_cpus=[1], control_cpus=[2])
+        self.assertEqual(stream.worker_settings(dict(pico_worker=good)),
+                         stream.WorkerSettings(3, .0001, (0, 1, 2), (1,), (2,)))
+        for change in (dict(ik_max_iter=11), dict(ik_max_iter=True), dict(worker_cpus=[1, 1]), dict(unknown=1),
+                       dict(gmr_cpus=[True]), dict(gmr_cpus=[1, 1]), dict(gmr_cpus=[-1]),
+                       dict(worker_cpus=[0], gmr_cpus=[1], control_cpus=[]), dict(reader_poll_interval_s=0),
+                       dict(reader_poll_interval_s=float('nan')), dict(reader_poll_interval_s=float('inf')),
+                       dict(control_cpus=2), dict(control_cpus=[True]), dict(control_cpus=[2, 2]),
+                       dict(control_cpus=[-1]), dict(control_cpus=[1, 2])):
+            with self.subTest(change=change), self.assertRaises(ValueError):
+                stream.worker_settings(dict(pico_worker=dict(good, **change)))
+        with self.assertRaises(ValueError):
+            stream.worker_settings(dict(pico_worker=[]))
+
+    def test_both_policies_ship_the_same_worker_with_control_off_the_gmr_cpu(self):
+        sonic, supermimic = (ActorPicoRuntime(ROOT, backend='auto', policy=p) for p in ('sonic', 'supermimic'))
+        self.assertEqual(sonic.worker, supermimic.worker)
+        settings = supermimic.worker
+        self.assertEqual((settings.ik_max_iter, settings.reader_poll_interval_s), (3, .002))
+        self.assertEqual((settings.gmr_cpus, settings.control_cpus), ((1,), (2, 3, 4)))
         self.assertTrue(set(settings.gmr_cpus) <= set(settings.worker_cpus))
         self.assertFalse(set(settings.control_cpus) & set(settings.gmr_cpus))
+        self.assertIsNone(sonic.stream)
+        self.assertEqual(sonic.retarget.engine.max_iter, supermimic.retarget.engine.max_iter)
 
     def test_one_euro_holds_constants_and_follows_steps_with_bounded_lag(self):
         f = stream.OneEuro(stream.OneEuroSettings(3., .5, 1.))
@@ -109,7 +126,6 @@ class CaptureSchedulingTests(unittest.TestCase):
         if len(original)<2:self.skipTest('Needs two allowed CPUs for the inheritance regression')
         cpus=sorted(original)[:2];seen={};stop=threading.Event();reader_stop=threading.Event()
         commands=queue.Queue();commands.put((1.,0.,0.,0.));output=queue.Queue()
-        settings=stream.StreamSettings(3,.06,worker_cpus=tuple(cpus),gmr_cpus=(cpus[0],))
         class Source:
             def start(self):
                 def receive():
@@ -123,10 +139,11 @@ class CaptureSchedulingTests(unittest.TestCase):
         try:
             with tempfile.TemporaryDirectory() as tmp:
                 (Path(tmp)/'outputs').mkdir()
-                config=dict(pico_max_age_s=.6,retargeting={},artifacts={'model':{}},pico_stream={})
+                config=dict(pico_max_age_s=.6,retargeting={},artifacts={'model':{}},
+                            pico_worker=dict(worker_cpus=cpus,gmr_cpus=[cpus[0]],reader_poll_interval_s=.002))
                 with (patch.object(worker.os,'setsid'),patch.object(scheduling,'input_worker_scheduler'),
                       patch.object(worker,'sdk_math',return_value=object()),
-                      patch.object(worker,'ReferenceStream',return_value=SimpleNamespace(settings=settings)),
+                      patch.object(worker,'ReferenceStream',return_value=SimpleNamespace()),
                       patch.object(worker.subprocess,'Popen',return_value=service),
                       patch.object(pico_input,'create_pico_source',return_value=source) as factory):
                     worker._capture(tmp,config,None,None,None,commands,output,stop)
@@ -169,7 +186,7 @@ class PlaybackTests(unittest.TestCase):
         np.testing.assert_allclose(np.diff(times), .02, atol=1e-12)
 
     def test_settings_cap_gmr_iterations(self):
-        self.assertEqual(self.runtime.retarget.engine.max_iter, self.runtime.stream.ik_max_iter)
+        self.assertEqual(self.runtime.retarget.engine.max_iter, self.runtime.worker.ik_max_iter)
 
 
 class FrozenSessionTests(unittest.TestCase):
@@ -181,6 +198,18 @@ class FrozenSessionTests(unittest.TestCase):
         cls.fixture = SessionFixture(SESSION)
         cls.legacy = copy.deepcopy(cls.runtime.config)
         cls.legacy.pop('pico_stream')
+        cls.legacy.pop('pico_worker')
+
+    def test_sonic_runs_the_same_gmr_chain_as_supermimic(self):
+        f = self.fixture
+        runtimes = [ActorPicoRuntime(ROOT, backend='auto', policy=p, human_height=f.human_height_m)
+                    for p in ('sonic', 'supermimic')]
+        streams = [ReferenceStream(r.root, r.config, r.model.contract, r.math) for r in runtimes]
+        for i in range(60):
+            for s in streams:
+                s.push(f.frame_body[i].astype(np.float64), dict(timestamp_ns=int(f.frame_stamp_ns[i]),
+                    timestamp_monotonic=float(f.frame_received_monotonic[i])), (1., 0., 0., 0.))
+            np.testing.assert_array_equal(streams[0].retarget.last_qpos, streams[1].retarget.last_qpos)
 
     def test_fixture_matches_the_deployed_model_and_replays_robot_gmr_exactly(self):
         f = self.fixture
@@ -218,7 +247,7 @@ class FrozenSessionTests(unittest.TestCase):
             subprocess.run([sys.executable, str(ROOT/'scripts/bench_pico_gmr.py'), '--frames', '3',
                             '--output', str(out)], check=True, capture_output=True)
             report = json.loads(out.read_text())
-        self.assertEqual((report['frames'], report['ik_max_iter']), (3, self.runtime.stream.ik_max_iter))
+        self.assertEqual((report['frames'], report['ik_max_iter']), (3, self.runtime.worker.ik_max_iter))
         self.assertGreater(report['wall_ms']['mean'], 0)
         self.assertEqual(set(report['cpu_ms']), {'mean', 'p50', 'p95', 'p99', 'max'})
 

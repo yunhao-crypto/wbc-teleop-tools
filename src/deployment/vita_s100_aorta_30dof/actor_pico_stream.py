@@ -8,6 +8,9 @@ With it, the worker ships the raw retargeted samples plus a source-clock to
 local-clock offset, and the control loop resamples them at ``now - delay`` so
 the reference advances by exactly the elapsed control time every tick,
 however irregularly Pico frames or GMR solves arrive.
+
+The ``pico_worker`` block (any policy) sets GMR iterations, duplicate-frame
+polling and the receiver/GMR/control CPU layout; see ``worker_settings``.
 """
 from dataclasses import dataclass
 import math
@@ -24,14 +27,23 @@ class OneEuroSettings:
 
 @dataclass(frozen=True)
 class StreamSettings:
-    ik_max_iter: int
     playback_margin_s: float
     joint_filter: OneEuroSettings = None
     root_filter: OneEuroSettings = None
     root_max_tilt_rad: float = None
+
+
+@dataclass(frozen=True)
+class WorkerSettings:
+    """GMR/receiver/control scheduling, shared by every policy's Pico worker.
+
+    The defaults are the original worker: pinned GMR iterations (10), 0.1 ms
+    duplicate polling and no CPU pinning.
+    """
+    ik_max_iter: int = None
+    reader_poll_interval_s: float = .0001
     worker_cpus: tuple = ()
     gmr_cpus: tuple = ()
-    reader_poll_interval_s: float = .002
     control_cpus: tuple = ()
 
 
@@ -47,47 +59,64 @@ def _euro(raw, name):
     return OneEuroSettings(*(float(v) for v in values))
 
 
+WORKER_KEYS = {'ik_max_iter', 'reader_poll_interval_s', 'worker_cpus', 'gmr_cpus', 'control_cpus'}
+
+
 def stream_settings(config):
     """Validated ``pico_stream`` settings, or None for the original stream."""
     raw = config.get('pico_stream')
     if raw is None:
         return None
-    known = {'ik_max_iter', 'playback_margin_s', 'joint_filter', 'root_filter',
-             'root_max_tilt_deg', 'worker_cpus', 'gmr_cpus', 'reader_poll_interval_s', 'control_cpus', 'note'}
+    known = {'playback_margin_s', 'joint_filter', 'root_filter', 'root_max_tilt_deg', 'note'}
     if not isinstance(raw, dict):
         raise ValueError('pico_stream must be an object')
-    if set(raw)-known or not {'ik_max_iter', 'playback_margin_s'} <= set(raw):
-        raise ValueError('pico_stream needs ik_max_iter and playback_margin_s; unknown keys: '
+    if set(raw) & WORKER_KEYS:
+        raise ValueError('Move '+', '.join(sorted(set(raw) & WORKER_KEYS))+' from pico_stream to pico_worker')
+    if set(raw)-known or 'playback_margin_s' not in raw:
+        raise ValueError('pico_stream needs playback_margin_s; unknown keys: '
                          +', '.join(sorted(set(raw)-known)))
-    iterations, margin = raw['ik_max_iter'], raw['playback_margin_s']
-    if type(iterations) is not int or not 0 <= iterations <= 10:
-        raise ValueError('pico_stream.ik_max_iter must be an integer in [0, 10]')
+    margin = raw['playback_margin_s']
     if isinstance(margin, bool) or not isinstance(margin, (int, float)) or not 0 <= margin <= .3:
         raise ValueError('pico_stream.playback_margin_s must lie in [0, 0.3] s')
     tilt = raw.get('root_max_tilt_deg')
     if tilt is not None and (isinstance(tilt, bool) or not isinstance(tilt, (int, float))
                              or not 0 < tilt <= 90):
         raise ValueError('pico_stream.root_max_tilt_deg must lie in (0, 90]')
-    cpus = raw.get('worker_cpus', [])
+    return StreamSettings(float(margin), _euro(raw.get('joint_filter'), 'joint_filter'),
+                          _euro(raw.get('root_filter'), 'root_filter'),
+                          None if tilt is None else math.radians(tilt))
+
+
+def _cpu_list(raw, name):
+    cpus = raw.get(name, [])
     if (not isinstance(cpus, list) or any(type(c) is not int or c < 0 for c in cpus)
             or len(set(cpus)) != len(cpus)):
-        raise ValueError('pico_stream.worker_cpus must list distinct CPU indices')
-    gmr = raw.get('gmr_cpus', [])
-    if (not isinstance(gmr, list) or any(type(c) is not int or c < 0 for c in gmr)
-            or len(set(gmr)) != len(gmr) or (cpus and not set(gmr) <= set(cpus))):
-        raise ValueError('pico_stream.gmr_cpus must list distinct CPU indices within worker_cpus')
-    poll = raw.get('reader_poll_interval_s', .002)
+        raise ValueError(f'pico_worker.{name} must list distinct CPU indices')
+    return tuple(cpus)
+
+
+def worker_settings(config):
+    """Validated ``pico_worker`` settings; without the block, the original worker."""
+    raw = config.get('pico_worker')
+    if raw is None:
+        return WorkerSettings()
+    if not isinstance(raw, dict):
+        raise ValueError('pico_worker must be an object')
+    if set(raw)-WORKER_KEYS-{'note'}:
+        raise ValueError('Unknown pico_worker keys: '+', '.join(sorted(set(raw)-WORKER_KEYS-{'note'})))
+    iterations = raw.get('ik_max_iter')
+    if iterations is not None and (type(iterations) is not int or not 0 <= iterations <= 10):
+        raise ValueError('pico_worker.ik_max_iter must be an integer in [0, 10]')
+    poll = raw.get('reader_poll_interval_s', WorkerSettings.reader_poll_interval_s)
     if (isinstance(poll, bool) or not isinstance(poll, (int, float))
             or not math.isfinite(poll) or not 0 < poll <= .01):
-        raise ValueError('pico_stream.reader_poll_interval_s must lie in (0, 0.01] seconds')
-    control = raw.get('control_cpus', [])
-    if (not isinstance(control, list) or any(type(c) is not int or c < 0 for c in control)
-            or len(set(control)) != len(control) or set(control) & set(gmr)):
-        raise ValueError('pico_stream.control_cpus must list distinct CPU indices outside gmr_cpus')
-    return StreamSettings(iterations, float(margin), _euro(raw.get('joint_filter'), 'joint_filter'),
-                          _euro(raw.get('root_filter'), 'root_filter'),
-                          None if tilt is None else math.radians(tilt), tuple(cpus), tuple(gmr), float(poll),
-                          tuple(control))
+        raise ValueError('pico_worker.reader_poll_interval_s must lie in (0, 0.01] seconds')
+    cpus, gmr, control = (_cpu_list(raw, n) for n in ('worker_cpus', 'gmr_cpus', 'control_cpus'))
+    if cpus and not set(gmr) <= set(cpus):
+        raise ValueError('pico_worker.gmr_cpus must lie within worker_cpus')
+    if set(control) & set(gmr):
+        raise ValueError('pico_worker.control_cpus must not overlap gmr_cpus')
+    return WorkerSettings(iterations, float(poll), cpus, gmr, control)
 
 
 def _smoothing(cutoff, dt):

@@ -2,8 +2,9 @@
 """Replay a frozen Pico session through the deployed worker and export policy windows.
 
 For each variant (``legacy`` = window anchored at the newest sample, as
-deployed at ca86f1c; ``playback`` = the configured ``pico_stream``) this
-writes, per 50 Hz control tick, the reference window the live loop feeds the
+deployed at ca86f1c, with neither ``pico_stream`` nor ``pico_worker``;
+``playback`` = the configured blocks) this writes, per 50 Hz control tick,
+the reference window the live loop feeds the
 SuperMimic policy, and prints how smoothly the current reference frame
 advances. The output feeds trackerlab-supermimic's
 scripts/rls/supermimic/replay_pico_session_mujoco.py closed-loop sim2sim.
@@ -40,11 +41,13 @@ def main():
     fixture = SessionFixture(args.fixture)
     runtime = ActorPicoRuntime(ROOT, backend='auto', policy='supermimic', human_height=fixture.human_height_m)
     arrays, report = {}, dict(fixture=str(args.fixture), session=fixture.meta['session'], gmr=args.gmr,
-                              pico_stream=runtime.config.get('pico_stream'), variants={})
+                              pico_stream=runtime.config.get('pico_stream'),
+                              pico_worker=runtime.config.get('pico_worker'), variants={})
     for variant in args.variants:
         config = copy.deepcopy(runtime.config)
         if variant == 'legacy':
             config.pop('pico_stream', None)
+            config.pop('pico_worker', None)
         windows = export_windows(runtime, fixture, config=config, segments=args.segments, stand=args.stand,
                                  seconds=args.seconds, gmr=args.gmr if args.gmr == 'robot' else float(args.gmr))
         arrays.update({f'{variant}/{k}': v for k, v in windows.items()})

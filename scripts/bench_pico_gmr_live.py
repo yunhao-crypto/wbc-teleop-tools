@@ -40,7 +40,7 @@ def capture(options, commands, output, stop, controls):
     config['retargeting']['human_height_m'] = fixture.human_height_m
     if options['baseline']:
         config = copy.deepcopy(config)
-        config['pico_stream'].update(worker_cpus=[], gmr_cpus=[], reader_poll_interval_s=.0001)
+        config['pico_worker'].update(worker_cpus=[], gmr_cpus=[], reader_poll_interval_s=.0001)
     count = min(options['frames'], len(fixture.frame_stamp_ns))
     rows, paths, digest = [], [], hashlib.sha256()
     original = worker.ReferenceStream
@@ -71,7 +71,7 @@ def capture(options, commands, output, stop, controls):
     report = dict(schema='vita_pico_live_gmr_benchmark_v1', actions_sent=0,
         variant='baseline' if options['baseline'] else 'configured', frames=len(rows),
         fixture_sha256=hashlib.sha256(Path(options['fixture']).read_bytes()).hexdigest(),
-        qpos_sha256=digest.hexdigest(), pico_stream=config['pico_stream'], capture_header=header,
+        qpos_sha256=digest.hexdigest(), pico_stream=config['pico_stream'], pico_worker=config['pico_worker'], capture_header=header,
         wall_ms=summary([r['retarget_ms'] for r in rows]),
         cpu_ms=summary([r['retarget_cpu_ms'] for r in rows]),
         snapshot_ms=summary([r['snapshot_ms'] for r in rows]),

@@ -503,7 +503,8 @@ class LiveTests(unittest.TestCase):
         spec=importlib.util.spec_from_file_location('actor_cli_no_pico_test',ROOT/'scripts/actor_pico.py')
         cli=importlib.util.module_from_spec(spec);spec.loader.exec_module(cli)
         profile=Path(self.tmp.name)/'peer.json5';profile.touch(mode=0o600);profile.write_text('{mode:"peer"}')
-        runtime=NS(root=Path(self.tmp.name),model=NS(backend='sdk'),config={})
+        from deployment.vita_s100_aorta_30dof.actor_pico_stream import WorkerSettings
+        runtime=NS(root=Path(self.tmp.name),model=NS(backend='sdk'),config={},worker=WorkerSettings())
         self.args.stand_only=True;self.args.manual_pico=False;self.args.group='default'
         with (patch.dict(os.environ,ZENOH_SESSION_CONFIG_URI=str(profile)),
               patch.object(cli.platform,'machine',return_value='aarch64'),
@@ -527,9 +528,9 @@ class LiveTests(unittest.TestCase):
         spec=importlib.util.spec_from_file_location('actor_cli_worker_test',ROOT/'scripts/actor_pico.py')
         cli=importlib.util.module_from_spec(spec);spec.loader.exec_module(cli)
         profile=Path(self.tmp.name)/'peer.json5';profile.touch(mode=0o600);profile.write_text('{mode:"peer"}')
+        from deployment.vita_s100_aorta_30dof.actor_pico_stream import WorkerSettings
         runtime=NS(root=Path(self.tmp.name),model=NS(backend='sdk'),
-                   config=dict(pico_stream=dict(ik_max_iter=3,playback_margin_s=.06,
-                       worker_cpus=[0,1,2,3,4],gmr_cpus=[1],control_cpus=[2,3,4])))
+                   worker=WorkerSettings(3,.002,(0,1,2,3,4),(1,),(2,3,4)))
         self.args.stand_only=False;self.args.manual_pico=False;self.args.group='default'
         worker=Mock();events=[];rows=[]
         worker.start.side_effect=lambda:events.append('worker_start')

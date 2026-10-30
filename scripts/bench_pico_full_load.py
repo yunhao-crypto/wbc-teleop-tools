@@ -130,7 +130,7 @@ def trial(options,label,index,receiver_pid):
     assert fixture.meta['body_order']==list(runtime.policy.order)
     assert fixture.meta['model']['sha256']==runtime.config['artifacts']['model']['sha256']
     cfg=copy.deepcopy(runtime.config)
-    if label=='C':cfg['pico_stream']['gmr_cpus']=[0,1]
+    if label=='C':cfg['pico_worker']['gmr_cpus']=[0,1]
     prefix=options.output/f'{index:02d}_{label}'
     ctx=multiprocessing.get_context('spawn')
     worker=PicoReferenceProcess(runtime)
@@ -162,7 +162,7 @@ def trial(options,label,index,receiver_pid):
         started=deadline=time.monotonic();first=None;last_notice=0.;ticks=0
         with Path(str(prefix)+'.control.jsonl').open('x',buffering=1024*1024) as log:
             log.write(json.dumps(dict(record_type='full_shadow_header',label=label,feedback=options.feedback,
-                control_affinity=applied,scheduler=scheduler,pico_stream=cfg['pico_stream'],
+                control_affinity=applied,scheduler=scheduler,pico_stream=cfg['pico_stream'],pico_worker=cfg['pico_worker'],
                 observations_recorded=True,actions_sent=0,control_publishers=0))+'\n')
             while worker.process.is_alive() and progress.value<options.frames:
                 time.sleep(max(0.,deadline-time.monotonic()))

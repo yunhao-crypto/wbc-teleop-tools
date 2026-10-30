@@ -527,11 +527,24 @@ starts only after the full model-derived window is available (200 ms for the cur
   control loop resamples the policy window at
   `now - clock_offset - playback_margin_s - reference delay`, so the reference
   moves 20 ms per tick no matter when GMR frames arrive.
-- `ik_max_iter` caps GMR refinement passes per frame. The pinned default is 10.
 - `joint_filter`/`root_filter` are One-Euro filters. `root_max_tilt_deg` clamps
   the reference root tilt and keeps its heading.
-- `reader_poll_interval_s` waits between duplicate body snapshots (2 ms on
-  SuperMimic); new frames are processed immediately when observed.
+
+Without the block, the previous newest-sample window is used unchanged. The
+SONIC reference does not implement this playback, so its configuration must
+not contain `pico_stream`.
+
+## Pico worker: GMR and CPU layout (all policies)
+
+`pico_worker` sets the GMR worker, receiver and control scheduling. SONIC
+(`config/actor_pico.json`) and SuperMimic ship the same block, so both run the
+same GMR chain with the same parameters:
+
+- `ik_max_iter` caps GMR refinement passes per frame. The pinned default is
+  10; both policies use 3.
+- `reader_poll_interval_s` waits between duplicate body snapshots (2 ms);
+  new frames are processed immediately when observed. Shadow mode uses the
+  same interval for its in-process reader.
 - `worker_cpus` is inherited by SDK/body/trigger threads. Only after those
   threads start does `gmr_cpus` narrow the calling GMR thread. The reviewed
   six-core S100 profile uses CPU 0–4 for receivers and CPU 1 for GMR, avoiding
@@ -546,7 +559,11 @@ starts only after the full model-derived window is available (200 ms for the cur
   CPU 2–4 (layout B in the full-load replay below). The live log records the
   applied mask as `control_affinity`. Stand-only runs apply it too.
 
-Without the block, the previous newest-sample window is used unchanged.
+Without the block the worker is unchanged: 10 iterations, 0.1 ms polling and
+no CPU pinning. The GMR input log header records `pico_worker` and the
+applied worker/GMR masks. The timing measurements below used the SuperMimic
+configuration; SONIC runs the same GMR code and settings but has not been
+timed on the robot.
 
 ### Frozen session replay (sim2sim)
 
@@ -661,7 +678,7 @@ code, build scripts and binaries are excluded from this delivery, and D/E
 are not supported runner conditions. Large logs and prototype sources remain
 in the separately checksummed archive identified by the receipt.
 
-Production live now uses layout B through `pico_stream.control_cpus` (see
+Production live now uses layout B through `pico_worker.control_cpus` (see
 above). It has not yet been timed with live Pico reception and live feedback,
 and stable timing acceptance remains open.
 

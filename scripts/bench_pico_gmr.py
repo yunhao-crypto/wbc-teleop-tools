@@ -2,7 +2,7 @@
 """Time the live GMR worker on the frozen Pico session; no robot or Pico needed.
 
 Pushes recorded Pico frames through the deployed ReferenceStream (same GMR,
-ik_max_iter and stream conditioning as live) and reports per-frame wall and
+pico_worker GMR iterations and stream conditioning as live) and reports per-frame wall and
 thread-CPU milliseconds next to the on-robot retarget_ms of the same frames.
 CPU close to wall means compute-bound; CPU well below wall means preemption.
 
@@ -41,7 +41,7 @@ def main():
     parser.add_argument('--fixture', type=Path, default=DEFAULT_FIXTURE)
     parser.add_argument('--frames', type=int, default=1000, help='leading fixture frames to push (0 = all)')
     parser.add_argument('--cpus', type=int, nargs='+', help='pin this process to these CPUs first')
-    parser.add_argument('--legacy', action='store_true', help='drop pico_stream (pinned ik_max_iter 10, no filters)')
+    parser.add_argument('--legacy', action='store_true', help='drop pico_stream and pico_worker (pinned ik_max_iter 10, no filters)')
     parser.add_argument('--output', type=Path, help='optional JSON report')
     args = parser.parse_args()
     if args.cpus:
@@ -51,6 +51,7 @@ def main():
     config = copy.deepcopy(runtime.config)
     if args.legacy:
         config.pop('pico_stream', None)
+        config.pop('pico_worker', None)
     stream = ReferenceStream(runtime.root, config, runtime.model.contract, runtime.math)
     count = len(fixture.frame_stamp_ns) if args.frames <= 0 else min(args.frames, len(fixture.frame_stamp_ns))
     wall, cpu = [], []
@@ -65,7 +66,7 @@ def main():
     report = dict(host=platform.node(), machine=platform.machine(), cpu_count=os.cpu_count(),
                   affinity=affinity if len(affinity) <= 16 else f'{len(affinity)} cpus', frames=count,
                   pico_stream=config.get('pico_stream') is not None,
-                  ik_max_iter=None if config.get('pico_stream') is None else config['pico_stream']['ik_max_iter'],
+                  ik_max_iter=stream.retarget.engine.max_iter,
                   wall_ms=summary(wall), cpu_ms=summary(cpu),
                   robot_session_retarget_ms=summary(fixture.frame_robot_retarget_ms[:count]))
     print(json.dumps(report, indent=2))

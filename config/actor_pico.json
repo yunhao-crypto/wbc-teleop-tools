@@ -232,5 +232,13 @@
     "human_height_m": 1.75,
     "robot": "vita02a",
     "offset_to_ground": true
+  },
+  "pico_worker": {
+    "ik_max_iter": 3,
+    "reader_poll_interval_s": 0.002,
+    "worker_cpus": [0, 1, 2, 3, 4],
+    "gmr_cpus": [1],
+    "control_cpus": [2, 3, 4],
+    "note": "Same GMR/receiver/control layout as SuperMimic (config/actor_pico_supermimic.json): ik_max_iter 3, 2 ms duplicate polling, receivers on CPU 0-4, GMR on CPU 1, live control on CPU 2-4 (full-load layout B). These CPU indices require the reviewed six-core S100 layout."
   }
 }

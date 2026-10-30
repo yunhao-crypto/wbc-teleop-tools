@@ -504,7 +504,7 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
         kd=dict(zip(runtime.model.contract.names, runtime.model.contract.kd.tolist())),
         fixed_joints=runtime.config['body_profile']['fixed_joints'], reference_delay_s=runtime.reference.delay,
         human_height_m=runtime.config['retargeting']['human_height_m'],
-        pico_stream=runtime.config.get('pico_stream'))), flush=True)
+        pico_stream=runtime.config.get('pico_stream'), pico_worker=runtime.config.get('pico_worker'))), flush=True)
     print('ACTOR_START: motion requested; '+
           ('running until STOP/Ctrl-C or fault' if args.seconds == 0 else f'duration limit {args.seconds:g}s')+
           '; exit requests CANCEL -> PASSIVE. Keep support and E-stop available.',flush=True)
