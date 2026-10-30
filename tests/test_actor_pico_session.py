@@ -69,6 +69,17 @@ class StreamSettingsTests(unittest.TestCase):
         self.assertAlmostEqual(c.update(.08, 10.2), before+c.RISE*.04)
         self.assertEqual(c.update(700., 20.), 20.-700.)
 
+    def test_source_clock_late_samples_rise_slowly_and_never_reanchor(self):
+        c = stream.SourceClock()
+        c.update(0., 10.03)
+        c.update(.033, 10.063)
+        offset = c.offset
+        # One frame published 0.51 s late (worker stall) must not move playback backwards.
+        self.assertAlmostEqual(c.update(.066, 10.096+.51), offset+c.RISE*.033)
+        self.assertAlmostEqual(c.update(.099, 10.129), offset)
+        before = c.offset
+        self.assertAlmostEqual(c.update(5., 15.03+.9), before+c.RISE*c.RESET_S)
+
 
 class PlaybackTests(unittest.TestCase):
     @classmethod
@@ -148,6 +159,60 @@ class FrozenSessionTests(unittest.TestCase):
         self.assertEqual((report['frames'], report['ik_max_iter']), (3, self.runtime.stream.ik_max_iter))
         self.assertGreater(report['wall_ms']['mean'], 0)
         self.assertEqual(set(report['cpu_ms']), {'mean', 'p50', 'p95', 'p99', 'max'})
+
+    def stream_snapshots(self, n=150, gmr=.036, stall_at=None, stall=0.):
+        """Robot-like worker: 30 Hz Pico frames, each solve takes the newest received frame."""
+        r, f, now = self.runtime, self.fixture, [0.]
+        worker = ReferenceStream(r.root, r.config, r.model.contract, r.math, clock=lambda: now[0])
+        first = int(np.searchsorted(f.frame_received_monotonic, f.following_segments()[2][0]))
+        received = 100.+np.arange(n)*.033
+        free, last, snapshots = received[0], -1, []
+        while last+1 < n:
+            k = int(np.searchsorted(received, free, side='right'))-1
+            if k <= last:
+                free = received[last+1]
+                continue
+            if k == stall_at:
+                free += stall
+            now[0] = free = free+gmr
+            snapshots.append((free, worker.push(f.frame_body[first+k].astype(np.float64),
+                dict(timestamp_ns=5_000_000_000+k*33_000_000, timestamp_monotonic=float(received[k])),
+                (1., 0., 0., 0.))))
+            last = k
+        return snapshots
+
+    def test_hold_freezes_the_frame_current_when_it_starts(self):
+        from deployment.vita_s100_aorta_30dof.actor_pico_live import manual_reference
+        r, ci = self.runtime, self.runtime.reference.current_index
+        snapshot = self.stream_snapshots(n=100)[-1][1]
+        r.reset_inputs()
+        live, held = [], []
+        for age in (.20, .26, .30, .35, .45, .55):
+            motion, _ = manual_reference(r, snapshot, snapshot['received_monotonic']+age)
+            live.append(np.asarray(motion.q)[ci])
+            motion, hold = r.hold_stale_reference(motion, age)
+            self.assertEqual(hold, age > r.config['pico_hold_age_s'])
+            held.append(np.asarray(motion.q))
+        # Playback keeps advancing past the hold onset, so this checks a real freeze.
+        self.assertGreater(np.abs(live[-1]-live[1]).max(), 1e-3)
+        for window in held[1:]:
+            np.testing.assert_array_equal(window, np.repeat(live[1][None], len(window), axis=0))
+        motion, hold = r.hold_stale_reference(motion, .1)
+        self.assertFalse(hold)
+        self.assertIsNone(r.held_motion)
+
+    def test_worker_stall_within_max_age_never_moves_playback_backwards(self):
+        from deployment.vita_s100_aorta_30dof.actor_pico_live import manual_reference
+        snapshots = self.stream_snapshots(stall_at=100, stall=.51)
+        published = np.array([t for t, _ in snapshots])
+        times, ages = [], []
+        for now in np.arange(published[40], published[-1], .02):
+            snapshot = snapshots[int(np.searchsorted(published, now, side='right'))-1][1]
+            _, diagnostics = manual_reference(self.runtime, snapshot, now)
+            times.append(diagnostics['playback_time_s'])
+            ages.append(diagnostics['pico_age_s'])
+        self.assertGreater(max(ages), .55)
+        self.assertGreaterEqual(np.diff(times).min(), 0.)
 
 
 if __name__ == '__main__':

@@ -105,8 +105,8 @@
     },
     {
       "path": "ACTOR-PICO-MANIFEST.json",
-      "bytes": 10904,
-      "sha256": "40b17f674b167ec1a98a8543c2c998c0d0c291ffdf5582877035693f19a53502"
+      "bytes": 10905,
+      "sha256": "0eba543704f247b6c3b9b1a03d1773c82825ee1ecf1dacd2313d935a88a944aa"
     },
     {
       "path": "README.md",
@@ -1225,8 +1225,8 @@
     },
     {
       "path": "src/deployment/vita_s100_aorta_30dof/actor_pico_runtime.py",
-      "bytes": 11812,
-      "sha256": "0588c664caa867b33833fe1790e462d22e9f7e4ca0efe4e2693f2c9668c96191"
+      "bytes": 12219,
+      "sha256": "d0551f5cee88c3f10ccb71a578e6255db933134fa12c01dd907bb2c87bb41f74"
     },
     {
       "path": "src/deployment/vita_s100_aorta_30dof/actor_pico_scheduling.py",
@@ -1245,8 +1245,8 @@
     },
     {
       "path": "src/deployment/vita_s100_aorta_30dof/actor_pico_stream.py",
-      "bytes": 8696,
-      "sha256": "095256acf46b9f96f1b1ea7ed33b34a66439135f7063486895365e700210e55b"
+      "bytes": 9033,
+      "sha256": "9676fe3b3b65ae8d03a19e1d873751ded205db77cc8232185ec510906096a91d"
     },
     {
       "path": "src/deployment/vita_s100_aorta_30dof/actor_pico_worker.py",
@@ -3415,8 +3415,8 @@
     },
     {
       "path": "tests/test_actor_pico_session.py",
-      "bytes": 7646,
-      "sha256": "76184baff91315b155a691f873a494267f5ab36a050f54c0353f370bfcab9abe"
+      "bytes": 11116,
+      "sha256": "0312e94733cc45724271fbb0ff2f58f3df68480a6d2995aaf8b3a0e9c009806c"
     },
     {
       "path": "tests/test_actor_supermimic.py",

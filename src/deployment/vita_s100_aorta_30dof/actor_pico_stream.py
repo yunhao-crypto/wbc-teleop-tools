@@ -198,7 +198,10 @@ class SourceClock:
 
     Tracks the lower envelope of (availability - source time): it falls toward
     faster samples and rises only slowly, so playback stays monotonic and
-    nearly uniform. A jump beyond ``RESET_S`` (source clock step) re-anchors.
+    nearly uniform. Only a sample earlier than the envelope by more than
+    ``RESET_S`` (a forward source clock step) re-anchors. A late sample
+    (worker stall, queueing) never re-anchors: raising the offset at once
+    would move playback backwards by the same amount.
     """
     RISE, FALL, RESET_S = .02, .05, .5
 
@@ -207,10 +210,12 @@ class SourceClock:
 
     def update(self, source_s, available_s):
         observed = available_s-source_s
-        if self.offset is None or abs(observed-self.offset) > self.RESET_S:
+        if self.offset is None or observed < self.offset-self.RESET_S:
             self.offset = observed
         else:
-            dt = max(0., source_s-self.last_source)
+            # Capped so one update raises the offset by at most RISE*RESET_S
+            # (10 ms), less than a control period.
+            dt = min(max(0., source_s-self.last_source), self.RESET_S)
             if observed < self.offset:
                 self.offset = max(observed, self.offset-self.FALL*dt)
             else:

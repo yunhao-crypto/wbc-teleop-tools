@@ -145,6 +145,7 @@ class ActorPicoRuntime:
         self.last_residual = None
         self.last_retarget_ms = None
         self.reference_yaw_offset = None
+        self.held_motion = None
 
     def align_reference_yaw(self, robot_root):
         motion = self.reference.motion()
@@ -188,13 +189,19 @@ class ActorPicoRuntime:
 
         A stale window otherwise keeps presenting motion that is no longer
         arriving. Holding matches the training rule beyond a reference's end;
-        pico_max_age_s still ends following.
+        pico_max_age_s still ends following. The frame is captured once when
+        the hold starts and reused until a fresh reference ends it: control-
+        clock playback resamples every tick, so its current frame would keep
+        advancing toward the newest sample during the hold.
         """
         if age <= self.config['pico_hold_age_s']:
+            self.held_motion = None
             return motion, False
-        i, n = self.reference.current_index, len(motion.q)
-        frame = lambda x: np.repeat(np.asarray(x)[i:i+1], n, axis=0)
-        return self.math.Motion(frame(motion.q), frame(motion.base), frame(motion.quat)), True
+        if self.held_motion is None:
+            i, n = self.reference.current_index, len(motion.q)
+            frame = lambda x: np.repeat(np.asarray(x)[i:i+1], n, axis=0)
+            self.held_motion = self.math.Motion(frame(motion.q), frame(motion.base), frame(motion.quat))
+        return self.held_motion, True
 
     def infer_motion(self, motion, *, q, dq, root, gyro, diagnostics=None):
         _, observation, row = self.infer_motion_command(motion, q=q, dq=dq,
