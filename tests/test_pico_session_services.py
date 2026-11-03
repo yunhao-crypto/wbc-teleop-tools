@@ -166,6 +166,66 @@ raise SystemExit(session.supervise({primary!r},camera_command={self.camera()!r},
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn('operator_received=stop_following', result.stdout)
 
+    def test_shell_operator_lock_reaches_actor_but_not_camera_and_releases_on_exit(self):
+        lock_path=self.root/'build/operator.lock'
+        lock_path.parent.mkdir();lock_path.touch()
+        camera_result=self.root/'camera-lock.json'
+        camera=self.code('lock_camera',f'''
+lock=Path({str(lock_path)!r}).stat()
+try:
+    fd=os.fstat(9)
+    inherited=(fd.st_dev,fd.st_ino)==(lock.st_dev,lock.st_ino)
+except OSError:inherited=False
+Path({str(camera_result)!r}).write_text(json.dumps(dict(inherited=inherited)))
+Path({str(self.ready)!r}).touch()
+signal.signal(signal.SIGTERM,lambda *_:sys.exit(0))
+while True:time.sleep(.01)
+''')
+        actor=self.code('lock_actor',f'''
+import fcntl
+deadline=time.monotonic()+3
+while not Path({str(self.ready)!r}).exists() and time.monotonic()<deadline:time.sleep(.01)
+target=Path({str(lock_path)!r}).stat()
+fd=os.fstat(9)
+assert (fd.st_dev,fd.st_ino)==(target.st_dev,target.st_ino)
+owned=os.dup(9)
+fcntl.flock(owned,fcntl.LOCK_EX|fcntl.LOCK_NB)
+with open({str(lock_path)!r},'a') as other:
+    try:fcntl.flock(other,fcntl.LOCK_EX|fcntl.LOCK_NB)
+    except BlockingIOError:pass
+    else:raise AssertionError('Independent operator bypassed the lock')
+os.close(owned)
+print('actor_reused_shell_lock')
+''')
+        # Exercise the actual CLI and a real Bash/flock lease, without a model.
+        scripts=self.root/'scripts';scripts.mkdir()
+        (scripts/'pico_camera_bridge.py').write_text(Path(camera[1]).read_text())
+        profile=self.root/'camera-profile.json5';profile.write_text('{}')
+        wrapper=[sys.executable,str(SCRIPT),'--root',str(self.root),
+                 '--camera-session-profile',str(profile),'--',*actor]
+        result=subprocess.run(['bash','-c','exec 9>"$1"; flock -n 9 || exit 91; shift; exec "$@"',
+            'pico-lock-test',str(lock_path),*wrapper],capture_output=True,text=True,timeout=6)
+        self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+        self.assertIn('actor_reused_shell_lock',result.stdout)
+        self.assertFalse(json.loads(camera_result.read_text())['inherited'])
+        import fcntl
+        with lock_path.open('a') as released:
+            fcntl.flock(released,fcntl.LOCK_EX|fcntl.LOCK_NB)
+
+    def test_unrelated_descriptor_nine_is_not_passed_to_actor(self):
+        build=self.root/'build';build.mkdir()
+        (build/'operator.lock').touch()
+        actor=self.code('unrelated_lock_actor','''
+try:os.fstat(9)
+except OSError:print('unrelated_descriptor_closed')
+else:raise AssertionError('An unrelated descriptor was inherited')
+''')
+        result=subprocess.run(['bash','-c','exec 9>"$1"; shift; exec "$@"',
+            'unrelated-fd-test',str(self.root/'unrelated.lock'),sys.executable,str(SCRIPT),
+            '--root',str(self.root),'--no-camera','--',*actor],capture_output=True,text=True,timeout=5)
+        self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+        self.assertIn('unrelated_descriptor_closed',result.stdout)
+
 
 if __name__ == '__main__':
     unittest.main()

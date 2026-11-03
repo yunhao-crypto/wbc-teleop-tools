@@ -117,8 +117,8 @@
     },
     {
       "path": "ACTOR-PICO-MANIFEST.json",
-      "bytes": 18337,
-      "sha256": "b7f2f9830e33d2d164029dfb92f7f139c510c85a336e419e52e6e4feee0dc53a"
+      "bytes": 18338,
+      "sha256": "c11a43473c0d5694913cbb3be71b972691b84c6fcb64601d61b79677f524beba"
     },
     {
       "path": "README.md",
@@ -802,8 +802,8 @@
     },
     {
       "path": "scripts/pico_session_services.py",
-      "bytes": 8821,
-      "sha256": "1235f942c0ac97755438aa6a17affe269247d96e8fe93c9b603bc9cdf900c79e"
+      "bytes": 9344,
+      "sha256": "7b0a5e8a67b17ccfc9c707839c0938ba3ec9e1bbd17753b0ed796fc508d1f4e3"
     },
     {
       "path": "scripts/prepare_pico_camera_viewer.py",
@@ -3612,8 +3612,8 @@
     },
     {
       "path": "tests/test_pico_session_services.py",
-      "bytes": 7896,
-      "sha256": "de12ad7ab7c3fe829331d06a332c23ff688b4bbca7c868b37dc80ac8137d4aed"
+      "bytes": 10867,
+      "sha256": "8f63b5444e58672d2ebbe7aa808b5e4b303946552c961ae897a1df96a944857a"
     },
     {
       "path": "tests/test_pico_viewer_prepare.py",

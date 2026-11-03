@@ -42,9 +42,21 @@ def stop_child(child, timeout=30.):
         child.wait()
 
 
+def inherited_lock_fds(path):
+    """Pass only the launcher's verified lease, never an unrelated descriptor 9."""
+    if path is None:
+        return ()
+    try:
+        inherited = os.fstat(9)
+        target = Path(path).stat()
+    except OSError:
+        return ()
+    return (9,) if (inherited.st_dev, inherited.st_ino) == (target.st_dev, target.st_ino) else ()
+
+
 def supervise(command, *, camera_command=None, camera_env=None, camera_log=None,
               camera_ready=None, primary_log=None, ready_port=None, seconds=0.,
-              startup_timeout=10., shutdown_timeout=30., report=print):
+              startup_timeout=10., shutdown_timeout=30., report=print, operator_lock=None):
     """Only children created here are signalled; a video failure never stops an actor."""
     primary = camera = None
     files = []
@@ -76,7 +88,8 @@ def supervise(command, *, camera_command=None, camera_env=None, camera_log=None,
             files.append(output)
         primary = subprocess.Popen(command, stdout=output,
             stderr=subprocess.STDOUT if primary_log else None,
-            stdin=subprocess.DEVNULL if ready_port else None)
+            stdin=subprocess.DEVNULL if ready_port else None,
+            pass_fds=inherited_lock_fds(operator_lock) if ready_port is None else ())
         signalled = False
         stop_deadline = None
         while True:
@@ -179,7 +192,8 @@ def main():
         print('PICO_CONNECT: connection/video test; no policy or robot-control process is started', flush=True)
     return supervise(command, camera_command=camera_command, camera_env=camera_env,
         camera_log=camera_log, camera_ready=camera_ready, primary_log=primary_log,
-        ready_port=63901 if args.connect_only else None, seconds=args.seconds)
+        ready_port=63901 if args.connect_only else None, seconds=args.seconds,
+        operator_lock=root/'build/operator.lock')
 
 
 if __name__ == '__main__':
