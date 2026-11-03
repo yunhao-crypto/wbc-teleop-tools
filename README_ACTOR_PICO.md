@@ -237,8 +237,12 @@ This calibration affects only the neck; body GMR calibration is unchanged.
 The head uses the latest timestamped body snapshot, independently of the
 200/220 ms body reference window (and SuperMimic playback margin). It therefore
 has a different reference time from the body; it follows relative articulation,
-not absolute world gaze. An exponential filter (time constant 0.12 s) and
-0.8 rad/s position slew limit smooth its targets. Configured targets are limited
+not absolute world gaze. An exponential filter (time constant 0.04 s) smooths
+its targets. `head_control.max_velocity_rad_s` is `null`, so there is no separate
+position slew limit; a finite positive value opts back into that limit (for
+example, `0.8` restores the former 0.8 rad/s limit). The former filter time
+constant was 0.12 s. These settings apply to tracking and standby return.
+Configured targets are limited
 to yaw +/-60 degrees and pitch [-30, +20] degrees in URDF joint coordinates,
 intersected with actual RobotInfo limits. Positive pitch tilts forward/down in
 the URDF frame. The existing fixed-joint KP/KD (20/1) are preserved.

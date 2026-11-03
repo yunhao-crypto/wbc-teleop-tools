@@ -1,5 +1,6 @@
 """Head articulation, transactional state and Body31 composition; no hardware."""
 import copy
+from dataclasses import replace
 import json
 from pathlib import Path
 import sys
@@ -73,6 +74,7 @@ class HeadTests(unittest.TestCase):
         np.testing.assert_allclose(diag['desired_q'], 0., atol=1e-12)
 
     def test_rate_limits_first_measured_pose_and_standby_return(self):
+        self.head.settings = replace(self.head.settings, max_velocity=.8, filter_tau=.12)
         measured = np.zeros(31)
         measured[self.slots] = [.5, -.3]
         _, _, state = self.tick(tracking=False, measured=measured)
@@ -83,6 +85,31 @@ class HeadTests(unittest.TestCase):
             self.assertLessEqual(np.max(np.abs(state.q-last)), .8*.02+1e-12)
             last = state.q
         np.testing.assert_allclose(state.q, 0., atol=1e-8)
+
+    def test_unlimited_profile_follows_filtered_angle_without_legacy_slew_cap(self):
+        self.assertIsNone(self.head.settings.max_velocity)
+        self.assertEqual(self.head.settings.filter_tau, .04)
+        self.tick(self.snapshot())
+        command, _, state = self.tick(self.snapshot(yaw=.8, pitch=-.3))
+        expected = -np.expm1(-.02/.04)*np.array([.8, -.3])
+        np.testing.assert_allclose(state.q, expected, atol=1e-12)
+        np.testing.assert_allclose(state.filtered, state.q, atol=1e-12)
+        np.testing.assert_allclose([command.joints[i].q for i in self.slots], expected, atol=1e-12)
+        self.assertGreater(state.q[0], .8*.02)
+
+    def test_unlimited_standby_filter_starts_from_measured_neck_pose(self):
+        measured = np.zeros(31); measured[self.slots] = [.5, -.3]
+        _, _, state = self.tick(tracking=False, measured=measured)
+        np.testing.assert_allclose(state.q, np.exp(-.02/.04)*measured[self.slots], atol=1e-12)
+
+    def test_unlimited_discarded_candidate_does_not_advance_filter(self):
+        self.tick(self.snapshot())
+        previous = self.head.state
+        _, _, first = self.tick(self.snapshot(yaw=.7), commit=False)
+        self.now += 1.
+        _, _, second = self.tick(self.snapshot(yaw=.7), commit=False)
+        self.assertIs(self.head.state, previous)
+        np.testing.assert_allclose(first.q, second.q, atol=1e-12)
 
     def test_head_does_not_change_policy_targets_or_profile_gains(self):
         self.tick(self.snapshot())
@@ -121,6 +148,7 @@ class HeadTests(unittest.TestCase):
             self.assertIs(self.head.state, previous)
 
     def test_discarded_tick_does_not_advance_calibration_or_slew(self):
+        self.head.settings = replace(self.head.settings, max_velocity=.8, filter_tau=.12)
         self.tick(self.snapshot())
         previous = self.head.state
         self.tick(self.snapshot(yaw=.7), commit=False)
@@ -157,12 +185,16 @@ class HeadTests(unittest.TestCase):
         self.assertIsNone(candidate)
         self.assertEqual(row, {})
         for key, value in [('enabled', 1), ('max_velocity_rad_s', 0.),
+                           ('max_velocity_rad_s', False), ('max_velocity_rad_s', float('inf')),
+                           ('max_velocity_rad_s', float('nan')), ('max_velocity_rad_s', -1.),
+                           ('filter_time_constant_s', None), ('filter_time_constant_s', 0.),
                            ('filter_time_constant_s', float('nan')), ('unexpected', 1)]:
             bad = copy.deepcopy(config); bad['head_control'][key] = value
             with self.subTest(key=key), self.assertRaises(ValueError):
                 head_settings(bad)
 
     def test_frozen_robot42_session_produces_bounded_nonzero_head_targets(self):
+        self.head.settings = replace(self.head.settings, max_velocity=.8, filter_tau=.12)
         with np.load(ROOT/'tests/fixtures/actor_pico/robot42_pico_session_20261029.npz') as data:
             frames = data['frame_body'].copy()
             stamps = data['frame_stamp_ns'].copy()

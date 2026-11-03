@@ -16,7 +16,7 @@ NECK_NAMES = ('neck_yaw_joint', 'neck_pitch_joint')
 @dataclass(frozen=True)
 class HeadSettings:
     limits: tuple
-    max_velocity: float
+    max_velocity: float | None
     filter_tau: float
 
 
@@ -38,11 +38,17 @@ def head_settings(config):
                 or not -math.pi < pair[0] < 0 < pair[1] < math.pi):
             raise ValueError('Invalid head_control joint limits: '+name)
         pairs.append(tuple(pair))
-    values = [raw[k] for k in ('max_velocity_rad_s', 'filter_time_constant_s')]
-    if any(isinstance(v, bool) or not isinstance(v, (int, float))
-           or not math.isfinite(v) or v <= 0 for v in values):
-        raise ValueError('Head velocity and filter time constant must be positive')
-    return HeadSettings(tuple(pairs), *map(float, values)) if raw['enabled'] else None
+    velocity, tau = raw['max_velocity_rad_s'], raw['filter_time_constant_s']
+    # JSON null explicitly disables the optional position slew limit. A finite
+    # positive value retains compatibility with existing device profiles.
+    for key, value in (('max_velocity_rad_s', velocity), ('filter_time_constant_s', tau)):
+        if key == 'max_velocity_rad_s' and value is None:
+            continue
+        if (isinstance(value, bool) or not isinstance(value, (int, float))
+                or not math.isfinite(value) or value <= 0):
+            raise ValueError('Invalid head_control.'+key)
+    return HeadSettings(tuple(pairs), None if velocity is None else float(velocity),
+                        float(tau)) if raw['enabled'] else None
 
 
 @dataclass(frozen=True)
@@ -160,8 +166,11 @@ class PicoHeadControl:
         if mode != 'hold':
             alpha = -math.expm1(-dt/self.settings.filter_tau)
             filtered = filtered+alpha*(desired-filtered)
-            step = self.settings.max_velocity*dt
-            q = q+np.clip(filtered-q, -step, step)
+            if self.settings.max_velocity is None:
+                q = filtered.copy()
+            else:
+                step = self.settings.max_velocity*dt
+                q = q+np.clip(filtered-q, -step, step)
         joints = list(command.joints)
         for slot, value in zip(slots, q):
             # Preserve profile PD gains; the head has no feedforward torque.

@@ -266,7 +266,10 @@ class LiveTests(unittest.TestCase):
         self.assertGreater(positions[189, 0], .4)
         self.assertLess(positions[189, 1], -.1)
         self.assertLess(abs(positions[-1, 0]), abs(positions[189, 0]))
-        self.assertLessEqual(np.max(np.abs(np.diff(positions, axis=0))), .8*.02+1e-12)
+        self.assertGreater(np.max(np.abs(np.diff(positions, axis=0))), .8*.02)
+        limits = np.asarray(self.runtime.head.settings.limits)
+        self.assertTrue(np.all(positions >= limits[:, 0]))
+        self.assertTrue(np.all(positions <= limits[:, 1]))
         self.assertTrue(any(r['head_control']['calibrated'] for r in rows))
         for row in rows:
             self.assertEqual(row['body_targets'], row['sent_body_targets'])
@@ -285,7 +288,7 @@ class LiveTests(unittest.TestCase):
             self.run_trial(manual_pico=worker, poll_command=request)
         self.assert_cancelled()
 
-    def test_first_head_target_slews_from_measured_neck_during_stand(self):
+    def test_first_head_target_filters_measured_neck_without_slew_cap_during_stand(self):
         self.args.stand_only = True
         self.args.seconds = .3
         slots = [self.runtime.policy.order.index(n) for n in ('neck_yaw_joint', 'neck_pitch_joint')]
@@ -297,7 +300,7 @@ class LiveTests(unittest.TestCase):
         self.transport.state_fault = initial_neck
         self.run_trial()
         first = np.array([self.transport.commands[0].joints[i].q for i in slots])
-        self.assertLessEqual(np.max(np.abs(first-[.4, -.2])), .8*.02+1e-7)
+        np.testing.assert_allclose(first, np.exp(-.02/.04)*np.array([.4, -.2]), atol=1e-7)
 
     def manual_trial(self, request_after=155):
         self.args.manual_pico = True
