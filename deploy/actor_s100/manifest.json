@@ -108,7 +108,7 @@
     {
       "path": "ACTOR-PICO-MANIFEST.json",
       "bytes": 12511,
-      "sha256": "832a6019efe331213c7103842fd586958f8219d3949cbfaf0982ba820aaa99c2"
+      "sha256": "09d75f10997987d9fa1cd4bdaf8057c61fac5b248e03703200fa119dd3bbc667"
     },
     {
       "path": "README.md",
@@ -117,8 +117,8 @@
     },
     {
       "path": "README_ACTOR_PICO.md",
-      "bytes": 50099,
-      "sha256": "37b8ce4f28d12c48cebaf62b032195096055bb39c54e0af71019b1c27781c3c8"
+      "bytes": 50788,
+      "sha256": "1115d6019d8fe58f92df69a6704f546d2bb135a7b469e22b4b0650045eee6f21"
     },
     {
       "path": "artifacts/model_motion/pools_nk/manifest.json",
@@ -1052,8 +1052,8 @@
     },
     {
       "path": "src/deployment/unitree_g1_ros2_29dof/src/humanoid_policy/pico_body_pose_reader.py",
-      "bytes": 5194,
-      "sha256": "740eff848de0f8192cc23b90065337b528f21ce34108b63225cc5a0cd2e73227"
+      "bytes": 8174,
+      "sha256": "eebd37b5c0dc718333623740184d29fc21d200513c2011c16dea84dc23d73515"
     },
     {
       "path": "src/deployment/unitree_g1_ros2_29dof/src/humanoid_policy/policy_node_29dof.py",
@@ -1287,8 +1287,8 @@
     },
     {
       "path": "src/deployment/vita_s100_aorta_30dof/actor_pico_worker.py",
-      "bytes": 11600,
-      "sha256": "00da52d695bbf6d6af71317610cc1cc0c66cecc05cbe67b46292512001604f66"
+      "bytes": 12101,
+      "sha256": "4a45b43b9dba30f275ddda70ed6934b345db3ded7816c8a9eee590bc0ea8018e"
     },
     {
       "path": "src/deployment/vita_s100_aorta_30dof/actor_supermimic.py",
@@ -3292,8 +3292,8 @@
     },
     {
       "path": "src/tests/test_pico_atomic_reader.py",
-      "bytes": 3269,
-      "sha256": "e3f7933acbb3460c218ddd8fc35a64e449407d2b907a5c938e4b68bbd88b4718"
+      "bytes": 4775,
+      "sha256": "93da41f4b2fa76e86000f467c1f1ed8e5ea225ece729eacdb30fcb578b680bc1"
     },
     {
       "path": "src/tests/test_resilient_xbox.py",
@@ -3462,8 +3462,8 @@
     },
     {
       "path": "tests/test_actor_pico_session.py",
-      "bytes": 17031,
-      "sha256": "ab3c22f78988224bf06a7a8439304f9b557de5179c7a3963ebcb4216fc2edc55"
+      "bytes": 18200,
+      "sha256": "e0045092957b20d57834cb14a912a51e11512279b3f277abaf7c884449b10b63"
     },
     {
       "path": "tests/test_actor_supermimic.py",

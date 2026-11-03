@@ -2,6 +2,7 @@
 import copy
 import math
 import json
+import io
 import os
 import queue
 import tempfile
@@ -187,6 +188,26 @@ class PlaybackTests(unittest.TestCase):
 
     def test_settings_cap_gmr_iterations(self):
         self.assertEqual(self.runtime.retarget.engine.max_iter, self.runtime.worker.ik_max_iter)
+
+    def test_each_gmr_log_retains_reader_identity_and_separate_solve_timing(self):
+        r=self.runtime
+        capture=io.StringIO()
+        worker=ReferenceStream(r.root,r.config,r.model.contract,r.math,source_log=capture)
+        fixture=SessionFixture(SESSION)
+        snapshot=worker.push(fixture.frame_body[0].astype(np.float64),dict(timestamp_ns=5_000_000_000,
+            timestamp_monotonic=1.,reader_frame_sequence=42,
+            reader_realtime_ns=123,reader_monotonic_ns=1_000_000_000),(1.,0.,0.,0.))
+        self.assertEqual(capture.getvalue(),'')
+        worker.flush_log()
+        row=json.loads(capture.getvalue())
+        self.assertEqual(row['reader_frame_sequence'],42)
+        self.assertEqual(row['reader_realtime_ns'],123)
+        self.assertLessEqual(row['gmr_start_monotonic'],row['gmr_end_monotonic'])
+        self.assertLessEqual(row['gmr_end_monotonic'],row['available_monotonic'])
+        self.assertEqual(row['retarget_ms'],snapshot['retarget_ms'])
+        self.assertEqual(row['retarget_cpu_ms'],snapshot['retarget_cpu_ms'])
+        self.assertGreater(row['retarget_cpu_ms'],0.)
+        self.assertEqual(len(row['qpos']),37)
 
 
 class FrozenSessionTests(unittest.TestCase):

@@ -3,6 +3,10 @@ import importlib.util
 from pathlib import Path
 import time
 import unittest
+import json
+import os
+import tempfile
+from unittest.mock import patch
 import numpy as np
 
 ROOT=Path(__file__).resolve().parents[2]
@@ -21,6 +25,28 @@ class TornLegacySDK:
     def get_body_pose_snapshot(self):return True,1772,np.full((24,7),1772.,np.float64)
 
 class AtomicReaderTests(unittest.TestCase):
+    def test_optional_capture_preserves_frames_before_latest_overwrite(self):
+        class SDK:
+            count=0
+            def get_body_pose_snapshot(self):
+                self.count=min(20,self.count+1)
+                return True,self.count,np.full((24,7),float(self.count))
+        with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, VITA_PICO_CAPTURE_DIR=directory):
+            reader=module.PicoBodyPoseReader(logger=Logger(),sdk=SDK(),duplicate_poll_interval_s=.002)
+            reader.start()
+            try:
+                deadline=time.monotonic()+2
+                while (reader.latest() or {}).get('reader_frame_sequence',0)<20 and time.monotonic()<deadline:
+                    time.sleep(.001)
+            finally:reader.stop()
+            rows=[json.loads(line) for line in next(Path(directory).glob('pico_reader_*.jsonl')).read_text().splitlines()]
+            frames=[r for r in rows if r['record_type']=='pico_reader_frame']
+            self.assertEqual([r['reader_frame_sequence'] for r in frames],list(range(1,21)))
+            self.assertEqual([r['timestamp_ns'] for r in frames],list(range(1,21)))
+            self.assertTrue(all(r['body_poses'][0][0]==r['timestamp_ns'] for r in frames))
+            self.assertTrue(all(r['reader_monotonic_ns']>0 and r['reader_realtime_ns']>0 for r in frames))
+            self.assertEqual(rows[-1],dict(record_type='summary',written=20,dropped=0))
+
     def test_duplicate_poll_waits_without_delaying_new_frames(self):
         sdk=TornLegacySDK();stamps=iter((1772,1773,1773))
         sdk.get_body_pose_snapshot=lambda:(True,next(stamps),np.zeros((24,7)))
