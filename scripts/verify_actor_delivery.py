@@ -142,6 +142,7 @@ def main():
                 with zipfile.ZipFile(wheel) as archive:
                     archive.extractall(site)
             actor_tests = run_tests('tests/test_actor_pico.py', cwd=export, env=env)
+            head_tests = run_tests('tests/test_actor_pico_head.py', cwd=export, env=env)
             provision_tests = run_tests('tests/test_actor_local_provision.py', cwd=export, env=env)
             live_tests = run_tests('tests/test_actor_pico_live.py', cwd=export, env=env)
             reader_tests = run_tests('src/tests/test_pico_atomic_reader.py', cwd=export, env=env)
@@ -156,6 +157,7 @@ def main():
                 run([sys.executable, 'scripts/actor_pico.py', 'replay', '--policy', 'supermimic', '--input',
                      'tests/fixtures/actor_pico/pico_replay.npz', '--steps', '100'], cwd=export, env=env)
             result.update(model_steps=100, replay_steps=100, actor_tests=actor_tests, pico_reader_tests=reader_tests,
+                          head_control_tests=head_tests,
                           local_provision_tests=provision_tests,
                           live_runner_tests=live_tests, live_runner_io='simulated; real SDK session/math',
                           robot_motion='not_measured')

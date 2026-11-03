@@ -101,7 +101,10 @@ class ManualPico:
         if not self.connected: return dict(state='idle')
         r = self.runtime
         n = r.reference.steps
+        body = np.zeros((24, 7), np.float32)
+        body[:, 6] = 1
         return dict(state='ready', received_monotonic=self.clock.monotonic(),
+            raw_body_poses=body.tolist(), pico_timestamp_ns=round(self.clock.monotonic()*1e9),
             q=np.repeat(r.model.contract.default[None], n, axis=0),
             base=np.zeros((n, 3)), quat=np.tile([1., 0., 0., 0.], (n, 1)),
             retarget_ms=.1, gmr_task_error=0.)
@@ -237,6 +240,64 @@ class LiveTests(unittest.TestCase):
         result = self.run_trial()
         self.assertTrue(result['exit_confirmed'])
         self.assertFalse(any(r.get('stage') == 'pico_tracking' for r in self.rows))
+
+    def test_head_follows_pico_in_same_body_command_and_returns_on_pause(self):
+        from scipy.spatial.transform import Rotation
+        worker, _ = self.manual_trial()
+        self.args.seconds = 4.2
+        original = worker.snapshot
+        offset = self.runtime.head.offset
+        def snapshot():
+            value = original()
+            if value['state'] == 'ready' and len(self.transport.commands) >= 158:
+                body = np.asarray(value['raw_body_poses'])
+                desired = Rotation.from_euler('ZYX', [.6, -.2, .4]).as_matrix()
+                body[15, 3:] = Rotation.from_matrix(offset @ desired @ offset.T).as_quat()
+                value['raw_body_poses'] = body.tolist()
+            return value
+        worker.snapshot = snapshot
+        def request():
+            return {50: 'connect', 155: 'track', 190: 'toggle'}.get(len(self.transport.commands))
+        self.run_trial(manual_pico=worker, poll_command=request)
+        rows = [r for r in self.rows if 'sent_body_targets' in r]
+        yaw = self.runtime.policy.order.index('neck_yaw_joint')
+        pitch = self.runtime.policy.order.index('neck_pitch_joint')
+        positions = np.array([[r['sent_body_targets'][i]['q'] for i in (yaw, pitch)] for r in rows])
+        self.assertGreater(positions[189, 0], .4)
+        self.assertLess(positions[189, 1], -.1)
+        self.assertLess(abs(positions[-1, 0]), abs(positions[189, 0]))
+        self.assertLessEqual(np.max(np.abs(np.diff(positions, axis=0))), .8*.02+1e-12)
+        self.assertTrue(any(r['head_control']['calibrated'] for r in rows))
+        for row in rows:
+            self.assertEqual(row['body_targets'], row['sent_body_targets'])
+        self.assertEqual([r.operation.value for r in self.transport.requests], ['PREPARE', 'COMMIT', 'CANCEL'])
+
+    def test_invalid_head_after_engagement_cancels_the_session(self):
+        worker, request = self.manual_trial()
+        original = worker.snapshot
+        def snapshot():
+            value = original()
+            if value['state'] == 'ready' and len(self.transport.commands) > 160:
+                value['raw_body_poses'][15][3:] = [0.]*4
+            return value
+        worker.snapshot = snapshot
+        with self.assertRaisesRegex(ValueError, 'chest/head quaternion'):
+            self.run_trial(manual_pico=worker, poll_command=request)
+        self.assert_cancelled()
+
+    def test_first_head_target_slews_from_measured_neck_during_stand(self):
+        self.args.stand_only = True
+        self.args.seconds = .3
+        slots = [self.runtime.policy.order.index(n) for n in ('neck_yaw_joint', 'neck_pitch_joint')]
+        def initial_neck(state):
+            if self.transport.commands:
+                return state
+            q = state.q.copy(); q[slots] = [.4, -.2]
+            return replace(state, q=q)
+        self.transport.state_fault = initial_neck
+        self.run_trial()
+        first = np.array([self.transport.commands[0].joints[i].q for i in slots])
+        self.assertLessEqual(np.max(np.abs(first-[.4, -.2])), .8*.02+1e-7)
 
     def manual_trial(self, request_after=155):
         self.args.manual_pico = True
