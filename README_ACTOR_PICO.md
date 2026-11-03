@@ -376,6 +376,15 @@ pull-context stamp is an assembly/dequeue diagnostic, not a network-arrival
 measurement. Native joint-input failures name the affected joints, body slots,
 numeric/symbolic error codes and state ID (for example `STALL=13`), so a motor
 fault is distinguishable from delayed delivery.
+For a diagnostic capture, set `VITA_PICO_CAPTURE_DIR` to an output directory.
+The reader then records each distinct frame it observes (24x7 poses, a local
+frame sequence and paired monotonic/realtime stamps) on a bounded asynchronous
+writer. Its summary reports written and dropped frames; this is reader first
+visibility, not SDK callback or network arrival. Raw network timing requires
+a separate packet capture. Each GMR source row also retains that reader
+identity, solver start/end monotonic and thread-CPU clocks, wall/CPU durations,
+and the resulting qpos. `available_monotonic` includes reference processing
+after the solver and must not be substituted for pure solver completion.
 If computation finishes on an expired state, its measured observation remains
 in policy history, but `last_action` stays at the last successfully published
 action. The next tick never uses an unsent candidate as its previous action.

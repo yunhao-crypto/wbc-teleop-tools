@@ -73,7 +73,8 @@ class ReferenceStream:
         self.last_source_stamp = stamp
         begin, cpu = time.monotonic(), time.thread_time()
         q, root_quat, residual = retarget.solve(body, robot_root=anchor)
-        retarget_ms, retarget_cpu_ms = (time.monotonic()-begin)*1000, (time.thread_time()-cpu)*1000
+        solve_end, cpu_end = time.monotonic(), time.thread_time()
+        retarget_ms, retarget_cpu_ms = (solve_end-begin)*1000, (cpu_end-cpu)*1000
         raw_q, raw_root = q, root_quat
         base = retarget.last_qpos[:3].copy()
         received = float(metadata['timestamp_monotonic'])
@@ -89,7 +90,13 @@ class ReferenceStream:
         offset = self.source_clock.update(source_s, available)
         # Written after the snapshot is published (flush_log), never inside
         # the measured retarget time or ahead of the control loop.
-        self.pending_log = (stamp, received, available, body, retarget.last_qpos.copy(), residual)
+        timing = dict(gmr_start_monotonic=begin, gmr_end_monotonic=solve_end,
+            gmr_start_thread_cpu_s=cpu, gmr_end_thread_cpu_s=cpu_end,
+            retarget_ms=retarget_ms, retarget_cpu_ms=retarget_cpu_ms,
+            reader_frame_sequence=metadata.get('reader_frame_sequence'),
+            reader_realtime_ns=metadata.get('reader_realtime_ns'),
+            reader_monotonic_ns=metadata.get('reader_monotonic_ns'))
+        self.pending_log = (stamp, received, available, body, retarget.last_qpos.copy(), residual, timing)
         snapshot = dict(state='collecting', received_monotonic=received,
             **gap_info,
             pico_timestamp_ns=stamp, gmr_task_error=residual,
@@ -109,12 +116,12 @@ class ReferenceStream:
         if self.source_log is None or self.pending_log is None:
             self.pending_log = None
             return
-        stamp, received, available, body, qpos, residual = self.pending_log
+        stamp, received, available, body, qpos, residual, timing = self.pending_log
         self.pending_log = None
         self.source_log.write(json.dumps(dict(record_type='gmr_frame',
             timestamp_ns=stamp, received_monotonic=received, available_monotonic=available,
             body_poses=body.tolist(), qpos=qpos.tolist(),
-            gmr_task_error=residual), allow_nan=False, separators=(',', ':'))+'\n')
+            gmr_task_error=residual, **timing), allow_nan=False, separators=(',', ':'))+'\n')
 
 
 def _capture(root, config, contract, lower, upper, commands, output, stop, controls=None):
