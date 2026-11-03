@@ -1700,11 +1700,18 @@ class LocalStartTests(unittest.TestCase):
         startup=self.root/'bash-env'
         startup.write_text('source() { if [[ "$1" == /app/script/env.sh ]]; then return 0; fi; builtin source "$@"; }\n')
         env=dict(os.environ,BASH_ENV=str(startup),VITA_ACTOR_PYTHON=str(fake),ACTOR_LAUNCH_TEST_OUTPUT=str(output))
+        def actor_arguments(args):
+            if Path(args[0]).name == 'pico_session_services.py' and '--' in args:
+                separator=args.index('--')
+                self.assertEqual(args[separator+1],str(fake))
+                self.assertEqual(Path(args[separator+2]).name,'actor_pico.py')
+                return args[separator+2:]
+            return args
         def launch(*argv):
             output.unlink(missing_ok=True)
             subprocess.run(['bash',str(launcher),*argv],env=env,check=True,capture_output=True,text=True,timeout=10,
                            stdin=subprocess.DEVNULL)
-            return json.loads(output.read_text())
+            return actor_arguments(json.loads(output.read_text()))
         def refused(*argv):
             output.unlink(missing_ok=True)
             result=subprocess.run(['bash',str(launcher),*argv],env=env,capture_output=True,text=True,timeout=10,
@@ -1732,6 +1739,14 @@ class LocalStartTests(unittest.TestCase):
         self.assertEqual(launch('supermimic','check','--steps','1')[1:],['check','--policy','supermimic','--steps','1'])
         self.assertEqual(launch('check','sonic','--steps','1')[1:],['check','--policy','sonic','--steps','1'])
         self.assertEqual(launch('shadow','--policy','sonic','--seconds','3')[1:],['shadow','--policy','sonic','--seconds','3'])
+        args=launch('connect','--seconds','3')
+        self.assertEqual(Path(args[0]).name,'pico_session_services.py')
+        self.assertEqual(args[1:],['--connect-only','--seconds','3'])
+        args=launch('supermimic','--no-camera','--camera-topic','/image_left_raw/humanoid/h265')
+        wrapper=json.loads(output.read_text())
+        self.assertEqual(wrapper[1:4],['--no-camera','--camera-topic','/image_left_raw/humanoid/h265'])
+        self.assertNotIn('--camera-topic',args)
+        self.assertNotIn('--no-camera',args)
         # Interactive menu: a number selects; an empty answer starts nothing.
         import pty
         for answer,expected in ((b'2\n','supermimic'),(b'1\n','sonic'),(b'\n',None)):
@@ -1746,7 +1761,7 @@ class LocalStartTests(unittest.TestCase):
             if expected is None:
                 self.assertEqual(code,2);self.assertFalse(output.exists())
             else:
-                self.assertEqual(code,0);self.assertEqual(json.loads(output.read_text())[1:4],['live','--policy',expected])
+                self.assertEqual(code,0);self.assertEqual(actor_arguments(json.loads(output.read_text()))[1:4],['live','--policy',expected])
         startup.write_text('source() { echo "unexpected robot environment access" >&2; exit 99; }\n')
         subprocess.run(['bash',str(launcher),'--help'],env=env,check=True,capture_output=True,text=True,timeout=10)
         args=json.loads(output.read_text());self.assertEqual(args[1:],["check","--help"])

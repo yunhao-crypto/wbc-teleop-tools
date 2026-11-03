@@ -1,0 +1,19 @@
+[Unit]
+Description=Read-only Aorta HEVC video relay for PICO
+After=network.target humanoid_camera.service
+
+[Service]
+Type=simple
+# Replace this deployment path and interpreter with the verified local paths.
+WorkingDirectory=/userdata/pico_camera_view
+Environment=VITA_CAMERA_PYTHON=/userdata/wbc-teleop-tools/venv/bin/python
+Environment=ZENOH_SESSION_CONFIG_URI=/app_param/zenoh/factory.json5
+ExecStart=/bin/bash /userdata/pico_camera_view/deploy/pico_viewer/run_bridge.sh --stats /userdata/pico_camera_view/status.json
+Nice=10
+CPUWeight=10
+Restart=on-failure
+RestartSec=2
+TimeoutStopSec=5
+
+[Install]
+WantedBy=multi-user.target

@@ -23,6 +23,13 @@
 
 系统库明细、版本与回退见 [离线交付说明](deploy/actor_s100/README.md)。
 
+## 全新 PICO 安装与相机视角
+
+[PICO 完整配置指南](deploy/pico_viewer/README.md)包含预编译 Android 安装包、USB/无线 ADB、
+XRT 连接、全身追踪准备与 A+B+X+Y 四键视角切换。安装 APK 不需要 Unity 构建环境。
+在已部署的机器人目录运行 `bash scripts/start_actor_pico.sh connect`，可以先启动 XRT 连接和
+视频转发进行无机器人动作的联调；退出后，原有 `sonic` / `supermimic` 跟随入口默认带视频启动。
+
 ## 首次部署：以下命令在目标 S100 执行
 
 在 `/userdata` 下使用新目录，保留旧部署以便回退；`/root` 可能随机器人系统切换而丢失。
@@ -43,7 +50,7 @@ bash scripts/start_actor_pico.sh sonic state-check --seconds 5
 bash scripts/start_actor_pico.sh sonic shadow --seconds 30 --human-height 1.75
 ```
 
-**策略必须显式选择，没有默认值，也不会改用另一个策略。** 第一个参数写 `sonic` 或
+**运动与策略检查入口必须显式选择策略，没有默认值，也不会改用另一个策略。** 第一个参数写 `sonic` 或
 `supermimic`（等价于 `--policy sonic|supermimic`）；在终端里不写时会弹出菜单要求选择，
 直接回车或非交互运行都不会启动任何东西。所选策略的模型未安装或哈希不符、加速 GMR
 依赖版本不符时直接报错退出，不会退回 sonic 或较慢的原版 GMR。

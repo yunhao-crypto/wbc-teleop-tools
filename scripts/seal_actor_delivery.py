@@ -63,6 +63,13 @@ def main():
                   'deploy/actor_s100/full_load_replay_20261030.json',
                   'tests/test_actor_pico_session.py',
                   'tests/fixtures/actor_pico/robot42_pico_session_20261029.npz']
+    additional += ['scripts/pico_camera_bridge.py', 'scripts/check_pico_camera_stream.py',
+                   'scripts/pico_session_services.py', 'tests/test_pico_session_services.py',
+                   'scripts/prepare_pico_camera_viewer.py', 'scripts/build_pico_camera_viewer.sh',
+                   'src/deployment/vita_s100_aorta_30dof/pico_camera_bridge.py',
+                   'tests/test_pico_camera_bridge.py', 'tests/test_pico_viewer_prepare.py']
+    additional += [str(p.relative_to(root)) for directory in ('deploy/pico_viewer', 'tests/pico_viewer')
+                   for p in (root/directory).rglob('*') if p.is_file() and '__pycache__' not in p.parts]
     additional += [str(p.relative_to(root)) for p in (root/'third_party/motion_stream_bridge').rglob('*')
                    if p.is_file() and '__pycache__' not in p.parts]
     for name in additional:
@@ -85,6 +92,12 @@ def main():
                 'src/deployment/vita_s100_aorta_30dof/actor_pico_live.py',
                 'src/deployment/vita_s100_aorta_30dof/actor_pico_head.py',
                 'tests/test_actor_pico_head.py',
+                'scripts/pico_camera_bridge.py', 'scripts/prepare_pico_camera_viewer.py',
+                'scripts/pico_session_services.py',
+                'deploy/pico_viewer/releases/XRT-Vita-Camera-1.1.1-vita.2.apk',
+                'deploy/pico_viewer/releases/manifest.json', 'deploy/pico_viewer/releases/SHA256SUMS',
+                'src/deployment/vita_s100_aorta_30dof/pico_camera_bridge.py',
+                'deploy/pico_viewer/README.md',
                 'src/deployment/vita_s100_aorta_30dof/actor_pico_local.py',
                 'src/deployment/vita_s100_aorta_30dof/actor_pico_startup.py',
                 'src/deployment/vita_s100_aorta_30dof/actor_pico_worker.py',
@@ -113,7 +126,7 @@ def main():
     missing = set(required)-set(names)
     if missing:
         raise RuntimeError('Stage these required delivery files first: '+', '.join(sorted(missing)))
-    record = dict(schema='vita_actor_s100_delivery_v1', version='2026.11.03-actor21-head-following',
+    record = dict(schema='vita_actor_s100_delivery_v1', version='2026.11.03-actor22-pico-camera-session',
                   target=dict(os='Linux', architecture='aarch64', python='3.10', glibc_min='2.35'),
                   scope='offline/shadow checks and explicitly armed supported EXTERNAL trials; hardware not_measured',
                   required_inputs=required, external_resources=external, archives=archives,

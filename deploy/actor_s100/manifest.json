@@ -1,6 +1,6 @@
 {
   "schema": "vita_actor_s100_delivery_v1",
-  "version": "2026.11.03-actor21-head-following",
+  "version": "2026.11.03-actor22-pico-camera-session",
   "target": {
     "os": "Linux",
     "architecture": "aarch64",
@@ -19,6 +19,14 @@
     "src/deployment/vita_s100_aorta_30dof/actor_pico_live.py",
     "src/deployment/vita_s100_aorta_30dof/actor_pico_head.py",
     "tests/test_actor_pico_head.py",
+    "scripts/pico_camera_bridge.py",
+    "scripts/prepare_pico_camera_viewer.py",
+    "scripts/pico_session_services.py",
+    "deploy/pico_viewer/releases/XRT-Vita-Camera-1.1.1-vita.2.apk",
+    "deploy/pico_viewer/releases/manifest.json",
+    "deploy/pico_viewer/releases/SHA256SUMS",
+    "src/deployment/vita_s100_aorta_30dof/pico_camera_bridge.py",
+    "deploy/pico_viewer/README.md",
     "src/deployment/vita_s100_aorta_30dof/actor_pico_local.py",
     "src/deployment/vita_s100_aorta_30dof/actor_pico_startup.py",
     "src/deployment/vita_s100_aorta_30dof/actor_pico_worker.py",
@@ -109,18 +117,18 @@
     },
     {
       "path": "ACTOR-PICO-MANIFEST.json",
-      "bytes": 12912,
-      "sha256": "b73299e1a6d8c2ee0ffda2e19eea2f469060699b660e5737436ff3af8d8e8533"
+      "bytes": 18337,
+      "sha256": "b7f2f9830e33d2d164029dfb92f7f139c510c85a336e419e52e6e4feee0dc53a"
     },
     {
       "path": "README.md",
-      "bytes": 7325,
-      "sha256": "56496ed40a1cd5f558a9dd39c78e5cb5affec54e77dad5fdf195348c07604668"
+      "bytes": 7846,
+      "sha256": "450001f4a756b12346ce6c5b5214d223f30dad4264212fe87c773eae6f6384fc"
     },
     {
       "path": "README_ACTOR_PICO.md",
-      "bytes": 53293,
-      "sha256": "886508e1b26fa021835bad9122811f7a6a3ef6f1482ee0fd287a4265a1fc3ae7"
+      "bytes": 53969,
+      "sha256": "52e235c5789bfd44247df0a9b0d1770f7c08509cd62273cab4dbb34b12fd5d48"
     },
     {
       "path": "artifacts/model_motion/pools_nk/manifest.json",
@@ -184,8 +192,8 @@
     },
     {
       "path": "deploy/actor_s100/README.md",
-      "bytes": 9906,
-      "sha256": "8723cef8de98ac2e1f41a35deda4e0f949a711d94dcdc58c099d459a8d319160"
+      "bytes": 10350,
+      "sha256": "807dd2adb2d0998033e3475d3b07ee8cc74c0e585fe2682d335a0c799a201f06"
     },
     {
       "path": "deploy/actor_s100/body_state_diagnosis_20261030.json",
@@ -328,6 +336,81 @@
       "sha256": "b30cb6cd253122169c47de245ca24a86bac2a5d3802ba15bf7ba6414eb9e144d"
     },
     {
+      "path": "deploy/pico_viewer/Assets/Editor/VitaCameraBuilder.cs",
+      "bytes": 4366,
+      "sha256": "be78994c400789708e2f88f2a20284f9ff4eda89e0b6c8d753fd8b042d52fe8b"
+    },
+    {
+      "path": "deploy/pico_viewer/Assets/Editor/VitaCameraChecks.cs",
+      "bytes": 2298,
+      "sha256": "680fe03774a2d623f8f74f88fbb27f2c79b710f82adf550a0344fe1987320443"
+    },
+    {
+      "path": "deploy/pico_viewer/Assets/Plugins/Android/VitaCamera.androidlib/AndroidManifest.xml",
+      "bytes": 233,
+      "sha256": "43a243424e4c60832ea82a567f1f7be7037338b741efdb2980492422b2935325"
+    },
+    {
+      "path": "deploy/pico_viewer/Assets/Plugins/Android/VitaCamera.androidlib/build.gradle",
+      "bytes": 391,
+      "sha256": "7c50d5c8b66c4a3a675bd2fbcc59aa9680d507c6f983cb4eec73739bbc353dab"
+    },
+    {
+      "path": "deploy/pico_viewer/Assets/Plugins/Android/VitaCamera.androidlib/project.properties",
+      "bytes": 39,
+      "sha256": "14d176d280b2e809a7f780aaed37c57f564fb2a235444b33a035f099dfdbdae5"
+    },
+    {
+      "path": "deploy/pico_viewer/Assets/Plugins/Android/VitaCamera.androidlib/src/com/vita/xr/camera/VideoWire.java",
+      "bytes": 1559,
+      "sha256": "9b450c4f6a0f23f5c81d1502f111b58a82cfa6a84c192e2867671028b5f67a4a"
+    },
+    {
+      "path": "deploy/pico_viewer/Assets/Plugins/Android/VitaCamera.androidlib/src/com/vita/xr/camera/VitaCameraReceiver.java",
+      "bytes": 9806,
+      "sha256": "095b609fb5371f6b2dc9c6385a193b6307e11868b04b95a02641b55fda6cdbc6"
+    },
+    {
+      "path": "deploy/pico_viewer/Assets/VitaCamera/FourButtonChord.cs",
+      "bytes": 1777,
+      "sha256": "2629b2d0a5e8d95a572721ee352469c4579138871999c83b978dc051ed8ffaa1"
+    },
+    {
+      "path": "deploy/pico_viewer/Assets/VitaCamera/VitaCameraView.cs",
+      "bytes": 12258,
+      "sha256": "6a93ed8c3f4ea4fc82769ee4c4101ed84f95f5d16b1ac61d5bcb0731f3d8b7a2"
+    },
+    {
+      "path": "deploy/pico_viewer/README.md",
+      "bytes": 13912,
+      "sha256": "81e6cabd88bd118d273844674721acd81ea07ddfa35f7ac1a45016763807d0a7"
+    },
+    {
+      "path": "deploy/pico_viewer/releases/SHA256SUMS",
+      "bytes": 99,
+      "sha256": "8bda5ebd2c71f59b76573a306ffb67cc9c2fb9ed02c22a13c3185e5b410980da"
+    },
+    {
+      "path": "deploy/pico_viewer/releases/XRT-Vita-Camera-1.1.1-vita.2.apk",
+      "bytes": 36071957,
+      "sha256": "541369ceb8b6f7931fdfd619718d61e941c489cf8cb16a6addcd7dd0727b8bdf"
+    },
+    {
+      "path": "deploy/pico_viewer/releases/manifest.json",
+      "bytes": 2825,
+      "sha256": "fb8c8644d59234f4d1e918a0a3d72b436dc082aa20fc6c84feab40c63a850704"
+    },
+    {
+      "path": "deploy/pico_viewer/run_bridge.sh",
+      "bytes": 432,
+      "sha256": "c876680714a15e7df9740e292d3f022ba18e686286d7ac4818820d51e625412f"
+    },
+    {
+      "path": "deploy/pico_viewer/vita-pico-camera.service.example",
+      "bytes": 628,
+      "sha256": "55ce2e6734cd7bfc50400c7c43dcb6ac217cd14650657af672b36d7421814fc3"
+    },
+    {
       "path": "model_groups/P1/model_runtime_manifest.json",
       "bytes": 1699,
       "sha256": "d4ff8a3819e2b085ec7538910f39647b6ef4db492d3b69d8dd3e8a8af9b4f437"
@@ -461,6 +544,16 @@
       "path": "scripts/build_pico_arm64.sh",
       "bytes": 1700,
       "sha256": "b83948102b772ee83bb2e140f00d0dc0556b84823253090dc9274dabdb05824d"
+    },
+    {
+      "path": "scripts/build_pico_camera_viewer.sh",
+      "bytes": 1167,
+      "sha256": "44f60b1f245f1568c4fd5f203fa50555b22fa88e72cf2ea8589ec5e8370d03d7"
+    },
+    {
+      "path": "scripts/check_pico_camera_stream.py",
+      "bytes": 4989,
+      "sha256": "aa4c340bda681a23ae7280e38c28d7bc63fb3c62b0c6af641f628b7e2e233f2f"
     },
     {
       "path": "scripts/configure_actor_s100.py",
@@ -698,9 +791,24 @@
       "sha256": "0e229a7ff393d72ac13cb01746c8725051d6cd29873cc13e86dbc1815867156b"
     },
     {
+      "path": "scripts/pico_camera_bridge.py",
+      "bytes": 3608,
+      "sha256": "afe0556a851d7ad2c342deb82a70b8836389f01a5a1e69f225f51dd6b4e4dac3"
+    },
+    {
       "path": "scripts/pico_onboard_probe.py",
       "bytes": 2893,
       "sha256": "5be5a18b881c2947409f3c835ff3d159638a2339026be58244c6ff79def04912"
+    },
+    {
+      "path": "scripts/pico_session_services.py",
+      "bytes": 8821,
+      "sha256": "1235f942c0ac97755438aa6a17affe269247d96e8fe93c9b603bc9cdf900c79e"
+    },
+    {
+      "path": "scripts/prepare_pico_camera_viewer.py",
+      "bytes": 5311,
+      "sha256": "5a199e68ad4be7df6a1361a5383d6ffa308c46cd2c722b21d2a98a2f46f947a1"
     },
     {
       "path": "scripts/prepare_zenoh_session.py",
@@ -789,8 +897,8 @@
     },
     {
       "path": "scripts/seal_actor_delivery.py",
-      "bytes": 8280,
-      "sha256": "66f81e63b7b4542d13966920c29802222f8550225c0d1886da0ae146bc3b172d"
+      "bytes": 9403,
+      "sha256": "ee2dd464a8c876ba624e47b5e2f0ca098f9942a98e872b76c91302494dcb9be6"
     },
     {
       "path": "scripts/send_fake_pico_via_robot_ssh.py",
@@ -809,8 +917,8 @@
     },
     {
       "path": "scripts/start_actor_pico.sh",
-      "bytes": 4166,
-      "sha256": "d832e1dd6c6a174712f459df3eb2ebf0dd73ef5d8bd2d7059718fb14b192ab73"
+      "bytes": 5416,
+      "sha256": "4ca49fbd3dab2d0ada8bc9483c9f5fa775e5686824d99cb77729f220b82df64c"
     },
     {
       "path": "scripts/start_onboard_vita.sh",
@@ -869,8 +977,8 @@
     },
     {
       "path": "scripts/verify_actor_delivery.py",
-      "bytes": 9993,
-      "sha256": "01156699aee42ca3659348629f14729426da46c823527c30c039876c77583737"
+      "bytes": 10516,
+      "sha256": "3ffd052e288090d666fed7c0d909675cffc33c5e1cbf858b0824a911b9e411ce"
     },
     {
       "path": "scripts/vita_wifi.sh",
@@ -1491,6 +1599,11 @@
       "path": "src/deployment/vita_s100_aorta_30dof/onboard_state_native.cpp",
       "bytes": 5550,
       "sha256": "f0f99d1135e0340fe96ee6f5683e0322d300335f753706d13121d4039b7b5f06"
+    },
+    {
+      "path": "src/deployment/vita_s100_aorta_30dof/pico_camera_bridge.py",
+      "bytes": 10346,
+      "sha256": "2ba332ed286d3988d176804887bd93cd552bd909617da546c2d721d146c85370"
     },
     {
       "path": "src/deployment/vita_s100_aorta_30dof/pico_input.py",
@@ -3418,6 +3531,16 @@
       "sha256": "a8f2518f51d219b9dfe3730a2dbe7fe9e48b9a4c7e30a609d0ec9a3acee1366b"
     },
     {
+      "path": "tests/pico_viewer/FourButtonChordTest.cs",
+      "bytes": 2245,
+      "sha256": "4edc3a242f210f57595bbb3df40e038ad9323c1e72e49cad8b726cdcc2472831"
+    },
+    {
+      "path": "tests/pico_viewer/VideoWireTest.java",
+      "bytes": 2344,
+      "sha256": "eb1f0effcd5a2dedd0662cb1c9a9039b0423f99dfd82f9ca2bac393a0755372b"
+    },
+    {
       "path": "tests/publish_profile_offline.py",
       "bytes": 2484,
       "sha256": "b6743f85f6735b111ef6175b1137360effdfe02943d2b086a1169534339643d6"
@@ -3469,8 +3592,8 @@
     },
     {
       "path": "tests/test_actor_pico_live.py",
-      "bytes": 102302,
-      "sha256": "4f62c329cc492047b738a0eba41797c8f0a13d06d49ec14f94ebf1ca6f9f361f"
+      "bytes": 103233,
+      "sha256": "6dbd4dc24e187959345c022e72c7ecde5bcaa63368c7eda98aba36961574f2f0"
     },
     {
       "path": "tests/test_actor_pico_session.py",
@@ -3481,6 +3604,21 @@
       "path": "tests/test_actor_supermimic.py",
       "bytes": 19239,
       "sha256": "59d79619841bcb9eca64a67c95a7fb405a62ad07b993245d355a6c032515c544"
+    },
+    {
+      "path": "tests/test_pico_camera_bridge.py",
+      "bytes": 6558,
+      "sha256": "edae3efa03280258e8151fab7f9821b8cb37827aba842c84538cb626486ec07b"
+    },
+    {
+      "path": "tests/test_pico_session_services.py",
+      "bytes": 7896,
+      "sha256": "de12ad7ab7c3fe829331d06a332c23ff688b4bbca7c868b37dc80ac8137d4aed"
+    },
+    {
+      "path": "tests/test_pico_viewer_prepare.py",
+      "bytes": 6802,
+      "sha256": "f52965062f05690c61d6f876dad5592d346ad1887526ed96dd792c8e5eceb990"
     },
     {
       "path": "tests/wifi_offline_test.py",

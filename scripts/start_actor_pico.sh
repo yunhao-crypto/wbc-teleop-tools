@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 ROOT=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
-USAGE='Usage: start_actor_pico.sh [sonic|supermimic] [check|replay|state-check|shadow|configure|live|auto] [options]'
+USAGE='Usage: start_actor_pico.sh [sonic|supermimic] [connect|check|replay|state-check|shadow|configure|live|auto] [options] [--no-camera] [--camera-topic TOPIC]'
 # The actor policy is always an explicit choice: a positional name, --policy,
 # or the interactive menu. There is no default and no substitute policy.
 POLICY=
@@ -27,7 +27,7 @@ if [[ $# == 0 || "$1" == --* ]]; then
 fi
 MODE=$1
 case "$MODE" in
-  auto|check|replay|state-check|shadow|live|configure) shift ;;
+  connect|auto|check|replay|state-check|shadow|live|configure) shift ;;
   *) echo "$USAGE" >&2; exit 2 ;;
 esac
 if [[ "${1:-}" == sonic || "${1:-}" == supermimic ]]; then
@@ -35,11 +35,18 @@ if [[ "${1:-}" == sonic || "${1:-}" == supermimic ]]; then
 fi
 HELP=0
 REST=()
+CAMERA_OPTIONS=()
 while (( $# )); do
   case "$1" in
     --policy) (( $# >= 2 )) || { echo '--policy requires sonic or supermimic' >&2; exit 2; }
               choose_policy "$2"; shift 2 ;;
     --policy=*) choose_policy "${1#--policy=}"; shift ;;
+    --no-camera) CAMERA_OPTIONS+=("$1"); shift ;;
+    --camera-topic|--camera-port|--camera-session-profile)
+              (( $# >= 2 )) || { echo "$1 requires a value" >&2; exit 2; }
+              CAMERA_OPTIONS+=("$1" "$2"); shift 2 ;;
+    --camera-topic=*|--camera-port=*|--camera-session-profile=*)
+              CAMERA_OPTIONS+=("$1"); shift ;;
     -h|--help) HELP=1; REST+=("$1"); shift ;;
     *) REST+=("$1"); shift ;;
   esac
@@ -48,7 +55,7 @@ set -- ${REST[@]+"${REST[@]}"}
 if [[ "$MODE" == auto ]]; then
   MODE=live; set -- --auto-start --manual-pico --wait-pico --confirm-motion "$@"
 fi
-if [[ "$MODE" != configure && $HELP == 0 && -z "$POLICY" ]]; then
+if [[ "$MODE" != configure && "$MODE" != connect && $HELP == 0 && -z "$POLICY" ]]; then
   if [[ -t 0 && -t 2 ]]; then
     {
       echo 'Select the actor policy (no default):'
@@ -65,11 +72,14 @@ if [[ "$MODE" != configure && $HELP == 0 && -z "$POLICY" ]]; then
     echo "Select the actor policy explicitly; nothing started. $USAGE" >&2; exit 2
   fi
 fi
-if [[ -n "$POLICY" && "$MODE" != configure ]]; then
+if [[ -n "$POLICY" && "$MODE" != configure && "$MODE" != connect ]]; then
   echo "ACTOR_POLICY: $POLICY" >&2
   set -- --policy "$POLICY" "$@"
 fi
-if [[ "$MODE" == state-check || "$MODE" == shadow || "$MODE" == live ]]; then
+if [[ "$MODE" == connect && $HELP == 1 ]]; then
+  exec "${VITA_ACTOR_PYTHON:-python3}" "$ROOT/scripts/pico_session_services.py" --help
+fi
+if [[ $HELP == 0 && ( "$MODE" == connect || "$MODE" == state-check || "$MODE" == shadow || "$MODE" == live ) ]]; then
   set +u
   source /app/script/env.sh >/dev/null
   set -u
@@ -92,13 +102,24 @@ PYTHON=${VITA_ACTOR_PYTHON:-$ROOT/venv/bin/python}
 if [[ "$MODE" == configure ]]; then
   exec "$PYTHON" "$ROOT/scripts/configure_actor_s100.py" "$@"
 fi
-if [[ "$MODE" == state-check || "$MODE" == shadow || "$MODE" == live ]]; then
+if [[ $HELP == 0 && ( "$MODE" == connect || "$MODE" == state-check || "$MODE" == shadow || "$MODE" == live ) ]]; then
   # Use the same operator lock as the existing P1/P2/P3 entry.
   exec 9>"$ROOT/build/operator.lock"
-  flock -n 9 || { echo 'Another onboard operator is running.' >&2; exit 1; }
+  flock -n 9 || { echo 'Another onboard operator or connect session is running; exit it before starting another session.' >&2; exit 1; }
+fi
+if [[ $HELP == 0 && ( "$MODE" == state-check || "$MODE" == shadow || "$MODE" == live ) ]]; then
   "$PYTHON" "$ROOT/scripts/prepare_zenoh_session.py" \
     --source /app_param/zenoh/s100_session_peer.json5 \
     --output "$ROOT/outputs/actor_pico_zenoh_session.json5"
   export ZENOH_SESSION_CONFIG_URI="$ROOT/outputs/actor_pico_zenoh_session.json5"
+fi
+if [[ "$MODE" == connect ]]; then
+  exec "$PYTHON" "$ROOT/scripts/pico_session_services.py" --connect-only \
+    ${CAMERA_OPTIONS[@]+"${CAMERA_OPTIONS[@]}"} "$@"
+fi
+if [[ $HELP == 0 && ( "$MODE" == shadow || "$MODE" == live ) ]]; then
+  exec "$PYTHON" "$ROOT/scripts/pico_session_services.py" \
+    ${CAMERA_OPTIONS[@]+"${CAMERA_OPTIONS[@]}"} -- \
+    "$PYTHON" "$ROOT/scripts/actor_pico.py" "$MODE" "$@"
 fi
 exec "$PYTHON" "$ROOT/scripts/actor_pico.py" "$MODE" "$@"

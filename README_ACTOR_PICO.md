@@ -15,7 +15,7 @@ launchers, SDK installation and protocol guards are not replaced.
 ## Policy selection
 
 `start_actor_pico.sh` requires an explicit policy for every mode except
-`configure`: `sonic` (`config/actor_pico.json`) or `supermimic`
+`configure` and the connection-only `connect` mode: `sonic` (`config/actor_pico.json`) or `supermimic`
 (`config/actor_pico_supermimic.json`), given as the first word
 (`start_actor_pico.sh supermimic shadow ...`), after the mode, or as `--policy`.
 Without one, a terminal shows a menu with no default; an empty answer or a
@@ -212,6 +212,15 @@ residuals remain visible in diagnostics; they do not establish real-human
 reference quality or physical balance.
 
 ## Pico head following (SONIC and SuperMimic)
+
+Optional front-camera video return and A+B+X+Y view switching are described in
+[PICO camera viewer](deploy/pico_viewer/README.md), including the versioned Android
+APK and a new-headset setup guide. `bash scripts/start_actor_pico.sh connect`
+starts the PC Service and video relay without a policy or robot control. Exit
+that session before starting an actor. Live/auto/shadow entries now supervise
+their own optional video relay (`--no-camera` disables it), while the actor
+retains ownership of its PC Service and motion cleanup. This separate read-only HEVC
+relay/client path leaves actor inference and double-trigger following intact.
 
 Both actor configurations enable `head_control`. The 28-action policies and
 GMR stay unchanged; a shared head controller replaces the fixed neck targets

@@ -39,7 +39,7 @@ def run_tests(path, *, cwd, env):
 
 def verify_doc_links(root):
     links = 0
-    for name in ['README.md', 'README_ACTOR_PICO.md', 'deploy/actor_s100/README.md']:
+    for name in ['README.md', 'README_ACTOR_PICO.md', 'deploy/actor_s100/README.md', 'deploy/pico_viewer/README.md']:
         document = root/name
         for target in re.findall(r'\[[^\]]+\]\(([^)]+)\)', document.read_text()):
             if '://' in target or target.startswith('mailto:'):
@@ -118,14 +118,20 @@ def main():
                       'scripts/bench_pico_gmr_live.py', 'scripts/bench_pico_full_load.py']:
             run([sys.executable, entry, '--help'], cwd=export, env=env)
         full_load_tests = run_tests('tests/test_actor_pico_full_load.py', cwd=export, env=env)
+        camera_tests = run_tests('tests/test_pico_camera_bridge.py', cwd=export, env=env)
+        camera_prepare_tests = run_tests('tests/test_pico_viewer_prepare.py', cwd=export, env=env)
+        camera_session_tests = run_tests('tests/test_pico_session_services.py', cwd=export, env=env)
         # Compile actual callback/parser/getter source without Python or ARM
         # libraries; no vendor SDK init or service is run by this regression.
         run([sys.executable, 'scripts/state_test_pico_snapshot.py'], cwd=export, env=env)
         result = dict(status='PASS_STAGED_GIT_DELIVERY', offline_wheels=wheel_count,
                       runtime_archives_verified=True, pico_snapshot_cpp='PASS',
                       installer_tests=installer_tests, full_load_benchmark_tests=full_load_tests,
+                      camera_bridge_tests=camera_tests,
+                      camera_viewer_prepare_tests=camera_prepare_tests,
+                      pico_session_lifecycle_tests=camera_session_tests,
                       local_provision_tests='not_measured',
-                      documentation_files=3, documentation_links=documentation_links,
+                      documentation_files=4, documentation_links=documentation_links,
                       external_model_supplied=bool(args.model),
                       delivery_manifest_sha256=hashlib.sha256((export/'deploy/actor_s100/manifest.json').read_bytes()).hexdigest(),
                       model_steps=0, replay_steps=0, actions_sent=0,
