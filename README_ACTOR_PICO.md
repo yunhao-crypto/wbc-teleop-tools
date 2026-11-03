@@ -12,6 +12,109 @@ service. It writes computed targets to JSONL; it never creates a controller,
 requests EXTERNAL or publishes a robot command. Only `live` requests control and moves joints. The existing P1/P2/P3 runtime,
 launchers, SDK installation and protocol guards are not replaced.
 
+## Policy selection
+
+`start_actor_pico.sh` requires an explicit policy for every mode except
+`configure`: `sonic` (`config/actor_pico.json`) or `supermimic`
+(`config/actor_pico_supermimic.json`), given as the first word
+(`start_actor_pico.sh supermimic shadow ...`), after the mode, or as `--policy`.
+Without one, a terminal shows a menu with no default; an empty answer or a
+non-interactive run starts nothing. Conflicting selections are rejected. A
+missing/mismatched model of the selected policy is an error; there is no
+substitute policy. (`scripts/actor_pico.py` itself still defaults to `sonic`
+for installer and delivery checks.) Each configuration
+pins its own external model; the shared GMR input, Body31 decode, gains, limits
+and startup/live guards are unchanged.
+
+| | `sonic` | `supermimic` |
+|---|---|---|
+| Model | `artifacts/actor_g1/actor_g1.onnx` | `artifacts/supermimic/supermimic_vita02a.onnx` |
+| Input values | 1520 | 1670 (10x96 observation history + 10x71 goal frames) |
+| Reference delay | 200 ms | 220 ms (10 future goal frames + 1 velocity tail frame) |
+| Root input | quaternion only | quaternion plus GMR base position |
+| Ankle type | from ONNX: `virtual_pitch_roll` or `motor_theta` (see below) | `motor_theta` |
+| `ankle_virtual_pd_intent` | `true` or `false`, must match the ankle type | `false` |
+
+The SuperMimic model is the closed-loop-ankle checkpoint
+`train_v3_8gpu_24h_20261029` iteration 23000, exported by trackerlab-supermimic
+`scripts/rls/supermimic/export_vita_deployment.py`; its observation/goal contract
+is embedded in the ONNX metadata and checked at load. Its ankle contract is
+`motor_theta`: the policy observes and commands the two Achilles motor angles in
+the ankle pitch/roll slots. The actor maps measured state and references to
+motor angles (training IK and Jacobian, `actor_parallel_ankle.py`) and maps the
+motor targets back to virtual pitch/roll by forward kinematics for Body31.
+The robot must run PD-A (`actions.EXTERNAL.params.ankle_virtual_pd_intent: false`),
+which clamps the virtual target to its ankle box, solves IK and tracks the motor
+angles with `kp_motor`/`kd_motor` 20/1, the trained motor PD. With
+`ankle_clamp_feedforward` the actor sends the motor PD torque removed by that
+clamp as virtual ankle torque (mapped to motors by the adapter's J^-T), so the
+robot applies the trained motor torque outside the box too.
+
+SuperMimic always needs PD-A (`ankle_virtual_pd_intent: false`). SONIC needs
+either mode depending on its ankle type; see the next section.
+
+Provision the SuperMimic model with
+`bootstrap_actor_s100.py --policy supermimic --model /path/to/supermimic_vita02a.onnx`
+and pass the same `--policy` to `check`, `replay`, `shadow` and `live`:
+
+```bash
+bash scripts/start_actor_pico.sh supermimic check --steps 100
+bash scripts/start_actor_pico.sh supermimic shadow --seconds 60 --group default
+bash scripts/start_actor_pico.sh supermimic        # default local motion entry
+```
+
+Offline parity: `tests/test_actor_supermimic.py` compares the deployed history,
+goal and action with the training-side fixture. A trackerlab MuJoCo closed loop
+(`validate_vita_deployment_mujoco.py`) compares the training policy, this
+observation builder and the causal Pico window on the same clips. Neither is
+hardware validation.
+
+## SONIC has two ankle types: know which one you run
+
+`--policy sonic` covers two different kinds of GR00T/SONIC export. They share
+the 1520-value input layout but command the ankle in different spaces, and each
+needs a different robot EXTERNAL ankle mode. Before any `live` run, know which
+type the installed `actor_g1.onnx` is and set the robot to match.
+
+| SONIC type | Typical checkpoint | ONNX `ankle.control_space` | Robot YAML `actions.EXTERNAL.params.ankle_virtual_pd_intent` | Robot ankle PD |
+|---|---|---|---|---|
+| Serial ankle (virtual) | delivered `model_step_431500` (`TRL_Vita02A_Baseline`) | `virtual_pitch_roll` | `true` | `parallel_ankle.pd.strategy: virtual_pd` |
+| Closed-loop ankle (motor) | GR00T `vita02a_closed_loop` (`TRL_Vita02A_ClosedLoop`) exports | `motor_theta` | `false` | PD-A: `kp_motor`/`kd_motor` = the model's ankle gains (20/1), `caps` = model `motor_limits` |
+
+The actor decides the type only from the ONNX metadata
+(`ankle.control_space` of `groot_wbc.tracking_contract.v1`), never from the file
+name, the configuration or the robot:
+
+- `virtual_pitch_roll`: the SDK contract and policy are used unchanged.
+- `motor_theta`: the SDK layout is kept, but the ankle slots of the
+  proprioception history and of the future joint references carry the two
+  Achilles motor angles (IK of the pose, rates through the Jacobian, as in
+  training). Motor targets stop at the model's ankle limits (exports may carry
+  soft limits inside `motor_limits`) and are mapped back to virtual pitch/roll
+  by forward kinematics, exactly like SuperMimic (`actor_groot_ankle.py`).
+
+The actor **never changes** `ankle_virtual_pd_intent` or any other robot setting.
+Edit the robot's running effective YAML yourself, restart its service as your
+robot procedure requires, and pass that file as `--robot-config`. If the YAML
+does not match the model type (wrong intent, gains, motor limits, geometry or
+`virtual_limits`), `live` stops before requesting EXTERNAL or sending any
+command.
+
+To see the type of the installed model, run `check`; its report and every log
+header give `ankle_control_space` and the required
+`ankle_virtual_pd_intent`:
+
+```bash
+bash scripts/start_actor_pico.sh sonic check --steps 10
+#   "ankle_control_space": "motor_theta",
+#   "required_ankle_virtual_pd_intent": false,
+```
+
+Switching SONIC between the two types is a model change: export the ONNX,
+update `config/actor_pico.json` (model path, `sha256`, `bytes`), reseal the
+manifests and install it with
+`bootstrap_actor_s100.py --policy sonic --model /path/to/actor_g1.onnx`; then
+change the robot YAML to the matching row above.
 ## Data path and calibration
 
 ```text
@@ -36,11 +139,24 @@ neutral or automatically calibrated onto the actor defaults. The bridge's
 optional interactive recalibration UI and other action/button combos are not
 part of this actor entry.
 
+The actor runs this pinned solver through a subclass in `actor_pico_gmr.py`
+that only removes work whose results GMR never reads: `mj_kinematics` +
+`mj_comPos` instead of full `mj_forward` after ground snap and smoothing, a
+direct DAQP call instead of the qpsolvers wrapper, inlined body FrameTask
+residuals, a vectorized Unity conversion, and one residual evaluation for the
+two identical IK tables. Its qpos, root and residual are bit-identical to the
+pinned engine on the 384-frame Pico replay and the bridge golden frames
+(x86 host: median 9.1 -> 6.2 ms, p99 14.5 -> 10.9 ms per frame). The subclass
+requires mink 1.3.0, daqp 0.10.3 and qpsolvers 4.13.0 (the pinned wheelhouse);
+other versions raise at startup instead of silently running the slower pinned
+engine. Log headers record `gmr_engine`. The input worker no longer
+sleeps 5 ms after each solved frame; it polls every 1 ms only while idle.
+
 Operator height defaults to **1.75 metres**. Override it for every launch:
 
 ```bash
-bash scripts/start_actor_pico.sh --human-height 1.68
-bash scripts/start_actor_pico.sh shadow --seconds 30 --human-height 1.68
+bash scripts/start_actor_pico.sh sonic --human-height 1.68
+bash scripts/start_actor_pico.sh sonic shadow --seconds 30 --human-height 1.68
 ```
 
 Height scales the original GMR human-body table and is recorded in the log
@@ -124,9 +240,9 @@ with the existing operator entry.
 From the **actual S100 deployment root**, run:
 
 ```bash
-bash scripts/start_actor_pico.sh check --steps 100
-bash scripts/start_actor_pico.sh state-check --seconds 5 --group default
-bash scripts/start_actor_pico.sh shadow --seconds 60 --group default
+bash scripts/start_actor_pico.sh sonic check --steps 100
+bash scripts/start_actor_pico.sh sonic state-check --seconds 5 --group default
+bash scripts/start_actor_pico.sh sonic shadow --seconds 60 --group default
 ```
 
 Connect the Pico XRoboToolkit app to the S100's reachable LAN IP, enable
@@ -153,12 +269,14 @@ requires no Xbox configuration or Wi-Fi controller key.
 On the configured S100, from the deployment root, run:
 
 ```bash
-bash scripts/start_actor_pico.sh
+bash scripts/start_actor_pico.sh sonic        # or: supermimic
 ```
 
-**No arguments now selects an attended motion trial, not an offline check.**
-Use `bash scripts/start_actor_pico.sh check` for offline inference, or
-`state-check --seconds 5` for read-only feedback. The default motion entry uses
+**A policy name alone (or no arguments, then a menu choice) selects an attended
+motion trial, not an offline check.** The policy has no default; see
+[policy selection](#policy-selection). Use
+`bash scripts/start_actor_pico.sh sonic check` for offline inference, or
+`sonic state-check --seconds 5` for read-only feedback. The default motion entry uses
 `outputs/actor_pico_local.json`, a private 0600 file provisioned for this board.
 It binds the local IPv4 address, machine-id digest, selected end effector,
 effective YAML digest and configured duration (`0` means until STOP). It stores no authorization.
@@ -192,8 +310,10 @@ The sequence is:
    completion. A retired keyframe can clear the action name; that alone does
    not count as FIXED_STAND readiness.
 2. Request FIXED_STAND once, and require actual active FIXED_STAND plus healthy,
-   hardware-bounded, stationary feedback for 0.5 s. Policy-online startup also
-   requires gyro norm <=0.10 rad/s. HIP IMU tilt is displayed and checked
+   hardware-bounded, stationary feedback (every joint |dq| <=0.2 rad/s) for 0.5 s.
+   Policy-online startup also requires gyro norm <=0.10 rad/s. Measured joint
+   positions may exceed advertised RobotInfo q ranges by 0.03 rad (hard stops,
+   calibration); commanded q always uses the exact ranges. HIP IMU tilt is displayed and checked
    against the reviewed profile's unchanged 0.8 rad fall threshold; there is
    no additional 2-degree admission rule. This fall threshold alone does not
    prove a command is safe to apply. In `policy-online` mode the
@@ -233,11 +353,32 @@ explicitly uses `SCHED_OTHER`, so it and the vendor service do not inherit the
 control priority. Linux scheduling permission is required before any control
 handle is created; failure stops startup rather than silently falling back.
 
-Body31 remains limited to 100 ms at read and again before publication. Fault
-messages include source, publication and local receipt ages. A
-`body_state_age_failure` record captures ages at read and at failure, plus
-compute/policy time; the stale command is never published. No stale-command
-retry, automatic re-entry or threshold extension is added.
+Body31 feedback must be within 100 ms at read and again before publication.
+As in the SDK WBC demo, the gate is local receipt age plus producer publication
+age (`ts_state_pub_us`, CLOCK_REALTIME, at most 5 ms in the future); sensor
+stamp age is reported only. A stale tick is skipped rather than ending the
+trial: no command is published and the firmware keeps interpolating/holding
+the last one (interpolation max 100 ms, watchdog 1000 ms). The third
+consecutive stale tick cancels. Each `body_state_age_failure` record holds
+phase, ages, compute/policy time and `action` (`skip_tick` or `cancel`).
+A stale command is never published or retried.
+When `(state_id, ts_state_real_us)` repeats, the loop records
+`body_state_not_advanced` and waits for a new measurement without advancing
+policy history, the stand reference or the command sequence. Heartbeat copies
+cannot extend this wait indefinitely by refreshing their receipt/publication
+clocks: the original sample receipt still has the same 100 ms budget and the
+existing consecutive-stale cancellation rule applies. This protects the model
+from treating cached feedback as new observations; it does not repair delayed
+feedback delivery.
+Successful inference records include `feedback_timing` with the ages at read
+and before send, producer publication time and local receipt time. The Core
+pull-context stamp is an assembly/dequeue diagnostic, not a network-arrival
+measurement. Native joint-input failures name the affected joints, body slots,
+numeric/symbolic error codes and state ID (for example `STALL=13`), so a motor
+fault is distinguishable from delayed delivery.
+If computation finishes on an expired state, its measured observation remains
+in policy history, but `last_action` stays at the last successfully published
+action. The next tick never uses an unsent candidate as its previous action.
 
 Input checks follow the original HoloMotion deployment's
 `config/vita02a_s100.yaml`: robot feedback age is 100 ms; Pico source/reference
@@ -248,6 +389,9 @@ Timestamped samples remain in the same causal window and are interpolated on
 the model's 20 ms grid. There is no reference-epoch gate, segment-fit cutoff,
 or 0.1 rad all-joint neutral admission rule. The model's 200 ms initial window,
 finite/shape/quaternion checks and strictly increasing source timestamps remain.
+While following, a reference older than `pico_hold_age_s` (250 ms) holds its
+current frame with zero velocity (the training rule beyond a reference's end)
+instead of replaying a frozen moving window; rows record `reference_hold`.
 Pico age exceeding 600 ms or other genuine input faults stop following through
 the existing checked exit; changing input thresholds does not copy HoloMotion's
 separate Velocity-policy fallback into this single-actor deployment.
@@ -276,7 +420,7 @@ remain pinned by this standalone delivery; no monorepo is needed on S100.
 For an explicit target, `auto` selects the same online-reference entry:
 
 ```bash
-bash scripts/start_actor_pico.sh auto --seconds 120 \
+bash scripts/start_actor_pico.sh supermimic auto --seconds 120 \
   --robot-id 10.100.23.96 \
   --robot-config /app/locomotion/config/locomotion_foot_humanoid_asample_none.yaml
 ```
@@ -289,7 +433,7 @@ following a fresh valid reference automatically; it is not enabled by this
 board's selected local profile.
 
 The configured local default uses `seconds=0`: no application duration expiry.
-Use `bash scripts/start_actor_pico.sh --seconds 300` for a five-minute run;
+Use `bash scripts/start_actor_pico.sh sonic --seconds 300` for a five-minute run;
 an explicit duration overrides the local profile. Positive duration counts from
 EXTERNAL entry; damping wait and fixed-stand activation are additional bounded
 time. `STOP` or Ctrl-C sends
@@ -332,14 +476,20 @@ bounded `shadow` commands first. Verify the matching robot release/schema,
 the full A-sample hardware configuration and the **running effective** YAML.
 Supply its absolute path below; do not use an old checkout/config snapshot.
 This program reads that file but cannot prove which file a running service
-loaded. Missing/disabled `parallel_ankle.pd.strategy=virtual_pd` or
-`actions.EXTERNAL.params.ankle_virtual_pd_intent=true` stops the trial.
+loaded. For a `virtual_pitch_roll` model, missing/disabled
+`parallel_ankle.pd.strategy=virtual_pd` or
+`actions.EXTERNAL.params.ankle_virtual_pd_intent=true` stops the trial. For a
+`motor_theta` model (SuperMimic, or a closed-loop SONIC export),
+`ankle_virtual_pd_intent` must be `false` and `kp_motor`/`kd_motor`, motor
+limits, geometry and `virtual_limits` must match the model and actor profile.
+The two ankle modes therefore need different EXTERNAL settings in the running
+YAML; a mismatch stops the trial before any command and the YAML is never edited.
 It never edits the file, restarts services or activates an OTA slot.
 
 From the actual deployment root, for a separately authorized preparation test:
 
 ```bash
-bash scripts/start_actor_pico.sh live --stand-only --seconds 5 \
+bash scripts/start_actor_pico.sh sonic live --stand-only --seconds 5 \
   --robot-id '<actual robot identity>' --confirm-motion \
   --robot-config /absolute/path/to/running/locomotion.yaml
 ```
@@ -347,17 +497,24 @@ bash scripts/start_actor_pico.sh live --stand-only --seconds 5 \
 After reviewing that test and authorizing Pico following, omit `--stand-only`:
 
 ```bash
-bash scripts/start_actor_pico.sh live --seconds 10 \
+bash scripts/start_actor_pico.sh sonic live --seconds 10 \
   --robot-id '<actual robot identity>' --confirm-motion \
   --robot-config /absolute/path/to/running/locomotion.yaml
 ```
+
+This immediate-following mode uses the same isolated Pico/GMR input process as
+the manual mode, without the controller-trigger reader. It connects on the first
+Body31 feedback during preflight; the control loop never runs GMR and only reads
+the latest reference snapshot. Preflight waits for a ready reference window, and
+following starts after the stand preparation with yaw aligned to the measured
+robot heading. A failed worker or stale snapshot cancels the trial.
 
 To enter ONNX stand first and manually attach Pico in the **same EXTERNAL
 session**, use the separately armed interactive mode (on S100, from the actual
 deployment root on persistent `/userdata`, not overlay `/root`):
 
 ```bash
-bash scripts/start_actor_pico.sh live --manual-pico --seconds 120 \
+bash scripts/start_actor_pico.sh sonic live --manual-pico --seconds 120 \
   --robot-id '<actual robot identity>' --confirm-motion \
   --robot-config /absolute/path/to/running/locomotion_foot_humanoid_asample_none.yaml
 ```
@@ -404,7 +561,8 @@ The complete decoded BodyCmd is sent, including ankle compensation torque.
 The unpopulated waist-roll slot remains inert; no hand command is sent.
 
 `--seconds 0` disables only application duration expiry. Body feedback age must
-stay within 100 ms, Pico age within 600 ms, and ControlStatus must advance within
+stay within 100 ms (up to two consecutive stale ticks are skipped), Pico age
+within 600 ms (held beyond 250 ms), and ControlStatus must advance within
 500 ms. The 20 ms period is a
 50 Hz scheduling target, matching the C++ executor's treatment of occasional
 overruns. Compute/full-cycle overruns and skipped ticks are recorded; delayed
@@ -416,8 +574,12 @@ The Body31 actor path validates native arrays directly without materializing
 an unused legacy44 state. Logs use a 1 MiB buffer, flushed on entry, exit,
 candidate capture and errors; abrupt process termination may lose buffered rows.
 Faults, timeouts, command
-rejections/drops, ownership changes and SIGINT/SIGTERM stop the trial without
-automatic retry. Logging records requested commands, session/sequence and
+rejections, ownership changes and SIGINT/SIGTERM stop the trial without
+automatic retry. Firmware `ingress_drop_count` counts a valid command superseded
+by a newer one before its control tick (latest wins); each change is logged as
+`firmware_ingress_drop`, and more than 10 within 1 s cancels. The first poll
+counts increments from the confirmed entry counter, rather than treating an
+already increased counter as its baseline. Logging records requested commands, session/sequence and
 input state IDs; publication alone is not proof of actuator execution.
 
 Every attempted entry exits through SDK CANCEL and requires PASSIVE/IDLE.
@@ -440,6 +602,204 @@ model's HIP-frame state convention. Units are radians, rad/s and seconds/ns as
 named. Every one of the actor's 28 joints must be present. Replay inference
 starts only after the full model-derived window is available (200 ms for the current contract).
 
+## Pico stream conditioning (SuperMimic)
+
+`config/actor_pico_supermimic.json` `pico_stream` changes the live Pico path:
+
+- The worker sends conditioned raw GMR samples and a source-clock offset. The
+  control loop resamples the policy window at
+  `now - clock_offset - playback_margin_s - reference delay`, so the reference
+  moves 20 ms per tick no matter when GMR frames arrive.
+- `joint_filter`/`root_filter` are One-Euro filters. `root_max_tilt_deg` clamps
+  the reference root tilt and keeps its heading.
+
+Without the block, the previous newest-sample window is used unchanged. The
+SONIC reference does not implement this playback, so its configuration must
+not contain `pico_stream`.
+
+## Pico worker: GMR and CPU layout (all policies)
+
+`pico_worker` sets the GMR worker, receiver and control scheduling. SONIC
+(`config/actor_pico.json`) and SuperMimic ship the same block, so both run the
+same GMR chain with the same parameters:
+
+- `ik_max_iter` caps GMR refinement passes per frame. The pinned default is
+  10; both policies use 3.
+- `reader_poll_interval_s` waits between duplicate body snapshots (2 ms);
+  new frames are processed immediately when observed. Shadow mode uses the
+  same interval for its in-process reader.
+- `worker_cpus` is inherited by SDK/body/trigger threads. Only after those
+  threads start does `gmr_cpus` narrow the calling GMR thread. The reviewed
+  six-core S100 profile uses CPU 0–4 for receivers and CPU 1 for GMR, avoiding
+  CPU 5's measured contention. These indices must be reviewed on other CPU
+  layouts; unavailable CPUs fail startup. The vendor service keeps its
+  inherited mask. No CPU frequency or vendor-service affinity is changed.
+- `control_cpus` pins every thread of the live control process (SCHED_RR
+  policy loop, native inference, transport) after the Pico worker has been
+  spawned, so the worker and vendor service keep the unrestricted mask. It
+  must not overlap `gmr_cpus`: a real-time control thread on the GMR CPU
+  preempts the pinned GMR thread, which cannot migrate. The S100 profile uses
+  CPU 2–4 (layout B in the full-load replay below). The live log records the
+  applied mask as `control_affinity`. Stand-only runs apply it too.
+
+Without the block the worker is unchanged: 10 iterations, 0.1 ms polling and
+no CPU pinning. The GMR input log header records `pico_worker` and the
+applied worker/GMR masks. The timing measurements below used the SuperMimic
+configuration; SONIC runs the same GMR code and settings but has not been
+timed on the robot.
+
+### Frozen session replay (sim2sim)
+
+`tests/fixtures/actor_pico/robot42_pico_session_20261029.npz` freezes the Pico
+input, receipt times and on-robot GMR durations of session
+`robot42_test_20261029T220318` (`scripts/freeze_pico_session.py` rebuilds it).
+Stage 1 runs in the deployment venv and exports the per-tick reference windows
+for the `legacy` and `playback` variants:
+
+```bash
+python3 scripts/replay_pico_session.py --output /tmp/windows.npz
+```
+
+Stage 2 is trackerlab-supermimic
+`scripts/rls/supermimic/replay_pico_session_mujoco.py --windows /tmp/windows.npz`.
+It closes the loop in MuJoCo with the deployed ONNX. The `legacy` variant
+reproduces the robot's per-segment pitch std, >1 Hz pitch power, roll std and
+action step RMS. This is simulation, not hardware validation.
+
+### TODO: GMR timing under full control load
+
+Status: root cause calibrated and receiver/thread changes verified on S100
+on 2026-10-30. Full control-load acceptance remains open.
+
+The earlier 33–36 ms online versus 2.7 ms x86 comparison did not isolate
+input-thread contention. CPU 5 placement, repeated full-snapshot copies and
+SDK/reader/GMR sharing a core all increased latency in controlled tests.
+Putting the whole worker on a single core made live reception slower. The
+reader now waits 2 ms on duplicate packets; SDK/readers retain CPU 0–4 while
+only the GMR calling thread narrows to CPU 1. OpenBLAS stays single-threaded.
+
+The [on-robot verification receipt](deploy/actor_s100/gmr_benchmark_20261030.json)
+records the same 1000 frozen inputs with real Pico reception, trigger reader,
+50 Hz queue draining and raw GMR logging, at unchanged 1.5 GHz:
+
+| Receiver configuration | Mean GMR ms | P99 GMR ms | Mean thread CPU ms |
+| --- | ---: | ---: | ---: |
+| 0.1 ms duplicate polling, unrestricted threads | 21.167 | 47.763 | 13.079 |
+| 2 ms duplicate polling, receiver CPU 0–4 / GMR CPU 1 | 12.834 | 29.212 | 9.798 |
+
+Mean and P99 improved 39.37% and 38.84%; all 1000 GMR qpos outputs have the
+same SHA-256. IK iterations, filters and weights were identical. This is a
+read-only performance comparison, not an EXTERNAL motion trial. The prior
+short calibration at 2 GHz is not a production frequency change.
+
+To reproduce, connect Pico Full body/Send for each run; neither command opens
+a robot controller. Reports refuse to overwrite an existing file:
+
+```bash
+venv/bin/python scripts/bench_pico_gmr_live.py --baseline --frames 1000 --output /tmp/gmr_baseline.json
+venv/bin/python scripts/bench_pico_gmr_live.py --frames 1000 --output /tmp/gmr_configured.json
+```
+
+The offline-only `scripts/bench_pico_gmr.py` remains available and now selects
+the native SDK backend on ARM. Capture headers report both `worker_affinity`
+and `gmr_affinity`, plus the duplicate poll interval. Session regressions,
+including stale-hold freezing and late-sample clock behavior, are included
+in `verify_actor_delivery.py --host-inference --supermimic-model ...`.
+
+Remaining: mean GMR below 10 ms and P99 below 20 ms at 1.5 GHz are **not yet
+achieved** in this measurement. Validate sustained timing with the full
+control/inference/logging load and physical Pico A/B. If further CPU work is
+needed, profile the Python/NumPy task-objective assembly (about 41% of GMR
+CPU in the calibration); DAQP itself was about 5%. Historical logs lack
+per-frame GMR thread CPU/placement, so their entire delay cannot be attributed
+retroactively to one cause.
+
+### Full-compute shadow replay and alternating trials
+
+The [full-load replay receipt](deploy/actor_s100/full_load_replay_20261030.json)
+retains 25 trials of 1000 frozen GMR inputs and 18,821 native inference ticks
+from 2026-10-30. Pico was unavailable and the real right-wrist pitch feedback
+reported TIMEOUT (8), so these measurements use recorded robot feedback and
+a 90 Hz replay SDK shim. They do not validate live Pico reception, healthy
+real-time joint feedback or EXTERNAL motion.
+
+The committed runner reproduces the 13-trial placement matrix: N is the
+read-only subscription/queue/log baseline; A adds 50 Hz policy compute with
+unrestricted control threads; B restricts control to CPU 2–4 with GMR on
+CPU 1; C uses the same control mask with GMR allowed on CPU 0–1. Each trial
+uses a fresh process and records actual masks, frequency, temperature,
+wall/thread CPU time, full observations and skipped ticks. It uses only
+`PullStateSource`, rejects control publishers, and never sends actions.
+
+On the installed S100 checkout, use the deployment venv/model and the private
+peer configuration prepared by the documented state-check/shadow startup:
+
+```bash
+venv/bin/python scripts/bench_pico_full_load.py \
+  --pico replay --feedback recorded --frames 1000 \
+  --sequence NABABABACACAC --output /tmp/gmr_full_load_new
+```
+
+The output directory must be empty. `--pico live` tests actual reception;
+`--feedback live` requires healthy real feedback and does not fall back to
+recordings. The runner retains one receiver service across trials to avoid
+headset reconnects, and closes its owned processes on completion or failure.
+Input starts **before** control affinity is narrowed: applying `taskset` to
+the entire launcher would also restrict the input child's inherited mask.
+
+| Replay condition | Trials | Pooled mean GMR ms | Pooled P99 GMR ms |
+| --- | ---: | ---: | ---: |
+| A: unrestricted control, GMR CPU 1 | 6 | 17.880 | 36.782 |
+| B: control CPU 2–4, GMR CPU 1 | 9 | 12.675 | 24.628 |
+| C: control CPU 2–4, GMR CPU 0–1 | 3 | 14.037 | 27.218 |
+
+All 25,000 GMR qpos hashes matched and the shadow loops had no skipped ticks
+or compute cycles over 20 ms. The receipt also preserves six **experimental**
+native-objective trials: the second prototype reached pooled 10.118 ms mean
+and 19.464 ms P99, but only one of its three runs met both targets. Its native
+code, build scripts and binaries are excluded from this delivery, and D/E
+are not supported runner conditions. Large logs and prototype sources remain
+in the separately checksummed archive identified by the receipt.
+
+Production live now uses layout B through `pico_worker.control_cpus` (see
+above). It has not yet been timed with live Pico reception and live feedback,
+and stable timing acceptance remains open.
+
+### TODO: robot42 hardware and deployment follow-ups
+
+Status: open. Source: session `robot42_test_20261029T220318`. Training-side
+items (fore-aft sway, learned standing asymmetry, ankle roll at its limit,
+missing joint friction) are in trackerlab-supermimic
+`docs/vita02a_robot42_followups.md`.
+
+1. **Robot A/B of `pico_stream`.** Read-only receiver performance A/B is now
+   recorded above; EXTERNAL motion A/B remains pending. In frozen
+   session simulation, action step RMS drops about 32% and the
+   per-segment sway (pitch std, >1 Hz pitch power) is unchanged. Run the same
+   motions with this config, then freeze the new session with
+   `scripts/freeze_pico_session.py --gmr-input ... --actor-log ... --session ... --output ...`.
+   Compare per segment against robot42: reference advance per tick
+   (`playback_time_s`), action step RMS, root pitch std and >1 Hz pitch power.
+2. **Left upper ankle motor (slot 4).** Suspended SysID on 2026-10-28
+   (candidate fit, not validated) gives Coulomb friction of 1.06 Nm, against
+   0.32–0.38 Nm for slots 5/10/11. Its 0.5 Hz ±0.1 rad response has an
+   amplitude ratio of 0.43 (others 0.70–0.76) and a lag of 251 ms (others
+   115–131 ms). Inspect the left ankle linkage, bearings and lubrication, then
+   repeat the slot-4 mapping run. In simulation this friction does not
+   change the sway.
+3. **Left ankle pitch static residual.** Standing on the robot needs about
+   8 Nm more left ankle pitch torque than MuJoCo at the same angle (target - q
+   +0.094 vs -0.107 rad). In the stand probe, three causes fit equally well:
+   about 30% weaker torque on both ankles, about 4 Nm forward load on both
+   ankles (mass/CoM), or a +0.05 rad zero on the left lower motor. Measure
+   the sole attitude with an inclinometer and check robot mass/CoM against
+   the model before changing any zero or torque constant.
+4. **FIXED_STAND keyframe.** The vendor
+   `locomotion_foot_humanoid_asample_none.yaml` FIXED_STAND keyframe has all
+   42 positions at 0.0, marked as a placeholder. The robot then stands
+   straight-legged with IMU roll about +4.5 deg and pitch about -11 deg until
+   the policy takes over (under 1 deg afterwards). Replace it with a real
+   standing pose in the vendor configuration.
 ## Validation boundary
 
 Host CPU inference and synthetic Pico replay are exercised. S100 inference

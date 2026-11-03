@@ -78,6 +78,22 @@ class InstallerTests(unittest.TestCase):
                 bootstrap.provision_model(root, manifest, source)
             self.assertEqual(destination.read_bytes(), b'old!')
 
+    def test_policy_selects_its_own_external_model(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = self.model_manifest(root)
+            item = dict(path='artifacts/supermimic/supermimic_vita02a.onnx', bytes=5,
+                        sha256=hashlib.sha256(b'other').hexdigest())
+            (root/'config/actor_pico_supermimic.json').write_text(json.dumps(dict(artifacts=dict(model=item))))
+            manifest['external_resources'].append(item)
+            source = root/'external.onnx'; source.write_bytes(b'good')
+            with self.assertRaisesRegex(RuntimeError, 'SHA256 does not match'):
+                bootstrap.provision_model(root, manifest, source, 'supermimic')
+            source.write_bytes(b'other')
+            bootstrap.provision_model(root, manifest, source, 'supermimic')
+            self.assertEqual((root/item['path']).read_bytes(), b'other')
+            self.assertFalse((root/'artifacts/actor_g1').exists())
+
     def test_changed_input_rejected_before_unpack(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

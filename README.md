@@ -34,12 +34,19 @@ git clone --branch main --single-branch \
 cd /userdata/vita_actor_pico
 git rev-parse HEAD
 source /app/script/env.sh
-python3.10 scripts/bootstrap_actor_s100.py --model /absolute/path/policy.onnx
-bash scripts/start_actor_pico.sh check --steps 100
-bash scripts/start_actor_pico.sh state-check --seconds 5
+python3.10 scripts/bootstrap_actor_s100.py --policy sonic --model /absolute/path/policy.onnx
+# 使用 SuperMimic 时再安装它的模型（同一目录可重跑，已有 venv 会续用）：
+python3.10 scripts/bootstrap_actor_s100.py --policy supermimic --model /absolute/path/supermimic_vita02a.onnx
+bash scripts/start_actor_pico.sh sonic check --steps 100
+bash scripts/start_actor_pico.sh sonic state-check --seconds 5
 # 头显已完成全身追踪标定并点击 Send 后，运行只记录结果的影子推理：
-bash scripts/start_actor_pico.sh shadow --seconds 30 --human-height 1.75
+bash scripts/start_actor_pico.sh sonic shadow --seconds 30 --human-height 1.75
 ```
+
+**策略必须显式选择，没有默认值，也不会改用另一个策略。** 第一个参数写 `sonic` 或
+`supermimic`（等价于 `--policy sonic|supermimic`）；在终端里不写时会弹出菜单要求选择，
+直接回车或非交互运行都不会启动任何东西。所选策略的模型未安装或哈希不符、加速 GMR
+依赖版本不符时直接报错退出，不会退回 sonic 或较慢的原版 GMR。
 
 模型版本、文件大小、SHA256 和安装目标路径统一记录在
 [`config/actor_pico.json`](config/actor_pico.json) 与
@@ -68,16 +75,21 @@ bash scripts/start_actor_pico.sh configure \
 **下面的无参数命令会运动全身。** 使用前须针对本机确认可靠支撑、区域清空、有人看护和急停可用。
 
 ```bash
-bash scripts/start_actor_pico.sh
+bash scripts/start_actor_pico.sh sonic        # GR00T G1 (SONIC) 策略
+bash scripts/start_actor_pico.sh supermimic   # SuperMimic 策略
+bash scripts/start_actor_pico.sh              # 终端菜单选择 1) sonic 2) supermimic，无默认
 # 身高默认 1.75 米，其他操作者可覆盖：
-# bash scripts/start_actor_pico.sh --human-height 1.68
+# bash scripts/start_actor_pico.sh supermimic --human-height 1.68
 ```
+
+启动时终端先打印 `ACTOR_POLICY: <策略>`，`ACTOR_LIVE_REVIEW` 中也包含 `policy` 与模型哈希；
+日志头记录 `policy` 和 `gmr_engine`。
 
 流程为等待阻尼结束 → FIXED_STAND → EXTERNAL → 持续 ONNX 站姿推理并等待 Pico。
 双扳机同时按过 0.7 切入跟随，释放后再次同时按下返回 ONNX 站姿。
 `STOP`/Ctrl-C 尝试 CANCEL → PASSIVE；PASSIVE 下承重肢体可能下落，软件退出不能代替急停。
 EXTERNAL 没有自动到期释放；进程故障也不能假定控制权已释放。
-可用 `--seconds 5` 限定客户端试验时长；故障后不自动重试运动。
+可用 `--seconds 5` 限定客户端试验时长（如 `bash scripts/start_actor_pico.sh supermimic --seconds 5`）；故障后不自动重试运动。
 
 控制线程采用 RR 优先级 1，需要相应 Linux 权限；GMR 子进程保持普通调度。
 100 ms 机器人反馈、600 ms Pico 新鲜度及 SDK 控制权/看门狗检查保留。

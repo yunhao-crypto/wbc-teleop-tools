@@ -1,0 +1,301 @@
+{
+  "schema": "vita_robot173_body_state_rootcause_v1",
+  "robot_id": "10.100.23.173",
+  "deployed_commit": "155fb5564657d0df863485fc92aff81b9d5d27ff",
+  "model_sha256": "40896a887dadebf2af6419a7ed662ab9164c41a63f49de112fd643202ef7e63c",
+  "feedback_limit_ms": 100,
+  "threshold_changed": false,
+  "conclusion": "Feedback freshness failure confirmed; exact delayed publication/transport/scheduling stage remains unresolved. A separate actor duplicate-feedback defect was corrected locally.",
+  "stale_runs": [
+    {
+      "file": "actor_pico_live_1793354474897361050.jsonl",
+      "actions_sent": 1487,
+      "compute_ms": {
+        "mean": 9.16148725628475,
+        "p99": 10.67739999780315,
+        "max": 11.311225000099512
+      },
+      "policy_period_overruns": 0,
+      "terminal_failure": {
+        "record_type": "body_state_age_failure",
+        "phase": "at_read",
+        "consecutive_ticks": 3,
+        "action": "cancel",
+        "actions_sent": 1487,
+        "error": "BodyState local receipt is stale/future: receipt_age_ms=120.032, source_age_ms=132.488, publication_age_ms=132.393, state_id=207693, limit_ms=100"
+      }
+    },
+    {
+      "file": "actor_pico_live_1793354562804603000.jsonl",
+      "actions_sent": 1258,
+      "compute_ms": {
+        "mean": 11.092010612119685,
+        "p99": 14.43795000159298,
+        "max": 15.156150002439972
+      },
+      "policy_period_overruns": 0,
+      "terminal_failure": {
+        "record_type": "body_state_age_failure",
+        "phase": "at_read",
+        "consecutive_ticks": 3,
+        "action": "cancel",
+        "actions_sent": 1258,
+        "error": "BodyState local receipt is stale/future: receipt_age_ms=120.494, source_age_ms=137.337, publication_age_ms=132.107, state_id=236421, limit_ms=100"
+      }
+    }
+  ],
+  "independent_recording": {
+    "file": "mcap/00000000026HE100001-foot_humanoid_20261030_180307.mcap",
+    "target_state_id": 236421,
+    "target_payload_pub_time_s": 1793354591.982152,
+    "inspection_window_payload_pub_s": [
+      1793354591.832152,
+      1793354592.232152
+    ],
+    "max_payload_publication_timestamp_gap_ms": 20.628929138183594,
+    "max_zenoh_sample_timestamp_gap_ms": 201.45010948181152,
+    "max_recorder_ingest_gap_ms": 187.07895278930664,
+    "records_with_payload_pub_time_in_next_132ms": 21,
+    "note": "Payload publication stamps describe generated frames; they do not prove the actual send time. MCAP ingestion occurs after recorder subscriber dequeue, so this does not identify a specific transport queue or thread."
+  },
+  "latest_run": {
+    "file": "actor_pico_live_1793358913329052200.jsonl",
+    "actions_sent": 1957,
+    "tracking_started": false,
+    "repeated_feedback": {
+      "state_id": 1829139,
+      "command_sequences": [
+        1953,
+        1954,
+        1955,
+        1956
+      ]
+    },
+    "fault": {
+      "joint": "left_hip_roll_joint",
+      "motor_id": 2,
+      "body_slot": 1,
+      "error_code": 13,
+      "error_name": "STALL",
+      "first_record": {
+        "id": 1829143,
+        "pub": 1793358956542492,
+        "ingest": 1793358956552504575,
+        "joint_ingest": 1793358956541357,
+        "q": -0.036939382553100586,
+        "dq": -1.216120719909668,
+        "err": 13,
+        "joint_age_ms": 1.135,
+        "errors": [
+          [
+            1,
+            13
+          ]
+        ]
+      }
+    },
+    "exit_current_action": "PASSIVE",
+    "exit_phase": "EMERGENCY",
+    "note": "The motor reported STALL; this does not by itself establish damaged hardware or the cause of the preceding transport gap."
+  },
+  "transport_inspection": {
+    "locomotion_pid": 471835,
+    "established_tcp_connections": 660,
+    "unique_remote_endpoints": 400,
+    "tcp_nodelay_enabled": 660,
+    "note": "Connection count is a lead, not causal proof. Idle perf scheduling capture cannot attribute a historical motion-time gap. No CPU cgroup quota/throttling was found."
+  },
+  "readonly_route_comparison": {
+    "results": [
+      {
+        "index": 0,
+        "mode": "A",
+        "failure": null,
+        "scheduler": {
+          "policy": "SCHED_RR",
+          "priority": 1
+        },
+        "affinity": [
+          2,
+          3,
+          4
+        ],
+        "actions_sent": 0,
+        "control_publishers": 0,
+        "feedback": "recorded stand; live readonly subscription",
+        "connections": [
+          56,
+          56,
+          56,
+          56
+        ],
+        "receipt_ms": {
+          "n": 1251,
+          "mean": 0.24531552757793765,
+          "p99": 0.2946,
+          "maximum": 20.271675,
+          "above_100ms": 0
+        },
+        "publication_ms": {
+          "n": 1251,
+          "mean": 3.6169212230215826,
+          "p99": 17.5552,
+          "maximum": 34.736525,
+          "above_100ms": 0
+        },
+        "compute_ms": {
+          "n": 1251,
+          "mean": 8.158799580345452,
+          "p99": 9.186562503600726,
+          "maximum": 9.935500005667564,
+          "above_100ms": 0
+        }
+      },
+      {
+        "index": 1,
+        "mode": "B",
+        "failure": "TimeoutError('get_robot_info service provider not found')",
+        "scheduler": {
+          "policy": "SCHED_RR",
+          "priority": 1
+        },
+        "affinity": [
+          2,
+          3,
+          4
+        ],
+        "actions_sent": 0,
+        "control_publishers": 0,
+        "feedback": "recorded stand; live readonly subscription",
+        "connections": [],
+        "receipt_ms": null,
+        "publication_ms": null,
+        "compute_ms": null
+      },
+      {
+        "index": 2,
+        "mode": "A",
+        "failure": null,
+        "scheduler": {
+          "policy": "SCHED_RR",
+          "priority": 1
+        },
+        "affinity": [
+          2,
+          3,
+          4
+        ],
+        "actions_sent": 0,
+        "control_publishers": 0,
+        "feedback": "recorded stand; live readonly subscription",
+        "connections": [
+          56,
+          56,
+          56,
+          56
+        ],
+        "receipt_ms": {
+          "n": 1251,
+          "mean": 0.3278066147082334,
+          "p99": 0.3285,
+          "maximum": 59.956825,
+          "above_100ms": 0
+        },
+        "publication_ms": {
+          "n": 1251,
+          "mean": 4.003307054356514,
+          "p99": 17.6175,
+          "maximum": 72.394025,
+          "above_100ms": 0
+        },
+        "compute_ms": {
+          "n": 1251,
+          "mean": 8.100983413370399,
+          "p99": 9.274625001125969,
+          "maximum": 9.694699998362921,
+          "above_100ms": 0
+        }
+      },
+      {
+        "index": 3,
+        "mode": "B",
+        "failure": "TimeoutError('get_robot_info service provider not found')",
+        "scheduler": {
+          "policy": "SCHED_RR",
+          "priority": 1
+        },
+        "affinity": [
+          2,
+          3,
+          4
+        ],
+        "actions_sent": 0,
+        "control_publishers": 0,
+        "feedback": "recorded stand; live readonly subscription",
+        "connections": [],
+        "receipt_ms": null,
+        "publication_ms": null,
+        "compute_ms": null
+      }
+    ],
+    "adopted": false,
+    "note": "Both router-only peer candidates failed RobotInfo discovery. No latency improvement claim; experimental launcher/profile code was removed. Production routing was not changed."
+  },
+  "local_changes": [
+    "Skip inference, history/reference advancement and new commands when feedback identity repeats; preserve original 100 ms freshness budget even if heartbeat receipt clocks refresh.",
+    "Add feedback timing to successful inference logs.",
+    "Include joint name, slot, numeric/symbolic error and state ID in native Q/Dq fault errors."
+  ],
+  "validation": {
+    "clean_export_tests": 315,
+    "sonic_check_steps": 100,
+    "sonic_replay_steps": 100,
+    "supermimic_check_steps": 100,
+    "supermimic_replay_steps": 100,
+    "actions_sent_by_diagnostics": 0,
+    "robot_motion_with_patch": "not_measured",
+    "patch_deployed": false,
+    "commit_created": false,
+    "pushed": false,
+    "limitations": [
+      "The first fault MCAP segment had already rotated out; independent MCAP analysis uses the second, equivalent stale-state exit.",
+      "Shadow Pico reception failed; shadow results validate compute/logging load only, not a full live Pico/EXTERNAL replay.",
+      "Readonly route trials omit actual actuation and live Pico/GMR load. No full-load latency improvement has been demonstrated."
+    ]
+  },
+  "next_measurement": "During an attended reproduction correlate producer prepare/put completion, Zenoh receive/dequeue, callback scheduling and actuator status. Review hip-roll target/gain/load separately before another motion trial.",
+  "evidence_directory": "outputs/deploy_robot173_155fb55/body_stale_rootcause_20261030",
+  "evidence": [
+    {
+      "path": "outputs/deploy_robot173_155fb55/body_stale_rootcause_20261030/actor_pico_live_1793358913329052200.jsonl",
+      "bytes": 69874049,
+      "sha256": "159e73456679cef29f222498048831005ab785b774512ee58dc013cb6f581d68"
+    },
+    {
+      "path": "outputs/deploy_robot173_155fb55/body_stale_rootcause_20261030/fault_journal.log",
+      "bytes": 194133,
+      "sha256": "616985081efbade835f58559a8202d0e907400a57515f23061c2166d3bf5642b"
+    },
+    {
+      "path": "outputs/deploy_robot173_155fb55/body_stale_rootcause_20261030/tcp_socket_options.json",
+      "bytes": 68071,
+      "sha256": "f55f75a1265e5fa2248a9e2636141ce5ffc5b5e95521e7e1c680ca1d99cfe9d0"
+    },
+    {
+      "path": "outputs/deploy_robot173_155fb55/body_stale_rootcause_20261030/route_comparison.log",
+      "bytes": 9844,
+      "sha256": "125929b2728e1c851f219ada5fc2de9df6bc9597c8289b89e672168d114088d7"
+    }
+  ],
+  "final_readonly_status": {
+    "state_id": 2850055,
+    "joint_errors": [],
+    "status": {
+      "current_action": "QUIET_PASSIVE",
+      "phase": "IDLE",
+      "ingress_drop_count": 65,
+      "reject_count": 1
+    },
+    "actions_sent": 0
+  }
+}

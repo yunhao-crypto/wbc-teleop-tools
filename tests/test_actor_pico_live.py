@@ -31,11 +31,18 @@ class Clock:
     def sleep(self, seconds): self.now += max(0., seconds)
 
 
-def robot_config():
-    config = dict(parallel_ankle=dict(pd=dict(strategy='virtual_pd'),
-                geometry=dict(lx=.05, ly=.02175, z_top=.31, z_bot=.235)),
+def motor_theta(runtime):
+    return getattr(runtime.model.contract, 'ankle', None) is not None
+
+
+def robot_config(runtime=None):
+    """A-sample effective config; EXTERNAL ankle mode as the runtime's model needs."""
+    config = dict(parallel_ankle=dict(pd=dict(strategy='virtual_pd', kp_motor=20., kd_motor=1.),
+                geometry=dict(lx=.05, ly=.02175, z_top=.31, z_bot=.235),
+                caps=dict(theta_min=-.95975, theta_max=.61075),
+                virtual_limits=dict(pitch=[-.751, .414], roll=[-.43625, .43625])),
         actions=dict(EXTERNAL=dict(generator='builtin::external', params=dict(
-            ankle_virtual_pd_intent=True, command_timeout_ms=1000,
+            ankle_virtual_pd_intent=not (runtime is not None and motor_theta(runtime)), command_timeout_ms=1000,
             recover_valid_frames=1, interpolation=dict(min_period_ms=2, max_period_ms=100),
             safe_hold=dict(kp=[10.]*42, kd=[1.]*42)))))
     config['actions']['FIXED_STAND'] = dict(generator='builtin::keyframe', params=dict(
@@ -48,7 +55,26 @@ def robot_config():
 
 
 class Pico:
-    def __init__(self, clock): self.clock, self.fault, self.last_stamp = clock, None, None
+    """In-process PicoReferenceProcess(buttons=False): the real GMR and reference window."""
+    def __init__(self, runtime, clock):
+        self.runtime, self.clock, self.fault, self.last_stamp = runtime, clock, None, None
+        self.stream, self.anchor, self.previous = None, None, dict(state='idle')
+
+    def connect(self, root):
+        if self.stream is not None: return False
+        from deployment.vita_s100_aorta_30dof.actor_pico_worker import ReferenceStream
+        r = self.runtime
+        self.stream = ReferenceStream(r.root, r.config, r.model.contract, r.math, clock=self.clock.monotonic)
+        self.anchor, self.previous = tuple(root), dict(state='waiting_pico')
+        return True
+
+    def snapshot(self):
+        sample = self.step() if self.stream is not None else None
+        if sample is not None:
+            body, _, metadata = sample
+            self.previous = self.stream.push(body, metadata, self.anchor)
+        return dict(self.previous)
+
     def step(self):
         if self.fault: return self.fault()
         stamp = round(self.clock.monotonic()*1e9)
@@ -171,12 +197,12 @@ class LiveTests(unittest.TestCase):
         self.runtime.reset_inputs()
         self.tmp = tempfile.TemporaryDirectory(); self.addCleanup(self.tmp.cleanup)
         self.config = Path(self.tmp.name)/'locomotion.yaml'
-        self.config.write_text(json.dumps(robot_config()))  # JSON is YAML, no parser stubs.
+        self.config.write_text(json.dumps(robot_config(self.runtime)))  # JSON is YAML, no parser stubs.
         self.clock, self.stop, self.rows = Clock(), threading.Event(), []
         self.transport = Loopback(self.runtime, self.clock)
         self.controller = PullController(group='default', client_id='mock-client', _transport=self.transport)
         self.addCleanup(self.controller.close)
-        self.pico = Pico(self.clock)
+        self.pico = Pico(self.runtime, self.clock)
         self.args = NS(robot_config=self.config, robot_id='TEST-ONLY', startup_timeout=5.,
                        seconds=3.12, stand_only=False)
 
@@ -192,7 +218,9 @@ class LiveTests(unittest.TestCase):
         self.assertIn('CANCEL', [r.operation.value for r in self.transport.requests])
 
     def test_real_sdk_protocol_and_full_commands_through_prepare_and_tracking(self):
-        result = self.run_trial()
+        # GMR belongs to the worker; the control loop only consumes snapshots.
+        with patch.object(self.runtime, 'push_pico', side_effect=AssertionError('control-side GMR')):
+            result = self.run_trial()
         self.assertTrue(result['exit_confirmed'])
         self.assertGreater(result['actions_sent'], 150)
         self.assertEqual([r.operation.value for r in self.transport.requests], ['PREPARE', 'COMMIT', 'CANCEL'])
@@ -301,7 +329,37 @@ class LiveTests(unittest.TestCase):
         self.assertTrue(tracked)
         self.assertAlmostEqual(tracked[0]['pico_age_s'],.3)
         self.assertAlmostEqual(tracked[0]['source_gap_s'],.122)
+        # Older than pico_hold_age_s: the current frame is held with zero velocity.
+        self.assertTrue(all(r['reference_hold'] for r in tracked))
+        q=np.asarray(tracked[0]['pico_reference']['q'])
+        np.testing.assert_array_equal(q,np.repeat(q[self.runtime.reference.current_index][None],len(q),0))
         self.assert_cancelled()
+
+    def test_reference_within_hold_age_is_not_held(self):
+        worker,command=self.manual_trial()
+        original=worker.snapshot
+        def snapshot():
+            value=original()
+            if value['state']=='ready':
+                value['received_monotonic']-=.2
+                value['q']=value['q']+np.linspace(0.,.1,len(value['q']))[:,None]
+            return value
+        with patch.object(worker,'snapshot',snapshot):
+            self.run_trial(manual_pico=worker,poll_command=command)
+        tracked=[r for r in self.rows if r.get('stage')=='pico_tracking']
+        self.assertTrue(tracked)
+        self.assertFalse(any(r['reference_hold'] for r in tracked))
+        q=np.asarray(tracked[0]['pico_reference']['q'])
+        self.assertGreater(np.ptp(q[:,0]),.09)
+
+    def test_hold_age_must_lie_below_pico_maximum_age(self):
+        from deployment.vita_s100_aorta_30dof import actor_pico_runtime as module
+        config=json.loads((ROOT/module.POLICY_CONFIGS['sonic']).read_text())
+        for value in (0.,.6,.7,float('nan'),True,None):
+            with self.subTest(value=value),tempfile.TemporaryDirectory() as tmp:
+                (Path(tmp)/'config').mkdir()
+                (Path(tmp)/'config/actor_pico.json').write_text(json.dumps(dict(config,pico_hold_age_s=value)))
+                with self.assertRaisesRegex(ValueError,'hold age'):module.load_actor_config(tmp)
 
     def test_input_age_settings_match_original_holomotion_deployment(self):
         import yaml
@@ -341,7 +399,8 @@ class LiveTests(unittest.TestCase):
         pico=Mock();pico.step.side_effect=step
         service=Mock();service.poll.return_value=None
         with (patch.object(worker.os,'setsid'),patch.object(worker.subprocess,'Popen',return_value=service),
-              patch.object(pico_input,'create_pico_source',return_value=pico)):
+              patch.object(pico_input,'create_pico_source',return_value=pico),
+              patch.object(worker,'thread_affinity',return_value=[0])):
             worker._capture(str(ROOT),self.runtime.config,self.runtime.model.contract,
                 self.runtime.policy.lower,self.runtime.policy.upper,commands,output,stop)
         rows=[]
@@ -451,7 +510,9 @@ class LiveTests(unittest.TestCase):
         spec=importlib.util.spec_from_file_location('actor_cli_no_pico_test',ROOT/'scripts/actor_pico.py')
         cli=importlib.util.module_from_spec(spec);spec.loader.exec_module(cli)
         profile=Path(self.tmp.name)/'peer.json5';profile.touch(mode=0o600);profile.write_text('{mode:"peer"}')
-        runtime=NS(root=Path(self.tmp.name),model=NS(backend='sdk'))
+        from deployment.vita_s100_aorta_30dof.actor_pico_stream import WorkerSettings
+        runtime=NS(root=Path(self.tmp.name),model=NS(backend='sdk',contract=self.runtime.model.contract),
+                   config=dict(body_profile=self.runtime.config['body_profile']),worker=WorkerSettings())
         self.args.stand_only=True;self.args.manual_pico=False;self.args.group='default'
         with (patch.dict(os.environ,ZENOH_SESSION_CONFIG_URI=str(profile)),
               patch.object(cli.platform,'machine',return_value='aarch64'),
@@ -467,6 +528,57 @@ class LiveTests(unittest.TestCase):
         self.assertEqual(result['actions_sent'],0)
         self.assertIsNone(runner.call_args.args[4])
         self.assertIsNone(runner.call_args.kwargs['manual_pico'])
+
+    def test_automatic_cli_runs_pico_and_gmr_in_worker_without_buttons(self):
+        from unittest.mock import Mock
+        from deployment.vita_s100_aorta_30dof import (actor_pico_live,actor_pico_worker,
+                                                      sdk021_guard,sdkmain_adapter,pico_input)
+        spec=importlib.util.spec_from_file_location('actor_cli_worker_test',ROOT/'scripts/actor_pico.py')
+        cli=importlib.util.module_from_spec(spec);spec.loader.exec_module(cli)
+        profile=Path(self.tmp.name)/'peer.json5';profile.touch(mode=0o600);profile.write_text('{mode:"peer"}')
+        from deployment.vita_s100_aorta_30dof.actor_pico_stream import WorkerSettings
+        runtime=NS(root=Path(self.tmp.name),model=NS(backend='sdk',contract=self.runtime.model.contract),
+                   config=dict(body_profile=self.runtime.config['body_profile']),
+                   worker=WorkerSettings(3,.002,(0,1,2,3,4),(1,),(2,3,4)))
+        self.args.stand_only=False;self.args.manual_pico=False;self.args.group='default'
+        worker=Mock();events=[];rows=[]
+        worker.start.side_effect=lambda:events.append('worker_start')
+        def pin(cpus):
+            events.append(('control_affinity',tuple(cpus)));return list(cpus)
+        def transport(**_):
+            events.append('transport');return self.transport
+        with (patch.dict(os.environ,ZENOH_SESSION_CONFIG_URI=str(profile)),
+              patch.object(cli.platform,'machine',return_value='aarch64'),
+              patch.object(sdk021_guard,'verify_vendor_sources',return_value={}),
+              patch.object(sdkmain_adapter,'verify_state_decoder'),
+              patch('deployment.vita_s100_aorta_30dof.actor_pico_scheduling.control_scheduler',return_value={'policy':'SCHED_RR','priority':1}),
+              patch('deployment.vita_s100_aorta_30dof.actor_pico_scheduling.control_affinity',side_effect=pin),
+              patch.object(sdkmain_adapter,'RealtimeBodyTransport',side_effect=transport),
+              patch('locomotion_aorta.pull.PullController',return_value=self.controller),
+              patch.object(actor_pico_worker,'PicoReferenceProcess',return_value=worker) as process,
+              patch.object(pico_input,'create_pico_source',side_effect=AssertionError('control-side Pico reader')),
+              patch.object(cli.subprocess,'Popen',side_effect=AssertionError('control-side Pico service')),
+              patch.object(actor_pico_live,'run_live',return_value={'actions_sent':0}) as runner):
+            cli.live(runtime,self.args,lambda row,*_:rows.append(row))
+        # The worker must spawn on the unrestricted mask before control narrows.
+        self.assertEqual(events,['worker_start',('control_affinity',(2,3,4)),'transport'])
+        self.assertIn(dict(record_type='control_affinity',cpus=[2,3,4]),rows)
+        process.assert_called_once_with(runtime,buttons=False)
+        worker.start.assert_called_once();worker.close.assert_called_once()
+        self.assertIs(runner.call_args.args[4],worker)
+        self.assertIsNone(runner.call_args.kwargs['manual_pico'])
+        self.assertIs(runner.call_args.kwargs['service_alive'],worker.process.is_alive)
+
+    def test_buttonless_worker_snapshot_has_no_trigger_fields(self):
+        from deployment.vita_s100_aorta_30dof.actor_pico_worker import PicoReferenceProcess
+        worker=PicoReferenceProcess(self.runtime,buttons=False)
+        worker.start()
+        try:
+            self.assertIsNone(worker.controls)
+            self.assertEqual(worker.snapshot(),dict(state='idle'))
+        finally:
+            worker.close()
+        self.assertFalse(worker.process.is_alive())
 
     def test_live_starts_without_reading_a_move_prompt(self):
         self.args.stand_only=True
@@ -512,11 +624,30 @@ class LiveTests(unittest.TestCase):
         self.assertEqual(self.run_trial()['actions_sent'], 1)
         self.assert_cancelled()
 
-    def test_stale_feedback_after_entry_is_not_published(self):
+    def test_persistent_stale_feedback_cancels_after_skipped_ticks(self):
+        from deployment.vita_s100_aorta_30dof.actor_pico_live import MAX_STALE_TICKS
         self.transport.after_publish = lambda c:setattr(self.transport, 'state_fault',
             lambda s:replace(s, ts_state_pub_us=s.ts_state_pub_us-200_000))
-        with self.assertRaisesRegex(TimeoutError, 'source is stale'): self.run_trial()
+        with self.assertRaisesRegex(TimeoutError, 'consecutive policy ticks.*publication is stale'): self.run_trial()
         self.assertEqual(len(self.transport.commands), 1)
+        failures = [r for r in self.rows if r.get('record_type')=='body_state_age_failure']
+        self.assertEqual([r['action'] for r in failures], ['skip_tick']*MAX_STALE_TICKS+['cancel'])
+        self.assert_cancelled()
+
+    def test_transient_stale_feedback_skips_one_tick_and_continues(self):
+        self.args.stand_only = True
+        def once(command):
+            if command.sequence == 3:
+                self.transport.state_fault = lambda s:(setattr(self.transport,'state_fault',None),
+                    replace(s, ts_state_pub_us=s.ts_state_pub_us-200_000))[1]
+            if command.sequence == 10:
+                self.stop.set()
+        self.transport.after_publish = once
+        report = self.run_trial()
+        self.assertEqual(report['actions_sent'], 10)
+        failures = [r for r in self.rows if r.get('record_type')=='body_state_age_failure']
+        self.assertEqual([(r['phase'], r['action']) for r in failures], [('at_read', 'skip_tick')])
+        self.assertEqual([c.sequence for c in self.transport.commands], list(range(1, 11)))
         self.assert_cancelled()
 
     def test_feedback_that_expires_during_inference_is_not_published(self):
@@ -528,23 +659,62 @@ class LiveTests(unittest.TestCase):
                 self.clock.sleep(.085)
             return action
         self.transport.state_fault = lambda state: replace(state,
-            ts_state_real_us=state.ts_state_real_us-20_000) if self.transport.commands else state
+            ts_state_pub_us=state.ts_state_pub_us-20_000) if self.transport.commands else state
         with patch.object(self.runtime.model,'infer',delayed):
-            with self.assertRaisesRegex(TimeoutError,'source_age_ms=105.000'):
+            with self.assertRaisesRegex(TimeoutError,'publication_age_ms=105.000'):
                 self.run_trial()
         self.assertEqual(len(self.transport.commands),1)
         failure = next(r for r in self.rows if r.get('record_type')=='body_state_age_failure')
-        self.assertEqual(failure['at_read']['source_age_ms'],20.)
-        self.assertEqual(failure['at_failure']['source_age_ms'],105.)
+        self.assertEqual((failure['phase'], failure['action']), ('before_publish', 'skip_tick'))
+        self.assertEqual(failure['at_read']['publication_age_ms'],20.)
+        self.assertEqual(failure['at_failure']['publication_age_ms'],105.)
         self.assertEqual(failure['at_failure']['receipt_age_ms'],85.)
+        self.assert_cancelled()
+
+    def test_expired_compute_keeps_last_published_action_on_recovery(self):
+        self.args.stand_only = True
+        self.args.seconds = .5
+        published_action = np.full(28, .02, np.float32)
+        skipped_action = np.full(28, .08, np.float32)
+        recovered_action = np.full(28, .04, np.float32)
+        observed_last_actions = []
+        expired = False
+
+        def infer(observation):
+            nonlocal expired
+            if not self.transport.commands:
+                return published_action.copy()
+            observed_last_actions.append(self.runtime.policy.last_action.copy())
+            if not expired:
+                expired = True
+                self.clock.sleep(.11)
+                return skipped_action.copy()
+            return recovered_action.copy()
+
+        self.transport.after_publish = lambda command: self.stop.set() if command.sequence == 2 else None
+        with patch.object(self.runtime.model, 'infer', infer):
+            report = self.run_trial()
+        self.assertEqual(report['actions_sent'], 2)
+        self.assertEqual(len(observed_last_actions), 2)
+        for action in observed_last_actions:
+            np.testing.assert_array_equal(action, published_action)
+        np.testing.assert_array_equal(self.runtime.policy.last_action, recovered_action)
+        failures = [r for r in self.rows if r.get('record_type') == 'body_state_age_failure']
+        self.assertEqual([(r['phase'], r['action']) for r in failures],
+                         [('before_publish', 'skip_tick')])
+        self.assertEqual([command.sequence for command in self.transport.commands], [1, 2])
         self.assert_cancelled()
 
     def test_feedback_future_clock_error_reports_signed_age(self):
         from deployment.vita_s100_aorta_30dof.actor_pico_live import Inputs
         inputs = Inputs(self.runtime,self.controller,None,self.clock)
         state = self.transport.wait_state()
-        with self.assertRaisesRegex(TimeoutError,'source_age_ms=-6.000'):
-            inputs.fresh(replace(state,ts_state_real_us=state.ts_state_real_us+6000))
+        with self.assertRaisesRegex(TimeoutError,'publication_age_ms=-6.000'):
+            inputs.fresh(replace(state,ts_state_pub_us=state.ts_state_pub_us+6000))
+        # Sensor stamp age is diagnostic only, as in the SDK WBC demo.
+        inputs.fresh(replace(state,ts_state_real_us=state.ts_state_real_us-500_000))
+        with self.assertRaisesRegex(ValueError,'missing'):
+            inputs.fresh(replace(state,ts_state_real_us=0))
         self.assertEqual(self.transport.commands,[])
 
     def test_stale_pico_after_entry_cancels_without_retry(self):
@@ -553,8 +723,24 @@ class LiveTests(unittest.TestCase):
         self.assertLessEqual(len(self.transport.commands), 35)
         self.assert_cancelled()
 
+    def test_failed_pico_worker_after_entry_cancels(self):
+        self.transport.after_publish = lambda c:setattr(self.pico, 'snapshot',
+            lambda:dict(state='failed', error='Owned Pico service exited'))
+        with self.assertRaisesRegex(RuntimeError, 'Pico input worker failed'): self.run_trial()
+        self.assertEqual(len(self.transport.commands), 1)
+        self.assert_cancelled()
+
+    def test_automatic_tracking_matches_reference_snapshot(self):
+        self.run_trial()
+        start = next(r for r in self.rows if r.get('record_type') == 'tracking_started')
+        tracked = [r for r in self.rows if r.get('stage') == 'pico_tracking']
+        self.assertTrue(tracked)
+        self.assertTrue(all(r['pico_reference']['yaw_offset'] == start['reference_yaw_offset'] for r in tracked))
+        self.assertEqual(len(tracked[0]['pico_reference']['q']), self.runtime.reference.steps)
+        self.assertTrue(all(0 <= r['pico_age_s'] <= self.runtime.config['pico_max_age_s'] for r in tracked))
+
     def test_reject_drop_timeout_and_ownership_changes_stop_publication(self):
-        for change in (dict(reject_count=1), dict(ingress_drop_count=1), dict(timeout_hold=True),
+        for change in (dict(reject_count=1), dict(timeout_hold=True),
                        dict(client_id='other'), dict(generation=8)):
             with self.subTest(change=change):
                 self.setUp()
@@ -563,6 +749,46 @@ class LiveTests(unittest.TestCase):
                 with self.assertRaisesRegex(RuntimeError, 'ownership/state'): self.run_trial()
                 self.assertEqual(len(self.transport.commands), 1)
                 self.assertIn('CANCEL', [r.operation.value for r in self.transport.requests])
+
+    def test_occasional_superseded_commands_are_logged_not_fatal(self):
+        self.args.stand_only = True
+        def drop(c):
+            if c.sequence in (3, 30):
+                self.transport.status_fault = (lambda n:lambda s:replace(s, ingress_drop_count=n))(c.sequence//3)
+            if c.sequence == 40: self.stop.set()
+        self.transport.after_publish = drop
+        self.assertEqual(self.run_trial()['actions_sent'], 40)
+        drops = [r['count'] for r in self.rows if r.get('record_type')=='firmware_ingress_drop']
+        self.assertEqual(drops, [1, 10])
+        self.assert_cancelled()
+
+    def test_sustained_superseded_commands_cancel(self):
+        from deployment.vita_s100_aorta_30dof.actor_pico_live import MAX_INGRESS_DROPS
+        self.args.stand_only = True
+        self.transport.after_publish = lambda c:setattr(self.transport, 'status_fault',
+            lambda s:replace(s, ingress_drop_count=c.sequence))
+        with self.assertRaisesRegex(RuntimeError, 'superseded'): self.run_trial()
+        self.assertEqual(len(self.transport.commands), MAX_INGRESS_DROPS+1)
+        self.assert_cancelled()
+
+    def test_first_ingress_drop_poll_counts_from_entry(self):
+        from deployment.vita_s100_aorta_30dof.actor_pico_live import MAX_INGRESS_DROPS
+        guard = StatusGuard(self.clock)
+        entered = NS(ingress_drop_count=17)
+        status = NS(ingress_drop_count=17+MAX_INGRESS_DROPS+1)
+        with self.assertRaisesRegex(RuntimeError, 'superseded'):
+            guard.ingress_drops(status, entered)
+
+    def test_ingress_drop_window_expires_without_losing_entry_burst(self):
+        from deployment.vita_s100_aorta_30dof.actor_pico_live import (
+            INGRESS_DROP_WINDOW, MAX_INGRESS_DROPS)
+        guard = StatusGuard(self.clock)
+        entered = NS(ingress_drop_count=17)
+        guard.ingress_drops(NS(ingress_drop_count=17+MAX_INGRESS_DROPS), entered)
+        self.clock.sleep(INGRESS_DROP_WINDOW+.01)
+        guard.ingress_drops(NS(ingress_drop_count=18+MAX_INGRESS_DROPS), entered)
+        with self.assertRaisesRegex(RuntimeError, 'superseded'):
+            guard.ingress_drops(NS(ingress_drop_count=18+2*MAX_INGRESS_DROPS), entered)
 
     def test_one_period_inference_overrun_is_logged_and_skips_missed_ticks(self):
         self.args.stand_only = True
@@ -638,11 +864,12 @@ class LiveTests(unittest.TestCase):
         original=self.runtime.infer_motion
         def changed(*a,**kw):
             result=original(*a,**kw)
-            root = robot_config(); root['parallel_ankle']['pd']['strategy'] = 'position_motor_gains'
+            root = robot_config(self.runtime); params = root['actions']['EXTERNAL']['params']
+            params['ankle_virtual_pd_intent'] = not params['ankle_virtual_pd_intent']
             self.config.write_text(json.dumps(root))
             return result
         with patch.object(self.runtime,'infer_motion',changed):
-            with self.assertRaisesRegex(ValueError, 'virtual_pd'): self.run_trial()
+            with self.assertRaisesRegex(ValueError, 'ankle_virtual_pd_intent'): self.run_trial()
         self.assertEqual(self.transport.requests, [])
 
     def test_full_body_compensation_command_is_preserved(self):
@@ -701,12 +928,25 @@ class LiveTests(unittest.TestCase):
         self.assertTrue(any(r.get('record_type') == 'exit_failure' for r in self.rows))
         self.assertEqual(self.controller.status.current_action, 'FIXED_STAND')
 
-    def test_disabled_virtual_pd_refuses_before_any_request(self):
-        config = robot_config()
-        config['actions']['EXTERNAL']['params']['ankle_virtual_pd_intent'] = False
+    def test_wrong_ankle_pd_mode_refuses_before_any_request(self):
+        config = robot_config(self.runtime)
+        params = config['actions']['EXTERNAL']['params']
+        params['ankle_virtual_pd_intent'] = not params['ankle_virtual_pd_intent']
         self.config.write_text(json.dumps(config))
-        with self.assertRaisesRegex(ValueError, 'virtual_pd'): self.run_trial()
+        with self.assertRaisesRegex(ValueError, 'ankle_virtual_pd_intent'): self.run_trial()
         self.assertEqual((self.transport.requests, self.transport.commands), ([], []))
+
+    def test_measured_pose_has_small_margin_but_commands_use_exact_ranges(self):
+        params, _ = load_robot_config(self.config)
+        env = CommandEnvelope(self.runtime, self.transport.reply, params)
+        state = self.transport.wait_state()
+        q = state.q.copy(); q[0] = 4.02
+        env.check_measured_pose(replace(state, q=q))
+        q[0] = 4.05
+        with self.assertRaisesRegex(ValueError, 'outside'): env.check_measured_pose(replace(state, q=q))
+        cmd, _ = self.runtime.policy.decode(np.zeros(28))
+        joints = list(cmd.joints); joints[0] = replace(joints[0], q=4.01)
+        with self.assertRaisesRegex(ValueError, 'outside'): env.check(replace(cmd, joints=tuple(joints)))
 
     def test_command_outside_effective_hardware_limits_is_rejected(self):
         params, _ = load_robot_config(self.config)
@@ -731,7 +971,7 @@ class LiveTests(unittest.TestCase):
         for changes in (dict(command_limits={}), dict(command_timeout_ms=True),
                         dict(recover_valid_frames=0),
                         dict(interpolation=dict(min_period_ms=100, max_period_ms=2))):
-            config = robot_config()
+            config = robot_config(self.runtime)
             config['actions']['EXTERNAL']['params'].update(changes)
             self.config.write_text(json.dumps(config))
             with self.assertRaises(ValueError): self.run_trial()
@@ -810,6 +1050,66 @@ class LiveTests(unittest.TestCase):
             data=getattr(state,name).copy();data[index]=value
             with self.subTest(name=name),self.assertRaises(ValueError):
                 validate_body_arrays(replace(state,**{name:data}))
+
+    def test_native_body_fault_names_joint_slot_code_and_state(self):
+        from deployment.vita_s100_aorta_30dof.sdkmain_adapter import validate_body_arrays
+        state=self.transport.wait_state()
+        errors=state.error_code.copy();errors[1]=13;errors[28]=8
+        with self.assertRaisesRegex(ValueError, 'Policy joint Q/Dq unavailable') as caught:
+            validate_body_arrays(replace(state,error_code=errors))
+        detail=str(caught.exception)
+        for expected in ('left_hip_roll_joint(body_slot=1, error_code=13, error=STALL)',
+                         'right_wrist_pitch_joint(body_slot=28, error_code=8, error=TIMEOUT)',
+                         f'state_id={state.state_id}'):
+            self.assertIn(expected,detail)
+
+    def test_duplicate_feedback_does_not_infer_publish_or_advance_history(self):
+        from copy import deepcopy
+        self.args.stand_only=True
+        frozen={}
+        def after(command):
+            if command.sequence==1:
+                state=self.transport.wait_state()
+                frozen.update(state=state,until=self.clock.monotonic()+.08,
+                              history=deepcopy(list(self.runtime.policy.history)))
+                def cached_or_fresh(current):
+                    if self.clock.monotonic()<frozen['until']:
+                        for actual,expected in zip(self.runtime.policy.history,frozen['history']):
+                            if isinstance(actual,tuple):
+                                for a,e in zip(actual,expected):np.testing.assert_array_equal(a,e)
+                            else:np.testing.assert_array_equal(actual,expected)
+                        return frozen['state']
+                    return current
+                self.transport.state_fault=cached_or_fresh
+            elif command.sequence==2:
+                self.stop.set()
+        self.transport.after_publish=after
+        result=self.run_trial()
+        duplicate=[r for r in self.rows if r.get('record_type')=='body_state_not_advanced']
+        self.assertGreaterEqual(len(duplicate),3)
+        self.assertEqual(result['duplicate_body_ticks'],len(duplicate))
+        self.assertEqual(len(self.transport.commands),2)
+        inference=[r for r in self.rows if r.get('record_type')=='actor_inference']
+        self.assertEqual([r['reference_frame'] for r in inference],[0,1])
+        self.assertNotEqual(inference[0]['state_id'],inference[1]['state_id'])
+        self.assertTrue(all('feedback_timing' in r for r in inference))
+        self.assert_cancelled()
+
+    def test_republished_same_frame_cannot_refresh_unchanged_feedback_budget(self):
+        from deployment.vita_s100_aorta_30dof.actor_pico_live import MAX_STALE_TICKS
+        self.args.stand_only=True
+        def freeze(command):
+            cached=self.transport.wait_state()
+            self.transport.state_fault=lambda fresh:replace(cached,
+                received_monotonic_ns=fresh.received_monotonic_ns,
+                received_realtime_ns=fresh.received_realtime_ns,ts_state_pub_us=fresh.ts_state_pub_us)
+        self.transport.after_publish=freeze
+        with self.assertRaisesRegex(TimeoutError,'identity did not advance'):
+            self.run_trial()
+        self.assertEqual(len(self.transport.commands),1)
+        failures=[r for r in self.rows if r.get('record_type')=='body_state_age_failure']
+        self.assertEqual([r['action'] for r in failures],['skip_tick']*MAX_STALE_TICKS+['cancel'])
+        self.assert_cancelled()
 
     def test_joint_ramp_option_fails_before_any_motion(self):
         self.online_setup();self.args.entry_policy='joint-ramp'
@@ -941,7 +1241,7 @@ class LiveTests(unittest.TestCase):
 
     def test_auto_invalid_fixed_gains_reject_before_motion(self):
         self.auto_setup()
-        config=robot_config()
+        config=robot_config(self.runtime)
         config['actions']['FIXED_STAND']['params']['keyframes'][0]['kp']=[999.]*42
         self.config.write_text(json.dumps(config))
         with self.assertRaisesRegex(ValueError,'outside'):self.auto_trial()
@@ -971,7 +1271,7 @@ class LiveTests(unittest.TestCase):
         original=startup.fixed_stand_startup
         def changed(*a,**kw):
             result=original(*a,**kw)
-            config=robot_config();config['actions']['EXTERNAL']['params']['command_timeout_ms']=2000
+            config=robot_config(self.runtime);config['actions']['EXTERNAL']['params']['command_timeout_ms']=2000
             self.config.write_text(json.dumps(config))
             return result
         with patch.object(startup,'fixed_stand_startup',changed):
@@ -1044,7 +1344,8 @@ class LiveTests(unittest.TestCase):
         def inference(motion,**kw):
             if self.transport.requests and not self.transport.commands:
                 np.testing.assert_allclose(motion.q[0],kw['q'])
-                self.assertLess(kw['q'][10],self.runtime.policy.lower[10])
+                knee=self.runtime.model.contract.names.index('left_knee_joint')
+                self.assertLess(kw['q'][knee],self.runtime.policy.lower[knee])
                 first.append(True)
             return original(motion,**kw)
         with patch.object(self.runtime,'infer_motion_command',inference):self.auto_trial()
@@ -1142,7 +1443,7 @@ class LiveTests(unittest.TestCase):
         with patch.object(self.runtime,'infer_motion_command',jumping):
             with self.assertRaisesRegex(ValueError,'outside'):self.auto_trial()
         candidate=next(r for r in self.rows if r.get('record_type')=='prepared_policy_candidate')
-        self.assertEqual(len(candidate['observation']),1520)
+        self.assertEqual(len(candidate['observation']),self.runtime.model.contract.input_dim)
         self.assertEqual(len(candidate['input_state']['q']),28)
         self.assertEqual(len(candidate['input_state']['body_q']),31)
         self.assertTrue(candidate['reference']['q'])
@@ -1191,6 +1492,23 @@ class LiveTests(unittest.TestCase):
         self.assertEqual(self.transport.requests,[])
         self.assertEqual(self.transport.commands,[])
         self.assertNotIn('online_start_tilt_limit_degrees',plan.review)
+
+    def test_fixed_stand_settle_tolerates_joint_velocity_noise(self):
+        for speed, settles in ((.15, True), (.25, False)):
+            with self.subTest(speed=speed):
+                self.setUp(); self.online_setup()
+                original = self.transport.state_fault
+                def noisy(state):
+                    state = original(state)
+                    return replace(state, dq=np.full(31, speed, np.float32)) if not self.transport.commands else state
+                self.transport.state_fault = noisy
+                if settles:
+                    self.auto_trial()
+                    self.assertTrue(any(r.get('record_type')=='fixed_stand_confirmed' for r in self.rows))
+                    self.assert_cancelled()
+                else:
+                    with self.assertRaisesRegex(TimeoutError, 'FIXED_STAND did not settle'): self.auto_trial()
+                    self.assertEqual(self.transport.requests, [])
 
     def test_online_body_gyro_must_settle_before_external(self):
         self.online_setup()
@@ -1310,7 +1628,7 @@ class LocalStartTests(unittest.TestCase):
         with patch('platform.machine',return_value='aarch64'),patch('platform.system',return_value='Linux'):
             return load_local_start(self.root,machine_id_path=self.machine,selector_path=self.selector,addresses=addresses)
 
-    def test_no_argument_launcher_selects_attended_device_bound_motion_and_keeps_check_explicit(self):
+    def test_launcher_requires_one_explicit_policy_and_selects_device_bound_motion(self):
         import subprocess
         scripts=self.root/'scripts';scripts.mkdir()
         launcher=scripts/'start_actor_pico.sh';launcher.write_bytes((ROOT/'scripts/start_actor_pico.sh').read_bytes())
@@ -1321,18 +1639,53 @@ class LocalStartTests(unittest.TestCase):
         startup=self.root/'bash-env'
         startup.write_text('source() { if [[ "$1" == /app/script/env.sh ]]; then return 0; fi; builtin source "$@"; }\n')
         env=dict(os.environ,BASH_ENV=str(startup),VITA_ACTOR_PYTHON=str(fake),ACTOR_LAUNCH_TEST_OUTPUT=str(output))
-        subprocess.run(['bash',str(launcher)],env=env,check=True,capture_output=True,text=True,timeout=10)
-        args=json.loads(output.read_text())
-        self.assertEqual(args[1],'live')
-        for flag in ('--auto-start','--wait-pico','--manual-pico','--confirm-motion','--local-start'):
-            self.assertIn(flag,args)
-        self.assertNotIn('10.100.23.96',args)
-        subprocess.run(['bash',str(launcher),'--seconds','5'],env=env,check=True,capture_output=True,text=True,timeout=10)
-        args=json.loads(output.read_text())
+        def launch(*argv):
+            output.unlink(missing_ok=True)
+            subprocess.run(['bash',str(launcher),*argv],env=env,check=True,capture_output=True,text=True,timeout=10,
+                           stdin=subprocess.DEVNULL)
+            return json.loads(output.read_text())
+        def refused(*argv):
+            output.unlink(missing_ok=True)
+            result=subprocess.run(['bash',str(launcher),*argv],env=env,capture_output=True,text=True,timeout=10,
+                                  stdin=subprocess.DEVNULL)
+            self.assertEqual(result.returncode,2,result.stderr)
+            self.assertFalse(output.exists(),'nothing may start without one explicit policy')
+            return result.stderr
+        # No default policy: without a terminal to choose from, nothing starts.
+        self.assertIn('Select the actor policy explicitly',refused())
+        self.assertIn('Select the actor policy explicitly',refused('--seconds','5'))
+        self.assertIn('Select the actor policy explicitly',refused('check','--steps','1'))
+        self.assertIn('Conflicting',refused('sonic','--policy','supermimic'))
+        self.assertIn("Unknown policy 'g1'",refused('--policy','g1'))
+        for policy in ('sonic','supermimic'):
+            args=launch(policy)
+            self.assertEqual(args[1:4],['live','--policy',policy])
+            for flag in ('--auto-start','--wait-pico','--manual-pico','--confirm-motion','--local-start'):
+                self.assertIn(flag,args)
+            self.assertNotIn('10.100.23.96',args)
+        args=launch('supermimic','--seconds','5')
         self.assertIn('--local-start',args)
         self.assertEqual(args[-2:],['--seconds','5'])
-        subprocess.run(['bash',str(launcher),'check','--steps','1'],env=env,check=True,capture_output=True,text=True,timeout=10)
-        args=json.loads(output.read_text());self.assertEqual(args[1:],["check","--steps","1"])
+        self.assertEqual(launch('--policy','supermimic','--seconds','5'),args)
+        self.assertEqual(launch('--seconds','5','--policy=supermimic'),args)
+        self.assertEqual(launch('supermimic','check','--steps','1')[1:],['check','--policy','supermimic','--steps','1'])
+        self.assertEqual(launch('check','sonic','--steps','1')[1:],['check','--policy','sonic','--steps','1'])
+        self.assertEqual(launch('shadow','--policy','sonic','--seconds','3')[1:],['shadow','--policy','sonic','--seconds','3'])
+        # Interactive menu: a number selects; an empty answer starts nothing.
+        import pty
+        for answer,expected in ((b'2\n','supermimic'),(b'1\n','sonic'),(b'\n',None)):
+            output.unlink(missing_ok=True)
+            master,slave=pty.openpty()
+            try:
+                process=subprocess.Popen(['bash',str(launcher)],env=env,stdin=slave,stdout=subprocess.DEVNULL,stderr=slave)
+                os.write(master,answer)
+                code=process.wait(timeout=10)
+            finally:
+                os.close(slave);os.close(master)
+            if expected is None:
+                self.assertEqual(code,2);self.assertFalse(output.exists())
+            else:
+                self.assertEqual(code,0);self.assertEqual(json.loads(output.read_text())[1:4],['live','--policy',expected])
         startup.write_text('source() { echo "unexpected robot environment access" >&2; exit 99; }\n')
         subprocess.run(['bash',str(launcher),'--help'],env=env,check=True,capture_output=True,text=True,timeout=10)
         args=json.loads(output.read_text());self.assertEqual(args[1:],["check","--help"])
@@ -1380,7 +1733,9 @@ class LocalStartTests(unittest.TestCase):
         spec=importlib.util.spec_from_file_location('actor_cli_duration_test',ROOT/'scripts/actor_pico.py')
         cli=importlib.util.module_from_spec(spec);spec.loader.exec_module(cli)
         self.cfg['seconds']=0;self.save();defaults=self.load()
-        runtime=NS(config={'artifacts':{'model':{}},'retargeting':{'implementation':'motion_stream_bridge_gmr_vita02a'}},reference=NS(delay=.2))
+        runtime=NS(config={'artifacts':{'model':{}},'retargeting':{'implementation':'motion_stream_bridge_gmr_vita02a'}},reference=NS(delay=.2),
+                retarget=NS(accelerated=True),
+                model=NS(contract=NS(input_dim=1520)))
         for tail,expected in [([],0),(['--seconds','5'],5),(['--seconds','600'],600)]:
             captured=[]
             def live(runtime,args,write):
@@ -1411,6 +1766,37 @@ class SchedulingTests(unittest.TestCase):
             sched.input_worker_scheduler()
         self.assertEqual(set_policy.call_args.args[0:2],(0,os.SCHED_OTHER))
         self.assertEqual(set_policy.call_args.args[2].sched_priority,0)
+
+    def test_control_affinity_moves_existing_threads_and_new_threads_inherit(self):
+        from deployment.vita_s100_aorta_30dof import actor_pico_scheduling as sched
+        original=os.sched_getaffinity(0)
+        if len(original)<2:self.skipTest('Needs two allowed CPUs')
+        target=[sorted(original)[-1]];seen={};release=threading.Event();ready=threading.Event()
+        def existing():
+            seen['tid']=threading.get_native_id();ready.set();release.wait(5.)
+            seen['existing_after']=sorted(os.sched_getaffinity(0))
+        before=threading.Thread(target=existing);before.start();ready.wait(5.)
+        try:
+            self.assertEqual(sched.control_affinity(()),sorted(original))
+            self.assertEqual(sorted(os.sched_getaffinity(seen['tid'])),sorted(original))
+            self.assertEqual(sched.control_affinity(target),target)
+            release.set();before.join(5.)
+            later=threading.Thread(target=lambda:seen.update(new=sorted(os.sched_getaffinity(0))))
+            later.start();later.join(5.)
+            self.assertEqual(seen['existing_after'],target)
+            self.assertEqual(seen['new'],target)
+            with self.assertRaisesRegex(ValueError,'outside available'):
+                sched.control_affinity([max(original)+64])
+        finally:
+            release.set();before.join(5.)
+            os.sched_setaffinity(0,original)
+
+    def test_control_affinity_rejects_unavailable_cpus_before_changing_any_thread(self):
+        from deployment.vita_s100_aorta_30dof import actor_pico_scheduling as sched
+        with patch.object(sched.os,'sched_setaffinity') as pin:
+            with self.assertRaisesRegex(ValueError,'outside available'):
+                sched.control_affinity([max(os.sched_getaffinity(0))+64])
+        pin.assert_not_called()
 
     def test_missing_realtime_permission_is_a_startup_error(self):
         from deployment.vita_s100_aorta_30dof import actor_pico_scheduling as sched

@@ -20,6 +20,8 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
 DELIVERY = Path('deploy/actor_s100')
+# Mirrors actor_pico_runtime.POLICY_CONFIGS; bootstrap runs before the venv exists.
+POLICY_CONFIGS = {'sonic': 'config/actor_pico.json', 'supermimic': 'config/actor_pico_supermimic.json'}
 
 
 def sha(path):
@@ -102,18 +104,23 @@ def unpack(root, manifest, *, use_prebuilt=True):
                     temporary.unlink(missing_ok=True)
 
 
-def provision_model(root, manifest, source=None):
+def configured_model(root, policy='sonic'):
+    return json.loads((root/POLICY_CONFIGS[policy]).read_text())['artifacts']['model']
+
+
+def provision_model(root, manifest, source=None, policy='sonic'):
     """Validate an explicit external asset before atomically placing it locally."""
-    item, = manifest['external_resources']
-    configured = json.loads((root/'config/actor_pico.json').read_text())['artifacts']['model']
-    if any(item[key] != configured[key] for key in ('path', 'sha256')):
+    configured = configured_model(root, policy)
+    matches = [item for item in manifest['external_resources'] if item['path'] == configured['path']]
+    if len(matches) != 1 or matches[0]['sha256'] != configured['sha256']:
         raise RuntimeError('External model manifest disagrees with actor configuration')
+    item, = matches
     destination = inside(root, item['path'])
     source = Path(source).resolve() if source else destination
     if not source.is_file():
         raise RuntimeError('Model is not in Git. Supply --model /path/to/actor_g1.onnx')
     if source.stat().st_size != item['bytes'] or sha(source) != item['sha256']:
-        raise RuntimeError('External model size/SHA256 does not match config/actor_pico.json')
+        raise RuntimeError('External model size/SHA256 does not match '+POLICY_CONFIGS[policy])
     if destination.exists():
         if not destination.is_file() or sha(destination) != item['sha256']:
             raise RuntimeError('Preserving different existing model: '+str(destination))
@@ -152,7 +159,7 @@ def environment(root):
     return env
 
 
-def install(root, manifest, *, build_pico=False):
+def install(root, manifest, *, build_pico=False, policy='sonic'):
     if sys.platform != 'linux' or platform.machine() != 'aarch64' or sys.version_info[:2] != (3, 10):
         raise RuntimeError('Install on S100 Linux aarch64 with Python 3.10; use --verify-only on x86')
     libc, version = platform.libc_ver()
@@ -193,12 +200,12 @@ def install(root, manifest, *, build_pico=False):
                                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         if result.returncode or 'not found' in result.stdout:
             raise RuntimeError('Target OS shared-library dependency check failed for '+str(executable)+'\n'+result.stdout)
-    subprocess.run([str(python), str(root/'scripts/actor_pico.py'), 'check', '--steps', '10'],
-                   cwd=root, env=env, check=True)
+    subprocess.run([str(python), str(root/'scripts/actor_pico.py'), 'check', '--steps', '10',
+                    '--policy', policy], cwd=root, env=env, check=True)
     receipt = dict(status='PASS_S100_OFFLINE_INSTALL_AND_MODEL_CHECK',
                    delivery_version=manifest['version'], build_pico=build_pico,
                    binding_sha256=sha(root/'build/pico/xrobotoolkit_sdk.cpython-310-aarch64-linux-gnu.so'),
-                   model_sha256=sha(root/'artifacts/actor_g1/actor_g1.onnx'),
+                   policy=policy, model_sha256=sha(root/configured_model(root, policy)['path']),
                    python=str(python), pip_check='PASS', real_binding_import='PASS',
                    model_check_steps=10, actions_sent=0, control_handles_created=0,
                    hardware_inputs_checked=False, robot_motion='not_measured')
@@ -212,7 +219,9 @@ def main():
     modes.add_argument('--verify-only', action='store_true')
     modes.add_argument('--unpack-only', action='store_true')
     parser.add_argument('--build-pico', action='store_true', help='Rebuild from tracked C++ sources on S100')
-    parser.add_argument('--model', type=Path, help='External actor_g1.onnx; verified before copying locally')
+    parser.add_argument('--model', type=Path, help='External model of --policy; verified before copying locally')
+    parser.add_argument('--policy', choices=tuple(POLICY_CONFIGS), default='sonic',
+                        help='Actor whose pinned model --model supplies and the install check runs')
     parser.add_argument('--root', type=Path, default=ROOT)
     args = parser.parse_args()
     root = args.root.resolve()
@@ -225,7 +234,7 @@ def main():
                       s100_execution='not_measured', actions_sent=0)
     elif args.unpack_only:
         if args.model:
-            provision_model(root, manifest, args.model)
+            provision_model(root, manifest, args.model, args.policy)
         unpack(root, manifest)
         result = dict(status='PASS_RUNTIME_UNPACK', s100_execution='not_measured', actions_sent=0)
     else:
@@ -236,8 +245,8 @@ def main():
                 fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
             except BlockingIOError as exc:
                 raise RuntimeError('Another operator is using this deployment; installation is blocked') from exc
-            provision_model(root, manifest, args.model)
-            result = install(root, manifest, build_pico=args.build_pico)
+            provision_model(root, manifest, args.model, args.policy)
+            result = install(root, manifest, build_pico=args.build_pico, policy=args.policy)
     print(json.dumps(result, indent=2))
 
 

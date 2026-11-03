@@ -11,9 +11,10 @@ import uuid
 
 import numpy as np
 
-from .actor_pico_live import phase, StatusGuard, status_row
+from .actor_pico_live import phase, StatusGuard, status_row, MEASURED_Q_MARGIN
 
-SETTLE_SPEED = .05
+# Max |dq| over all joints; parallel-ankle virtual joint velocities are noisy at rest.
+SETTLE_SPEED = .2
 SETTLE_SECONDS = .5
 ONLINE_START_GYRO = .10
 
@@ -76,7 +77,8 @@ class StartupPlan:
 
     def check_hardware_pose(self, envelope, state):
         envelope.check(replace(self.fixed, joints=tuple(replace(j,q=float(state.q[i]))
-            if envelope.limits[i] is not None else j for i,j in enumerate(self.fixed.joints))))
+            if envelope.limits[i] is not None else j for i,j in enumerate(self.fixed.joints))),
+            q_margin=MEASURED_Q_MARGIN)
 
 
 class FirmwareActions:

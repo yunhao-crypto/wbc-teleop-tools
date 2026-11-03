@@ -8,7 +8,7 @@ import numpy as np
 
 ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT/'src'))
-from deployment.vita_s100_aorta_30dof.actor_pico_runtime import ActorPicoRuntime
+from deployment.vita_s100_aorta_30dof.actor_pico_runtime import ActorPicoRuntime, POLICY_CONFIGS
 
 
 def main():
@@ -20,7 +20,9 @@ def main():
     rows=[json.loads(line) for line in args.input.read_text().splitlines()]
     candidate=next((row for row in reversed(rows) if row.get('record_type')=='prepared_policy_candidate'),None)
     if candidate is None:raise ValueError('Log has no complete prepared_policy_candidate; original input cannot be reconstructed exactly')
-    runtime=ActorPicoRuntime(args.root,backend=args.backend)
+    policy=candidate.get('policy','sonic')
+    if policy not in POLICY_CONFIGS:raise ValueError('Candidate names an unknown actor policy: '+str(policy))
+    runtime=ActorPicoRuntime(args.root,backend=args.backend,policy=policy)
     state,ref=candidate['input_state'],candidate['reference']
     motion=runtime.math.Motion(ref['q'],ref['base'],ref['quat'])
     command,obs,row=runtime.infer_motion_command(motion,

@@ -1,6 +1,23 @@
 #!/usr/bin/env bash
 set -euo pipefail
 ROOT=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
+USAGE='Usage: start_actor_pico.sh [sonic|supermimic] [check|replay|state-check|shadow|configure|live|auto] [options]'
+# The actor policy is always an explicit choice: a positional name, --policy,
+# or the interactive menu. There is no default and no substitute policy.
+POLICY=
+choose_policy() {
+  case "$1" in
+    sonic|supermimic) ;;
+    *) echo "Unknown policy '$1'; choose sonic or supermimic. $USAGE" >&2; exit 2 ;;
+  esac
+  if [[ -n "$POLICY" && "$POLICY" != "$1" ]]; then
+    echo "Conflicting policy selections: $POLICY and $1; nothing started." >&2; exit 2
+  fi
+  POLICY=$1
+}
+if [[ "${1:-}" == sonic || "${1:-}" == supermimic ]]; then
+  choose_policy "$1"; shift
+fi
 if [[ "${1:-}" == --help || "${1:-}" == -h ]]; then
   set -- check "$@"
 fi
@@ -10,10 +27,48 @@ if [[ $# == 0 || "$1" == --* ]]; then
 fi
 MODE=$1
 case "$MODE" in
-  auto) shift; MODE=live; set -- --auto-start --manual-pico --wait-pico --confirm-motion "$@" ;;
-  check|replay|state-check|shadow|live|configure) shift "$(( $# > 0 ? 1 : 0 ))" ;;
-  *) echo 'Usage: start_actor_pico.sh {check|replay|state-check|shadow|configure|live|auto} [options]' >&2; exit 2 ;;
+  auto|check|replay|state-check|shadow|live|configure) shift ;;
+  *) echo "$USAGE" >&2; exit 2 ;;
 esac
+if [[ "${1:-}" == sonic || "${1:-}" == supermimic ]]; then
+  choose_policy "$1"; shift
+fi
+HELP=0
+REST=()
+while (( $# )); do
+  case "$1" in
+    --policy) (( $# >= 2 )) || { echo '--policy requires sonic or supermimic' >&2; exit 2; }
+              choose_policy "$2"; shift 2 ;;
+    --policy=*) choose_policy "${1#--policy=}"; shift ;;
+    -h|--help) HELP=1; REST+=("$1"); shift ;;
+    *) REST+=("$1"); shift ;;
+  esac
+done
+set -- ${REST[@]+"${REST[@]}"}
+if [[ "$MODE" == auto ]]; then
+  MODE=live; set -- --auto-start --manual-pico --wait-pico --confirm-motion "$@"
+fi
+if [[ "$MODE" != configure && $HELP == 0 && -z "$POLICY" ]]; then
+  if [[ -t 0 && -t 2 ]]; then
+    {
+      echo 'Select the actor policy (no default):'
+      echo '  1) sonic       GR00T G1 actor     config/actor_pico.json'
+      echo '  2) supermimic  SuperMimic actor   config/actor_pico_supermimic.json'
+    } >&2
+    read -r -p 'Policy [1/2]: ' answer || answer=
+    case "$answer" in
+      1|sonic) POLICY=sonic ;;
+      2|supermimic) POLICY=supermimic ;;
+      *) echo 'No policy selected; nothing started.' >&2; exit 2 ;;
+    esac
+  else
+    echo "Select the actor policy explicitly; nothing started. $USAGE" >&2; exit 2
+  fi
+fi
+if [[ -n "$POLICY" && "$MODE" != configure ]]; then
+  echo "ACTOR_POLICY: $POLICY" >&2
+  set -- --policy "$POLICY" "$@"
+fi
 if [[ "$MODE" == state-check || "$MODE" == shadow || "$MODE" == live ]]; then
   set +u
   source /app/script/env.sh >/dev/null

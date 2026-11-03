@@ -4,10 +4,12 @@ from __future__ import annotations
 from typing import Any
 
 
-def create_pico_source(*, logger: Any, maximum_age: float) -> Any:
+def create_pico_source(*, logger: Any, maximum_age: float,
+                       duplicate_poll_interval_s: float = 0.0001) -> Any:
     from humanoid_policy.local_smpl_source import LocalPicoSmplSource
 
-    return LocalPicoSmplSource(logger=logger, max_source_age=maximum_age)
+    return LocalPicoSmplSource(logger=logger, max_source_age=maximum_age,
+                               duplicate_poll_interval_s=duplicate_poll_interval_s)
 
 
 def store_latest_pico(source: Any, reference: Any) -> bool:
