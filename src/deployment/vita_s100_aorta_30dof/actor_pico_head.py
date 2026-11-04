@@ -146,7 +146,7 @@ class PicoHeadControl:
             stamp = current_stamp
             if age > self.hold_age:
                 # Freeze the emitted pose as well as the filter; do not keep
-                # chasing the last target after the body reference starts hold.
+                # chasing the last target after this head sample becomes old.
                 mode = 'hold'
                 filtered = q.copy()
                 desired = q.copy()
@@ -180,6 +180,11 @@ class PicoHeadControl:
                            pico_timestamp_ns=stamp, joint_names=list(NECK_NAMES),
                            target_q=q.tolist(), desired_q=desired.tolist(),
                            effective_limits=limits.tolist())
+        if tracking:
+            diagnostics.update(source=snapshot.get('source', 'gmr_snapshot'),
+                reader_frame_sequence=snapshot.get('reader_frame_sequence'),
+                reader_monotonic_ns=snapshot.get('reader_monotonic_ns'),
+                chest_head_xyzw=np.asarray(snapshot['raw_body_poses'])[[9, 15], 3:7].tolist())
         return replace(command, joints=tuple(joints)), diagnostics, candidate
 
     def commit(self, candidate):

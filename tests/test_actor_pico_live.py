@@ -378,6 +378,23 @@ class LiveTests(unittest.TestCase):
         stages=[r['stage'] for r in self.rows if 'stage' in r]
         self.assertEqual(stages[-1],'pico_tracking')
 
+    def test_fresh_head_does_not_bypass_expired_body_reference(self):
+        worker,command=self.manual_trial()
+        original=worker.snapshot
+        def snapshot():
+            value=original()
+            if value['state']=='ready':
+                value['head_snapshot']=dict(raw_body_poses=value['raw_body_poses'],
+                    pico_timestamp_ns=value['pico_timestamp_ns'],
+                    received_monotonic=self.clock.monotonic(),source='pico_reader')
+                if len(self.transport.commands)>160:
+                    value['received_monotonic']=self.clock.monotonic()-.601
+            return value
+        with patch.object(worker,'snapshot',snapshot),self.assertRaisesRegex(TimeoutError,'reference worker snapshot'):
+            self.run_trial(manual_pico=worker,poll_command=command)
+        self.assertTrue(any(r.get('stage')=='pico_tracking' for r in self.rows))
+        self.assert_cancelled()
+
     def test_holomotion_600ms_budget_accepts_300ms_old_reference_and_sparse_frames(self):
         worker,command=self.manual_trial()
         original=worker.snapshot

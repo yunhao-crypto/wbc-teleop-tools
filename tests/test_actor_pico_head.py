@@ -60,6 +60,30 @@ class HeadTests(unittest.TestCase):
             command, _, _ = self.tick(self.snapshot(yaw=.4, pitch=-.2, roll=.7))
         np.testing.assert_allclose([command.joints[i].q for i in self.slots], [.4, -.2], atol=1e-10)
 
+    def test_runtime_uses_independent_head_pose_without_changing_body_reference(self):
+        body_snapshot=self.snapshot()
+        with patch.object(self.runtime,'head',self.head):
+            for yaw in (0.,.4):
+                fresh=self.snapshot(yaw=yaw)
+                fresh.update(source='pico_reader',reader_frame_sequence=self.stamp,
+                             reader_monotonic_ns=round(self.now*1e9))
+                combined=dict(body_snapshot,head_snapshot=fresh)
+                row={}
+                _,candidate=self.runtime.apply_head(self.command,row,now=self.now,
+                    snapshot=combined,tracking=True)
+                self.head.commit(candidate)
+                self.assertEqual(row['head_control']['pico_timestamp_ns'],self.stamp)
+                self.assertEqual(row['head_control']['source'],'pico_reader')
+                np.testing.assert_allclose(row['head_control']['desired_q'],[yaw,0.],atol=1e-12)
+                self.assertEqual(combined['pico_timestamp_ns'],1_000_000_000)
+                self.now+=.02;self.stamp+=20_000_000
+
+    def test_stale_independent_head_input_cannot_hide_behind_fresh_body_reference(self):
+        with patch.object(self.runtime,'head',self.head):
+            combined=dict(self.snapshot(),head_snapshot=self.snapshot(age=self.head.maximum_age+.01))
+            with self.assertRaisesRegex(TimeoutError,'head input is stale'):
+                self.runtime.apply_head(self.command,{},now=self.now,snapshot=combined,tracking=True)
+
     def test_world_turn_cancels_and_each_engagement_calibrates_current_pose(self):
         neutral = Rotation.from_euler('XYZ', [.1, -.4, .2]).as_matrix()
         _, diag, _ = self.tick(self.snapshot(neutral=neutral))

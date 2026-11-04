@@ -288,7 +288,11 @@ chest-frame offset, then projected onto the robot's yaw/pitch gaze direction.
 Whole-body turns cancel, and head roll is not reproduced by the two-axis neck.
 This calibration affects only the neck; body GMR calibration is unchanged.
 
-The head uses the latest timestamped body snapshot, independently of the
+Live head control uses a separate shared snapshot updated directly by the
+Pico reader, without waiting for a GMR solve or its output queue. Its pose,
+integer nanosecond timestamp and reader receipt time are copied atomically;
+a busy slot keeps the previous sample and its original age. The body policy
+still uses the matching GMR result and timestamp. The head is independent of the
 200/220 ms body reference window (and SuperMimic playback margin). It therefore
 has a different reference time from the body; it follows relative articulation,
 not absolute world gaze. An exponential filter (time constant 0.04 s) smooths
@@ -302,12 +306,17 @@ intersected with actual RobotInfo limits. Positive pitch tilts forward/down in
 the URDF frame. The existing fixed-joint KP/KD (20/1) are preserved.
 
 Standby smoothly returns the neck to zero. The first live tick starts from
-measured neck position. Past `pico_hold_age_s` (0.25 s), neck position freezes
-along with the body reference; fresh input resumes following. Past
-`pico_max_age_s` (0.6 s), the existing live fault path cancels EXTERNAL.
+measured neck position. When the head reader sample exceeds `pico_hold_age_s`
+(0.25 s), neck position freezes; fresh input resumes following. Body reference
+hold uses the GMR sample's own age, so a delayed solve does not freeze a fresh
+head sample. Either input exceeding `pico_max_age_s` (0.6 s) still reaches the
+existing live fault path and cancels EXTERNAL.
 Missing/invalid head data also fails the trial. Calibration/filter/slew state
 advances only after a successful live publication. Logs include `head_control`
-diagnostics and the final combined `body_targets`/`sent_body_targets`.
+diagnostics (including the actual head sample's timestamp, reader sequence,
+receipt clock and chest/head quaternions) and the final combined
+`body_targets`/`sent_body_targets`. Replay/shadow without an independent reader
+snapshot use the supplied frame, identified as `gmr_snapshot` in diagnostics.
 
 Replay and shadow also compute head targets; neither sends commands. Set
 `head_control.enabled` to `false` in the selected actor JSON to restore the
@@ -484,8 +493,13 @@ numeric/symbolic error codes and state ID (for example `STALL=13`), so a motor
 fault is distinguishable from delayed delivery.
 For a diagnostic capture, set `VITA_PICO_CAPTURE_DIR` to an output directory.
 The reader then records each distinct frame it observes (24x7 poses, a local
-frame sequence and paired monotonic/realtime stamps) on a bounded asynchronous
-writer. Its summary reports written and dropped frames; this is reader first
+frame sequence and paired monotonic/realtime stamps) through a bounded queue to
+a separate writer process. Array-to-list conversion, JSON encoding and disk
+writes run outside the GMR interpreter. The header records `writer_pid`; normal
+shutdown drains accepted frames and verifies the final written count after
+flushing the file. Queue overflow drops capture frames without blocking the
+reader; overflow, writer failure or a shutdown timeout reports an incomplete
+capture. Its summary reports written and dropped frames; this is reader first
 visibility, not SDK callback or network arrival. Raw network timing requires
 a separate packet capture. Each GMR source row also retains that reader
 identity, solver start/end monotonic and thread-CPU clocks, wall/CPU durations,

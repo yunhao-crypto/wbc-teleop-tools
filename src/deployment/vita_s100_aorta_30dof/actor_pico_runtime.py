@@ -223,6 +223,10 @@ class ActorPicoRuntime:
     def apply_head(self, command, row, *, now, measured_q=None, snapshot=None, tracking=False):
         if self.head is None:
             return command, None
+        # Body policy/reference timestamps stay tied to their GMR result.
+        # Only the neck uses the independently refreshed reader snapshot.
+        if snapshot is not None:
+            snapshot = snapshot.get('head_snapshot', snapshot)
         command, diagnostics, candidate = self.head.preview(command, self.policy.order,
             now=now, measured_q=measured_q, snapshot=snapshot, tracking=tracking)
         row['head_control'] = diagnostics
