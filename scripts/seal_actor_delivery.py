@@ -43,6 +43,8 @@ def main():
         if not any(item['path'] == name for item in actor['files']):
             actor['files'].append(dict(path=name))
     additional = ['scripts/configure_actor_s100.py', 'tests/test_actor_local_provision.py',
+                  'src/deployment/vita_s100_aorta_30dof/actor_pico_head.py',
+                  'tests/test_actor_pico_head.py',
                   'src/deployment/vita_s100_aorta_30dof/actor_pico_scheduling.py',
                   'src/deployment/vita_s100_aorta_30dof/actor_pico_gmr.py',
                   'tests/fixtures/actor_pico/bridge_gmr_golden.npz',
@@ -61,6 +63,13 @@ def main():
                   'deploy/actor_s100/full_load_replay_20261030.json',
                   'tests/test_actor_pico_session.py',
                   'tests/fixtures/actor_pico/robot42_pico_session_20261029.npz']
+    additional += ['scripts/pico_camera_bridge.py', 'scripts/check_pico_camera_stream.py',
+                   'scripts/pico_session_services.py', 'tests/test_pico_session_services.py',
+                   'scripts/prepare_pico_camera_viewer.py', 'scripts/build_pico_camera_viewer.sh',
+                   'src/deployment/vita_s100_aorta_30dof/pico_camera_bridge.py',
+                   'tests/test_pico_camera_bridge.py', 'tests/test_pico_viewer_prepare.py']
+    additional += [str(p.relative_to(root)) for directory in ('deploy/pico_viewer', 'tests/pico_viewer')
+                   for p in (root/directory).rglob('*') if p.is_file() and '__pycache__' not in p.parts]
     additional += [str(p.relative_to(root)) for p in (root/'third_party/motion_stream_bridge').rglob('*')
                    if p.is_file() and '__pycache__' not in p.parts]
     for name in additional:
@@ -71,13 +80,24 @@ def main():
         item.update(sha256=sha(p), bytes=p.stat().st_size, mode=oct(p.stat().st_mode & 0o777))
     actor_path.write_text(json.dumps(actor, indent=2)+'\n')
     output = 'deploy/actor_s100/manifest.json'
-    names = sorted(n for n in subprocess.check_output(['git', 'ls-files', '-z'], cwd=root).decode().split('\0') if n and n != output)
+    # Explicit delivery additions may be new files not staged yet. Include
+    # them so sealing a working tree does not require modifying the Git index.
+    names = sorted({n for n in subprocess.check_output(['git', 'ls-files', '-z'], cwd=root).decode().split('\0')
+                    if n and n != output} | {item['path'] for item in actor['files']})
     if models & set(names):
         raise RuntimeError('Remove the external models from the Git index before sealing')
     required = ['artifacts/output_envelopes.motion.urdf',
                 'config/actor_pico.json', 'config/actor_pico_supermimic.json', 'config/sdk021-wheel-guard.json',
                 'scripts/bootstrap_actor_s100.py', 'scripts/configure_actor_s100.py', 'scripts/start_actor_pico.sh',
                 'src/deployment/vita_s100_aorta_30dof/actor_pico_live.py',
+                'src/deployment/vita_s100_aorta_30dof/actor_pico_head.py',
+                'tests/test_actor_pico_head.py',
+                'scripts/pico_camera_bridge.py', 'scripts/prepare_pico_camera_viewer.py',
+                'scripts/pico_session_services.py',
+                'deploy/pico_viewer/releases/XRT-Vita-Camera-1.1.1-vita.2.apk',
+                'deploy/pico_viewer/releases/manifest.json', 'deploy/pico_viewer/releases/SHA256SUMS',
+                'src/deployment/vita_s100_aorta_30dof/pico_camera_bridge.py',
+                'deploy/pico_viewer/README.md',
                 'src/deployment/vita_s100_aorta_30dof/actor_pico_local.py',
                 'src/deployment/vita_s100_aorta_30dof/actor_pico_startup.py',
                 'src/deployment/vita_s100_aorta_30dof/actor_pico_worker.py',
@@ -106,7 +126,7 @@ def main():
     missing = set(required)-set(names)
     if missing:
         raise RuntimeError('Stage these required delivery files first: '+', '.join(sorted(missing)))
-    record = dict(schema='vita_actor_s100_delivery_v1', version='2026.10.29-actor21-supermimic-delivery',
+    record = dict(schema='vita_actor_s100_delivery_v1', version='2026.11.03-actor22-pico-camera-session',
                   target=dict(os='Linux', architecture='aarch64', python='3.10', glibc_min='2.35'),
                   scope='offline/shadow checks and explicitly armed supported EXTERNAL trials; hardware not_measured',
                   required_inputs=required, external_resources=external, archives=archives,

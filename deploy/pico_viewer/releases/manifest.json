@@ -1,0 +1,73 @@
+{
+  "schema": "vita_pico_apk_release_v1",
+  "file": "XRT-Vita-Camera-1.1.1-vita.2.apk",
+  "bytes": 36071957,
+  "sha256": "541369ceb8b6f7931fdfd619718d61e941c489cf8cb16a6addcd7dd0727b8bdf",
+  "package": "com.xrobotoolkit.client.vitacamera",
+  "application_label": "XRT Vita Camera",
+  "version_name": "1.1.1-vita.2",
+  "version_code": 2,
+  "architecture": "arm64-v8a",
+  "min_sdk": 30,
+  "target_sdk": 31,
+  "unity_version": "2022.3.16f1",
+  "upstream_xrt_version": "v1.1.1",
+  "upstream_commit": "9f775b535d781618bd2bb7ef8d6c414c0531387c",
+  "video_protocol": "vita_pico_camera_v1",
+  "default_profile": {
+    "enabled": true,
+    "robot_host": "",
+    "port": 13579,
+    "width": 960,
+    "height": 768,
+    "fps": 30
+  },
+  "robot_address_source": "XRoboToolkit PC Service address entered in the headset UI",
+  "overlay_files": [
+    {
+      "path": "Assets/Editor/VitaCameraBuilder.cs",
+      "sha256": "be78994c400789708e2f88f2a20284f9ff4eda89e0b6c8d753fd8b042d52fe8b"
+    },
+    {
+      "path": "Assets/Editor/VitaCameraChecks.cs",
+      "sha256": "680fe03774a2d623f8f74f88fbb27f2c79b710f82adf550a0344fe1987320443"
+    },
+    {
+      "path": "Assets/Plugins/Android/VitaCamera.androidlib/AndroidManifest.xml",
+      "sha256": "43a243424e4c60832ea82a567f1f7be7037338b741efdb2980492422b2935325"
+    },
+    {
+      "path": "Assets/Plugins/Android/VitaCamera.androidlib/build.gradle",
+      "sha256": "7c50d5c8b66c4a3a675bd2fbcc59aa9680d507c6f983cb4eec73739bbc353dab"
+    },
+    {
+      "path": "Assets/Plugins/Android/VitaCamera.androidlib/project.properties",
+      "sha256": "14d176d280b2e809a7f780aaed37c57f564fb2a235444b33a035f099dfdbdae5"
+    },
+    {
+      "path": "Assets/Plugins/Android/VitaCamera.androidlib/src/com/vita/xr/camera/VideoWire.java",
+      "sha256": "9b450c4f6a0f23f5c81d1502f111b58a82cfa6a84c192e2867671028b5f67a4a"
+    },
+    {
+      "path": "Assets/Plugins/Android/VitaCamera.androidlib/src/com/vita/xr/camera/VitaCameraReceiver.java",
+      "sha256": "095b609fb5371f6b2dc9c6385a193b6307e11868b04b95a02641b55fda6cdbc6"
+    },
+    {
+      "path": "Assets/VitaCamera/FourButtonChord.cs",
+      "sha256": "2629b2d0a5e8d95a572721ee352469c4579138871999c83b978dc051ed8ffaa1"
+    },
+    {
+      "path": "Assets/VitaCamera/VitaCameraView.cs",
+      "sha256": "6a93ed8c3f4ea4fc82769ee4c4101ed84f95f5d16b1ac61d5bcb0731f3d8b7a2"
+    }
+  ],
+  "signing": "Android debug certificate; verify fingerprint with apksigner",
+  "validation": {
+    "unity_android_build": "PASS",
+    "unity_camera_hierarchy_assertions": 6,
+    "private_test_ip_in_apk": false,
+    "prior_vita1_headset_hevc_hardware_decode": "PASS; c2.qti.hevc.decoder; 960x768 at 30Hz",
+    "vita2_headset_display_and_physical_gesture": "not_measured"
+  },
+  "certificate_sha256": "f8779fcb1b6399058430ee967e202adac5fbc05bf54cee3693cd183693a6c521"
+}

@@ -208,6 +208,8 @@ class CommandEnvelope:
                         and not value_range[0] <= value <= value_range[1])):
                     raise ValueError('safe_hold gain unavailable/out of bounds: '+name)
             self.limits.append(ranges)
+        if runtime.head is not None:
+            runtime.head.bind_body_info(self.body)
         # A fixed model/gain profile, including both necks, must fit BEFORE entry.
         command, _ = runtime.policy.decode(np.zeros(28))
         self.check(command)
@@ -538,7 +540,8 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
         kd=dict(zip(runtime.model.contract.names, runtime.model.contract.kd.tolist())),
         fixed_joints=runtime.config['body_profile']['fixed_joints'], reference_delay_s=runtime.reference.delay,
         human_height_m=runtime.config['retargeting']['human_height_m'],
-        pico_stream=runtime.config.get('pico_stream'), pico_worker=runtime.config.get('pico_worker'))), flush=True)
+        pico_stream=runtime.config.get('pico_stream'), pico_worker=runtime.config.get('pico_worker'),
+        head_control=runtime.config.get('head_control'))), flush=True)
     print('ACTOR_START: motion requested; '+
           ('running until STOP/Ctrl-C or fault' if args.seconds == 0 else f'duration limit {args.seconds:g}s')+
           '; exit requests CANCEL -> PASSIVE. Keep support and E-stop available.',flush=True)
@@ -630,6 +633,9 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
         policy_tick = 0
         stand_tick = 0
         tracking = False
+        if runtime.head is not None and not args.stand_only:
+            print('PICO_HEAD: look straight ahead relative to your chest when enabling following; '
+                  'this pose becomes head neutral.', flush=True)
         last_inferred_identity = None
         last_inferred_receipt_ns = None
         report['duplicate_body_ticks'] = 0
@@ -817,6 +823,9 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
             # publication succeeds; skipped ticks keep the last published action.
             pending_action = runtime.policy.last_action.copy()
             runtime.policy.last_action = published_action
+            command, pending_head = runtime.apply_head(command, row, now=clock.monotonic(),
+                measured_q=state.q, tracking=tracking,
+                snapshot=(snapshot if manual else inputs.snapshot) if tracking else None)
             envelope.check(command)
             compute_end = clock.monotonic()
             record_period_overrun(write,'compute',compute_end-cycle,sent_count,
@@ -850,6 +859,8 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
             before = clock.monotonic()
             sent = controller.publish(command)  # SDK alone owns session + sequence.
             runtime.policy.last_action = pending_action
+            if runtime.head is not None:
+                runtime.head.commit(pending_head)
             sent_count += 1
             stale_ticks = 0
             policy_tick += 1

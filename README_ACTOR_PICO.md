@@ -15,7 +15,7 @@ launchers, SDK installation and protocol guards are not replaced.
 ## Policy selection
 
 `start_actor_pico.sh` requires an explicit policy for every mode except
-`configure`: `sonic` (`config/actor_pico.json`) or `supermimic`
+`configure` and the connection-only `connect` mode: `sonic` (`config/actor_pico.json`) or `supermimic`
 (`config/actor_pico_supermimic.json`), given as the first word
 (`start_actor_pico.sh supermimic shadow ...`), after the mode, or as `--policy`.
 Without one, a terminal shows a menu with no default; an empty answer or a
@@ -160,8 +160,9 @@ bash scripts/start_actor_pico.sh sonic shadow --seconds 30 --human-height 1.68
 ```
 
 Height scales the original GMR human-body table and is recorded in the log
-header. This selects the no-hand Vita02A model; no hand or neck tracking is
-introduced. Joints are resolved by name, including wrist yaw/pitch, independently
+header. This selects the no-hand Vita02A model; finger tracking is not
+introduced. Neck following is composed separately as described below.
+Joints are resolved by name, including wrist yaw/pitch, independently
 of bridge wire order. Each engagement aligns reference yaw to current measured
 robot yaw. Following logs include raw Pico frames and full reference windows. The input
 worker additionally records every solved raw frame and complete GMR qpos in
@@ -209,6 +210,56 @@ The replay fixture is synthetic, and its output is not hardware validation.
 The documented 100-step replay covers its initial segment. Finite large fit
 residuals remain visible in diagnostics; they do not establish real-human
 reference quality or physical balance.
+
+## Pico head following (SONIC and SuperMimic)
+
+Optional front-camera video return and A+B+X+Y view switching are described in
+[PICO camera viewer](deploy/pico_viewer/README.md), including the versioned Android
+APK and a new-headset setup guide. `bash scripts/start_actor_pico.sh connect`
+starts the PC Service and video relay without a policy or robot control. Exit
+that session before starting an actor. Live/auto/shadow entries now supervise
+their own optional video relay (`--no-camera` disables it), while the actor
+retains ownership of its PC Service and motion cleanup. This separate read-only HEVC
+relay/client path leaves actor inference and double-trigger following intact.
+
+Both actor configurations enable `head_control`. The 28-action policies and
+GMR stay unchanged; a shared head controller replaces the fixed neck targets
+in the same Body31 command, before the existing RobotInfo envelope check.
+Arms and wrists remain policy-controlled; fingers are not part of this path.
+
+**Look straight ahead relative to your chest when enabling Pico following.**
+Each engagement calibrates the current `Head` relative to `Spine3` as neutral.
+Subsequent head/chest relative rotation is expressed using the pinned GMR
+chest-frame offset, then projected onto the robot's yaw/pitch gaze direction.
+Whole-body turns cancel, and head roll is not reproduced by the two-axis neck.
+This calibration affects only the neck; body GMR calibration is unchanged.
+
+The head uses the latest timestamped body snapshot, independently of the
+200/220 ms body reference window (and SuperMimic playback margin). It therefore
+has a different reference time from the body; it follows relative articulation,
+not absolute world gaze. An exponential filter (time constant 0.04 s) smooths
+its targets. `head_control.max_velocity_rad_s` is `null`, so there is no separate
+position slew limit; a finite positive value opts back into that limit (for
+example, `0.8` restores the former 0.8 rad/s limit). The former filter time
+constant was 0.12 s. These settings apply to tracking and standby return.
+Configured targets are limited
+to yaw +/-60 degrees and pitch [-30, +20] degrees in URDF joint coordinates,
+intersected with actual RobotInfo limits. Positive pitch tilts forward/down in
+the URDF frame. The existing fixed-joint KP/KD (20/1) are preserved.
+
+Standby smoothly returns the neck to zero. The first live tick starts from
+measured neck position. Past `pico_hold_age_s` (0.25 s), neck position freezes
+along with the body reference; fresh input resumes following. Past
+`pico_max_age_s` (0.6 s), the existing live fault path cancels EXTERNAL.
+Missing/invalid head data also fails the trial. Calibration/filter/slew state
+advances only after a successful live publication. Logs include `head_control`
+diagnostics and the final combined `body_targets`/`sent_body_targets`.
+
+Replay and shadow also compute head targets; neither sends commands. Set
+`head_control.enabled` to `false` in the selected actor JSON to restore the
+fixed-neck behavior. No robot YAML, Pico binding or policy re-export is needed.
+Head following requires its own small-angle hardware validation; offline tests
+do not establish physical tracking quality or balance.
 
 ## Run on S100
 
@@ -554,7 +605,7 @@ fresh inputs, live RobotInfo, physical body actuators, gains and command limits
 pass preflight. Only the immediate-following mode requires Pico during entry;
 stand-only and manual-Pico modes can enter with fresh body feedback alone.
 The terminal displays the named model defaults and KP/KD,
-fixed neck targets and config hash. Starting `live --confirm-motion` or the
+neck hold gains, head-control settings and config hash. Starting `live --confirm-motion` or the
 automatic local entry requests motion directly, with no typed MOVE prompt.
 The CLI identity is an operator label, not discovered robot
 serial evidence. Confirm the actual device/connection and effective config.
@@ -563,8 +614,10 @@ Entry uses the SDK's PREPARE/COMMIT and verifies owned EXTERNAL/RUNNING.
 It discards preflight policy/reference history and leads the reference from the
 measured body pose to actor defaults. As in the SDK tracking example, the
 reference advances by one 20 ms frame per inference, capped at its final frame;
-wall-clock delays do not skip reference frames. Fixed neck targets use the
-reviewed profile directly. At the handoff, the entire buffered Pico reference
+wall-clock delays do not skip reference frames. With head control enabled, the
+neck slews from measured position toward zero during standby and follows Pico
+after handoff; disabling it uses the fixed profile directly.
+At the handoff, the entire buffered Pico reference
 must be complete, finite and within the configured Pico age budget.
 The complete decoded BodyCmd is sent, including ankle compensation torque.
 The unpopulated waist-roll slot remains inert; no hand command is sent.

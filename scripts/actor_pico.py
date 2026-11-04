@@ -386,6 +386,7 @@ def main():
                    gmr_engine='accelerated' if runtime.retarget.accelerated else 'pinned',
                    reference_delay_s=runtime.reference.delay, pico_stream=runtime.config.get('pico_stream'),
                    pico_worker=runtime.config.get('pico_worker'),
+                   head_control=runtime.config.get('head_control'),
                    actions_sent=0))
         try:
             report = {'check': check, 'replay': replay, 'state-check': state_check,
