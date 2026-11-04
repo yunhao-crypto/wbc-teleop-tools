@@ -101,7 +101,10 @@ class ManualPico:
         if not self.connected: return dict(state='idle')
         r = self.runtime
         n = r.reference.steps
+        body = np.zeros((24, 7), np.float32)
+        body[:, 6] = 1
         return dict(state='ready', received_monotonic=self.clock.monotonic(),
+            raw_body_poses=body.tolist(), pico_timestamp_ns=round(self.clock.monotonic()*1e9),
             q=np.repeat(r.model.contract.default[None], n, axis=0),
             base=np.zeros((n, 3)), quat=np.tile([1., 0., 0., 0.], (n, 1)),
             retarget_ms=.1, gmr_task_error=0.)
@@ -237,6 +240,67 @@ class LiveTests(unittest.TestCase):
         result = self.run_trial()
         self.assertTrue(result['exit_confirmed'])
         self.assertFalse(any(r.get('stage') == 'pico_tracking' for r in self.rows))
+
+    def test_head_follows_pico_in_same_body_command_and_returns_on_pause(self):
+        from scipy.spatial.transform import Rotation
+        worker, _ = self.manual_trial()
+        self.args.seconds = 4.2
+        original = worker.snapshot
+        offset = self.runtime.head.offset
+        def snapshot():
+            value = original()
+            if value['state'] == 'ready' and len(self.transport.commands) >= 158:
+                body = np.asarray(value['raw_body_poses'])
+                desired = Rotation.from_euler('ZYX', [.6, -.2, .4]).as_matrix()
+                body[15, 3:] = Rotation.from_matrix(offset @ desired @ offset.T).as_quat()
+                value['raw_body_poses'] = body.tolist()
+            return value
+        worker.snapshot = snapshot
+        def request():
+            return {50: 'connect', 155: 'track', 190: 'toggle'}.get(len(self.transport.commands))
+        self.run_trial(manual_pico=worker, poll_command=request)
+        rows = [r for r in self.rows if 'sent_body_targets' in r]
+        yaw = self.runtime.policy.order.index('neck_yaw_joint')
+        pitch = self.runtime.policy.order.index('neck_pitch_joint')
+        positions = np.array([[r['sent_body_targets'][i]['q'] for i in (yaw, pitch)] for r in rows])
+        self.assertGreater(positions[189, 0], .4)
+        self.assertLess(positions[189, 1], -.1)
+        self.assertLess(abs(positions[-1, 0]), abs(positions[189, 0]))
+        self.assertGreater(np.max(np.abs(np.diff(positions, axis=0))), .8*.02)
+        limits = np.asarray(self.runtime.head.settings.limits)
+        self.assertTrue(np.all(positions >= limits[:, 0]))
+        self.assertTrue(np.all(positions <= limits[:, 1]))
+        self.assertTrue(any(r['head_control']['calibrated'] for r in rows))
+        for row in rows:
+            self.assertEqual(row['body_targets'], row['sent_body_targets'])
+        self.assertEqual([r.operation.value for r in self.transport.requests], ['PREPARE', 'COMMIT', 'CANCEL'])
+
+    def test_invalid_head_after_engagement_cancels_the_session(self):
+        worker, request = self.manual_trial()
+        original = worker.snapshot
+        def snapshot():
+            value = original()
+            if value['state'] == 'ready' and len(self.transport.commands) > 160:
+                value['raw_body_poses'][15][3:] = [0.]*4
+            return value
+        worker.snapshot = snapshot
+        with self.assertRaisesRegex(ValueError, 'chest/head quaternion'):
+            self.run_trial(manual_pico=worker, poll_command=request)
+        self.assert_cancelled()
+
+    def test_first_head_target_filters_measured_neck_without_slew_cap_during_stand(self):
+        self.args.stand_only = True
+        self.args.seconds = .3
+        slots = [self.runtime.policy.order.index(n) for n in ('neck_yaw_joint', 'neck_pitch_joint')]
+        def initial_neck(state):
+            if self.transport.commands:
+                return state
+            q = state.q.copy(); q[slots] = [.4, -.2]
+            return replace(state, q=q)
+        self.transport.state_fault = initial_neck
+        self.run_trial()
+        first = np.array([self.transport.commands[0].joints[i].q for i in slots])
+        np.testing.assert_allclose(first, np.exp(-.02/.04)*np.array([.4, -.2]), atol=1e-7)
 
     def manual_trial(self, request_after=155):
         self.args.manual_pico = True
@@ -511,7 +575,7 @@ class LiveTests(unittest.TestCase):
         cli=importlib.util.module_from_spec(spec);spec.loader.exec_module(cli)
         profile=Path(self.tmp.name)/'peer.json5';profile.touch(mode=0o600);profile.write_text('{mode:"peer"}')
         from deployment.vita_s100_aorta_30dof.actor_pico_stream import WorkerSettings
-        runtime=NS(root=Path(self.tmp.name),model=NS(backend='sdk',contract=self.runtime.model.contract),
+        runtime=NS(root=Path(self.tmp.name),policy=self.runtime.policy,model=NS(backend='sdk',contract=self.runtime.model.contract),
                    config=dict(body_profile=self.runtime.config['body_profile']),worker=WorkerSettings())
         self.args.stand_only=True;self.args.manual_pico=False;self.args.group='default'
         with (patch.dict(os.environ,ZENOH_SESSION_CONFIG_URI=str(profile)),
@@ -537,7 +601,7 @@ class LiveTests(unittest.TestCase):
         cli=importlib.util.module_from_spec(spec);spec.loader.exec_module(cli)
         profile=Path(self.tmp.name)/'peer.json5';profile.touch(mode=0o600);profile.write_text('{mode:"peer"}')
         from deployment.vita_s100_aorta_30dof.actor_pico_stream import WorkerSettings
-        runtime=NS(root=Path(self.tmp.name),model=NS(backend='sdk',contract=self.runtime.model.contract),
+        runtime=NS(root=Path(self.tmp.name),policy=self.runtime.policy,model=NS(backend='sdk',contract=self.runtime.model.contract),
                    config=dict(body_profile=self.runtime.config['body_profile']),
                    worker=WorkerSettings(3,.002,(0,1,2,3,4),(1,),(2,3,4)))
         self.args.stand_only=False;self.args.manual_pico=False;self.args.group='default'
@@ -1639,11 +1703,18 @@ class LocalStartTests(unittest.TestCase):
         startup=self.root/'bash-env'
         startup.write_text('source() { if [[ "$1" == /app/script/env.sh ]]; then return 0; fi; builtin source "$@"; }\n')
         env=dict(os.environ,BASH_ENV=str(startup),VITA_ACTOR_PYTHON=str(fake),ACTOR_LAUNCH_TEST_OUTPUT=str(output))
+        def actor_arguments(args):
+            if Path(args[0]).name == 'pico_session_services.py' and '--' in args:
+                separator=args.index('--')
+                self.assertEqual(args[separator+1],str(fake))
+                self.assertEqual(Path(args[separator+2]).name,'actor_pico.py')
+                return args[separator+2:]
+            return args
         def launch(*argv):
             output.unlink(missing_ok=True)
             subprocess.run(['bash',str(launcher),*argv],env=env,check=True,capture_output=True,text=True,timeout=10,
                            stdin=subprocess.DEVNULL)
-            return json.loads(output.read_text())
+            return actor_arguments(json.loads(output.read_text()))
         def refused(*argv):
             output.unlink(missing_ok=True)
             result=subprocess.run(['bash',str(launcher),*argv],env=env,capture_output=True,text=True,timeout=10,
@@ -1671,6 +1742,14 @@ class LocalStartTests(unittest.TestCase):
         self.assertEqual(launch('supermimic','check','--steps','1')[1:],['check','--policy','supermimic','--steps','1'])
         self.assertEqual(launch('check','sonic','--steps','1')[1:],['check','--policy','sonic','--steps','1'])
         self.assertEqual(launch('shadow','--policy','sonic','--seconds','3')[1:],['shadow','--policy','sonic','--seconds','3'])
+        args=launch('connect','--seconds','3')
+        self.assertEqual(Path(args[0]).name,'pico_session_services.py')
+        self.assertEqual(args[1:],['--connect-only','--seconds','3'])
+        args=launch('supermimic','--no-camera','--camera-topic','/image_left_raw/humanoid/h265')
+        wrapper=json.loads(output.read_text())
+        self.assertEqual(wrapper[1:4],['--no-camera','--camera-topic','/image_left_raw/humanoid/h265'])
+        self.assertNotIn('--camera-topic',args)
+        self.assertNotIn('--no-camera',args)
         # Interactive menu: a number selects; an empty answer starts nothing.
         import pty
         for answer,expected in ((b'2\n','supermimic'),(b'1\n','sonic'),(b'3\n','morphmimic'),(b'\n',None)):
@@ -1685,7 +1764,7 @@ class LocalStartTests(unittest.TestCase):
             if expected is None:
                 self.assertEqual(code,2);self.assertFalse(output.exists())
             else:
-                self.assertEqual(code,0);self.assertEqual(json.loads(output.read_text())[1:4],['live','--policy',expected])
+                self.assertEqual(code,0);self.assertEqual(actor_arguments(json.loads(output.read_text()))[1:4],['live','--policy',expected])
         startup.write_text('source() { echo "unexpected robot environment access" >&2; exit 99; }\n')
         subprocess.run(['bash',str(launcher),'--help'],env=env,check=True,capture_output=True,text=True,timeout=10)
         args=json.loads(output.read_text());self.assertEqual(args[1:],["check","--help"])

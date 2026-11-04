@@ -272,5 +272,20 @@
       4
     ],
     "note": "Same GMR/receiver/control layout for every policy. ik_max_iter caps GMR refinement passes per frame (pinned default 10). S100 robot42 calibration: SDK/readers inherit worker_cpus; only the GMR calling thread narrows to gmr_cpus after receivers start. Live control threads move to control_cpus after the worker is spawned, keeping the real-time loop off the GMR CPU (full-load layout B). These CPU indices require the reviewed six-core S100 layout. Frequency is unchanged."
+  },
+  "head_control": {
+    "enabled": true,
+    "joint_limits": {
+      "neck_yaw_joint": [
+        -1.0471975511965976,
+        1.0471975511965976
+      ],
+      "neck_pitch_joint": [
+        -0.5235987755982988,
+        0.3490658503988659
+      ]
+    },
+    "max_velocity_rad_s": null,
+    "filter_time_constant_s": 0.04
   }
 }

@@ -17,6 +17,7 @@ import numpy as np
 from .actor_morphmimic import MorphMimicContract, POLICY_KIND as MORPHMIMIC_KIND
 from .actor_groot_ankle import contract_from_metadata as groot_contract
 from .actor_pico_gmr import create_retargeter
+from .actor_pico_head import PicoHeadControl, head_settings
 from .actor_pico_stream import stream_settings, worker_settings
 from .actor_supermimic import (POLICY_KIND as SUPERMIMIC_KIND, NativeModel, SuperMimicContract,
                                create_policy, create_reference, reference_window)
@@ -53,6 +54,7 @@ def load_actor_config(root, policy='sonic'):
     if stream_settings(config) is not None and policy not in ('supermimic', 'morphmimic'):
         raise ValueError('pico_stream playback is only implemented for the SuperMimic reference')
     worker_settings(config)
+    head_settings(config)
     for item in config['artifacts'].values():
         path = (root/item['path']).resolve()
         if not path.is_relative_to(root) or digest(path) != item['sha256']:
@@ -138,6 +140,13 @@ class ActorPicoRuntime:
                                 self.math, backend=backend, threads=threads,
                                 policy_kind=self.config.get('policy_kind', 'groot_vita02a_tracking'))
         self.policy = create_policy(self.model.contract, self.config['body_profile'], self.math, self.config)
+        settings = head_settings(self.config)
+        self.head = None
+        if settings is not None:
+            gmr_config = json.loads((self.root/self.config['artifacts']['gmr_source_4']['path']).read_text())
+            offset = gmr_config['ik_match_table1']['waist_pitch_link'][4]
+            self.head = PicoHeadControl(settings, offset, period=self.model.contract.period,
+                hold_age=self.config['pico_hold_age_s'], maximum_age=self.config['pico_max_age_s'])
         self.reset_inputs()
 
     def hold_motion(self):
@@ -152,6 +161,8 @@ class ActorPicoRuntime:
         """Discard shadow history, calibration and references before a new trial."""
         self.policy.reset()
         self.reset_reference()
+        if self.head is not None:
+            self.head.reset()
 
     def reset_reference(self):
         """Reset only Pico calibration/reference; preserve running policy history."""
@@ -161,6 +172,7 @@ class ActorPicoRuntime:
         self.last_retarget_ms = None
         self.reference_yaw_offset = None
         self.held_motion = None
+        self.latest_pico = None
 
     def align_reference_yaw(self, robot_root):
         motion = self.reference.motion()
@@ -176,6 +188,8 @@ class ActorPicoRuntime:
                               base=self.retarget.last_qpos[:3])
         self.last_residual = residual
         self.last_retarget_ms = (time.perf_counter()-start)*1000
+        self.latest_pico = dict(raw_body_poses=np.asarray(body).copy(),
+            pico_timestamp_ns=int(stamp_ns), received_monotonic=float(received_monotonic))
 
     def infer(self, *, q, dq, root, gyro, now_monotonic, maximum_pico_age=None):
         _, observation, row = self.infer_command(q=q, dq=dq, root=root, gyro=gyro,
@@ -192,12 +206,29 @@ class ActorPicoRuntime:
         if self.reference_yaw_offset is None:
             self.align_reference_yaw(root)
         motion, held = self.hold_stale_reference(self.reference.motion(), age)
-        return self.infer_motion_command(motion, q=q, dq=dq, root=root, gyro=gyro,
+        command, observation, row = self.infer_motion_command(motion, q=q, dq=dq, root=root, gyro=gyro,
                                  yaw_offset=self.reference_yaw_offset, ref_time=self.reference.ref_time,
                                  diagnostics={'reference_delay_s': self.reference.delay,
                                               'pico_age_s': age, 'reference_hold': held,
                                               'gmr_task_error': self.last_residual,
                                               'retarget_ms': self.last_retarget_ms})
+        command, candidate = self.apply_head(command, row, snapshot=self.latest_pico,
+                                              now=now_monotonic, tracking=True)
+        # Offline replay/shadow treats each returned command as a simulated
+        # tick. Live commits the candidate only after the SDK publishes it.
+        if self.head is not None:
+            self.head.commit(candidate)
+        return command, observation, row
+
+    def apply_head(self, command, row, *, now, measured_q=None, snapshot=None, tracking=False):
+        if self.head is None:
+            return command, None
+        command, diagnostics, candidate = self.head.preview(command, self.policy.order,
+            now=now, measured_q=measured_q, snapshot=snapshot, tracking=tracking)
+        row['head_control'] = diagnostics
+        row['body_targets'] = [dict(q=j.q, dq=j.dq, tau=j.tau, kp=j.kp, kd=j.kd)
+                               for j in command.joints]
+        return command, candidate
 
     def hold_stale_reference(self, motion, age):
         """Past pico_hold_age_s, hold the current reference frame with zero velocity.

@@ -108,7 +108,7 @@ class NativeAnkleTests(unittest.TestCase):
             keyframes=[dict(timestamp=0,positions=[0.]*31,kp=[20.]*31,kd=[1.]*31)]))
         for name in ('PASSIVE','QUIET_PASSIVE'):
             root['actions'][name]=dict(params=dict(keyframes=[dict(timestamp=0,kd=5.),dict(timestamp=4,kd=0.)]))
-        runtime=SimpleNamespace(policy=policy,model=SimpleNamespace(contract=policy.contract),
+        runtime=SimpleNamespace(head=None,policy=policy,model=SimpleNamespace(contract=policy.contract),
                                 config=dict(body_profile=policy.profile),math=sdk)
         return root,runtime
 

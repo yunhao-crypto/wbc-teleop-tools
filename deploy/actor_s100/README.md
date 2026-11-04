@@ -18,6 +18,13 @@ The URDF, source code, tests and configuration are tracked. No original `venv`, 
 `model_dependencies_readonly`, `vendor_packages` or `build` directory is needed
 from the developer's machine.
 
+The versioned [PICO Android setup guide and APK](../pico_viewer/README.md)
+cover a new headset, both network ports and view switching. On an installed
+robot, `bash scripts/start_actor_pico.sh connect` starts a connection/video-only
+session without loading a policy. Live/auto/shadow entry points now own their
+optional camera relay and clean it up after the actor exits; `--no-camera`
+disables video. Offline validation modes do not start it.
+
 ## Included dependencies
 
 `wheelhouse/` contains 21 pinned wheels: locomotion-aorta 0.2.1,

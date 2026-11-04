@@ -9,6 +9,7 @@ import numpy as np
 ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT/'src'))
 from deployment.vita_s100_aorta_30dof.actor_pico_runtime import ActorPicoRuntime, POLICY_CONFIGS
+from deployment.vita_s100_aorta_30dof.actor_parallel_ankle import command_space
 
 
 def main():
@@ -23,6 +24,11 @@ def main():
     policy=candidate.get('policy','sonic')
     if policy not in POLICY_CONFIGS:raise ValueError('Candidate names an unknown actor policy: '+str(policy))
     runtime=ActorPicoRuntime(args.root,backend=args.backend,policy=policy)
+    # Older captures used virtual ankle commands. New captures record the
+    # selected wire coordinates, which may differ from today's default profile.
+    runtime.policy.profile['ankle_command_space']=candidate.get('ankle_command_space',
+        candidate.get('decoded',{}).get('ankle_command_space','virtual_pitch_roll'))
+    wire_space=command_space(runtime.policy)
     state,ref=candidate['input_state'],candidate['reference']
     motion=runtime.math.Motion(ref['q'],ref['base'],ref['quat'])
     command,obs,row=runtime.infer_motion_command(motion,
@@ -38,6 +44,7 @@ def main():
     target_delta=np.abs(actual[:,0]-state['body_q'])
     largest=int(np.argmax(target_delta))
     print(json.dumps(dict(status='PASS_EXACT_CANDIDATE_REPLAY',backend=runtime.model.backend,
+        ankle_command_space=wire_space,
         observation_max_diff=obs_diff,action_max_diff=action_diff,command_max_diff=command_diff,
         largest_target_delta_rad=float(target_delta[largest]),
         largest_target_delta_joint=candidate['body_order'][largest],
