@@ -45,6 +45,7 @@ class TriggerReader:
         self.get = getattr(sdk,'get_controller_trigger_snapshot',None)
         if not callable(self.get):
             raise RuntimeError('Pico binding lacks atomic controller trigger snapshots; update the binding')
+        self.grips = getattr(sdk, "get_controller_grip_snapshot", None)
         self.shared = shared
         self.toggle = DualTriggerToggle(maximum_age)
         self.stop = threading.Event()
@@ -56,6 +57,10 @@ class TriggerReader:
         while not self.stop.is_set():
             now = time.monotonic()
             try:
+                if len(self.shared) >= 7 and callable(self.grips):
+                    available, stamp, age, left, right = self.grips()
+                    with self.shared.get_lock():
+                        self.shared[3:7] = [now-age if available else 0., stamp, left, right]
                 sample = self.get()
                 fired = self.toggle.update(sample,now)
                 available,stamp,age,left,right = sample
@@ -66,7 +71,9 @@ class TriggerReader:
                         self.shared[1] = now
             except Exception:
                 self.toggle.armed = False
-                with self.shared.get_lock(): self.shared[2] = 0.
+                with self.shared.get_lock():
+                    self.shared[2] = 0.
+                    if len(self.shared) >= 7: self.shared[3] = 0.
             self.stop.wait(.005)
 
     def close(self):

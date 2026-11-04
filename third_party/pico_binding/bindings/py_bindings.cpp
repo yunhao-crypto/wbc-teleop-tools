@@ -35,6 +35,7 @@ int64_t BodyTimeStampNs = 0;  // Body data timestamp
 bool BodyDataAvailable = false;  // Flag to indicate if body data is available
 BodyPoseSnapshot AtomicBodyPose;  // Complete same-packet pose/root timestamp only
 ControllerTriggerSnapshot AtomicTriggers;
+ControllerTriggerSnapshot AtomicGrips;
 std::mutex controllerTriggerMutex;
 
 std::array<std::array<double, 7>, 3> MotionTrackerPose;  // Position and rotation for each joint
@@ -133,6 +134,12 @@ void OnPXREAClientCallback(void* context, PXREAClientCallbackType type, int stat
                     }
                     std::lock_guard<std::mutex> lock(controllerTriggerMutex);
                     AtomicTriggers = triggers;
+                    ControllerTriggerSnapshot grips;
+                    try {
+                        grips = parseControllerTriggerSnapshot(value, "grip");
+                        grips.received = std::chrono::steady_clock::now();
+                    } catch (const std::exception&) {}
+                    AtomicGrips = grips;
                 }
                 if (value["Controller"].contains("left")) {
                     auto& left = value["Controller"]["left"];
@@ -327,6 +334,15 @@ std::tuple<bool, int64_t, double, double, double> getControllerTriggerSnapshot()
         : 0.0;
     return {AtomicTriggers.available, AtomicTriggers.packet_timestamp_ns, age,
             AtomicTriggers.left, AtomicTriggers.right};
+}
+
+std::tuple<bool, int64_t, double, double, double> getControllerGripSnapshot() {
+    std::lock_guard<std::mutex> lock(controllerTriggerMutex);
+    const double age = AtomicGrips.available
+        ? std::chrono::duration<double>(std::chrono::steady_clock::now()-AtomicGrips.received).count()
+        : 0.0;
+    return {AtomicGrips.available, AtomicGrips.packet_timestamp_ns, age,
+            AtomicGrips.left, AtomicGrips.right};
 }
 
 double getLeftGrip() {
@@ -537,6 +553,7 @@ PYBIND11_MODULE(xrobotoolkit_sdk, m) {
     m.def("get_right_controller_pose", &getRightControllerPose, "Get the right controller pose.");
     m.def("get_headset_pose", &getHeadsetPose, "Get the headset pose.");
     m.def("get_left_trigger", &getLeftTrigger, "Get the left trigger value.");
+    m.def("get_controller_grip_snapshot", &getControllerGripSnapshot);
     m.def("get_left_grip", &getLeftGrip, "Get the left grip value.");
     m.def("get_right_trigger", &getRightTrigger, "Get the right trigger value.");
     m.def("get_controller_trigger_snapshot", &getControllerTriggerSnapshot,

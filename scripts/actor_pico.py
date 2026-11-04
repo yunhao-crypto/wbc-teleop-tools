@@ -274,6 +274,8 @@ def live(runtime, args, write):
             service_alive = lambda:True
             if args.manual_pico:
                 import xrobotoolkit_sdk as pico_sdk
+                if args.hand_grip_config and not callable(getattr(pico_sdk, "get_controller_grip_snapshot", None)):
+                    raise RuntimeError("Rebuild Pico binding: atomic grip snapshots required")
                 if not callable(getattr(pico_sdk,'get_controller_trigger_snapshot',None)):
                     raise RuntimeError('Update the Pico binding: atomic dual-trigger input is required')
                 from deployment.vita_s100_aorta_30dof.actor_pico_worker import PicoReferenceProcess
@@ -319,6 +321,7 @@ def main():
     parser.add_argument('--seconds', type=float,
                         help='live: 0 runs until STOP/Ctrl-C (default); positive values limit EXTERNAL seconds; other modes default to 60')
     parser.add_argument('--startup-timeout', type=float, default=30)
+    parser.add_argument('--hand-grip-config', type=Path, help='Explicit BrainCo open/grasp JSON; manual Pico live only')
     parser.add_argument('--group', default='default')
     parser.add_argument('--input', type=Path)
     parser.add_argument('--log', type=Path)
@@ -359,6 +362,8 @@ def main():
     elif (args.confirm_motion or args.robot_id or args.robot_config or args.stand_only
           or args.manual_pico or args.auto_start or args.wait_pico or args.auto_pico):
         parser.error('motion authorization/options apply only to live')
+    if args.hand_grip_config and (args.mode != 'live' or not args.manual_pico or args.stand_only):
+        parser.error('--hand-grip-config requires live --manual-pico without --stand-only')
     valid_duration = args.seconds >= 0 if args.mode == 'live' else 1 <= args.seconds <= 7200
     if (args.steps < 1 or not math.isfinite(args.seconds) or not valid_duration
             or not math.isfinite(args.startup_timeout) or not 1 <= args.startup_timeout <= 120):

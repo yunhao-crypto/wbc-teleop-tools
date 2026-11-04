@@ -1,0 +1,70 @@
+{
+  "left": {
+    "joint_names": [
+      "left_thumb_pitch_joint",
+      "left_thumb_roll_joint",
+      "left_index_finger_pitch_joint",
+      "left_middle_finger_pitch_joint",
+      "left_ring_finger_pitch_joint",
+      "left_little_finger_pitch_joint"
+    ],
+    "open_rad": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    "grasp_rad": [
+      0.2,
+      0.3,
+      0.6,
+      0.6,
+      0.6,
+      0.6
+    ],
+    "speed_rad_s": [
+      0.2,
+      0.2,
+      0.2,
+      0.2,
+      0.2,
+      0.2
+    ]
+  },
+  "right": {
+    "joint_names": [
+      "right_thumb_pitch_joint",
+      "right_thumb_roll_joint",
+      "right_index_finger_pitch_joint",
+      "right_middle_finger_pitch_joint",
+      "right_ring_finger_pitch_joint",
+      "right_little_finger_pitch_joint"
+    ],
+    "open_rad": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    "grasp_rad": [
+      0.2,
+      0.3,
+      0.6,
+      0.6,
+      0.6,
+      0.6
+    ],
+    "speed_rad_s": [
+      0.2,
+      0.2,
+      0.2,
+      0.2,
+      0.2,
+      0.2
+    ]
+  }
+}

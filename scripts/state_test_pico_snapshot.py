@@ -33,14 +33,24 @@ void coherent(){auto [available,stamp,pose]=getBodyPoseSnapshot();if(!available)
  for(const auto&joint:pose)for(double coordinate:joint)assert(coordinate==double(stamp));}
 json with_controller(json value) {
  const double depth=double(value["timeStampNs"].get<int64_t>()%2);
- const json side={{"pose","0,0,0,0,0,0,1"},{"trigger",depth},{"grip",0.},
+ const json side={{"pose","0,0,0,0,0,0,1"},{"trigger",depth},{"grip",depth},
    {"menuButton",false},{"axisX",0.},{"axisY",0.},{"axisClick",false},
    {"primaryButton",false},{"secondaryButton",false}};
  value["Controller"]={{"left",side},{"right",side}};return value;
 }
 void triggers_coherent(){auto [available,stamp,age,left,right]=getControllerTriggerSnapshot();
  if(!available)return;assert(age>=0);assert(left==right);assert(left==double(stamp%2));}
+void grips_coherent(){auto [available,stamp,age,left,right]=getControllerGripSnapshot();
+ if(!available)return;assert(age>=0);assert(left==right);assert(left==double(stamp%2));}
 int main(){
+ assert(!std::get<0>(getControllerGripSnapshot()));
+ publish(with_controller(packet(1)));grips_coherent();
+ auto invalid_grip=with_controller(packet(2));invalid_grip["Controller"]["left"]["grip"]=2.;
+ publish(invalid_grip);assert(!std::get<0>(getControllerGripSnapshot()));
+ invalid_grip=with_controller(packet(3));invalid_grip["Controller"]["right"].erase("grip");
+ publish(invalid_grip);assert(!std::get<0>(getControllerGripSnapshot()));
+
+ {std::lock_guard<std::mutex>lock(controllerTriggerMutex);AtomicTriggers=ControllerTriggerSnapshot{};}
  assert(!std::get<0>(getControllerTriggerSnapshot()));
  publish(with_controller(packet(1)));triggers_coherent();
  auto bad_controller=with_controller(packet(2));bad_controller["Controller"].erase("right");
@@ -63,7 +73,7 @@ int main(){
  invalid=packet(14);invalid.erase("timeStampNs");publish(invalid);
  assert(std::get<1>(getBodyPoseSnapshot())==10);
  std::atomic<bool>done{false};std::atomic<unsigned>reads{0};
- std::thread reader([&]{while(!done){coherent();triggers_coherent();++reads;}});
+ std::thread reader([&]{while(!done){coherent();triggers_coherent();grips_coherent();++reads;}});
  for(int frame=20;frame<10020;++frame)publish(with_controller(packet(frame)));
  done=true;reader.join();coherent();assert(reads>0);
  std::cout<<"PASS: actual callback/getter, root timestamp semantics, torn global update, 7 malformed packets, 10000 concurrent publications, "<<reads<<" coherent reads\n";

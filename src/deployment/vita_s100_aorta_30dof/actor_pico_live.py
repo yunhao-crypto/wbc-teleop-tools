@@ -500,6 +500,13 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
     """
     if not math.isfinite(args.seconds) or args.seconds < 0:
         raise ValueError('Live duration must be finite and nonnegative; 0 means until STOP')
+    hand_config = getattr(args, "hand_grip_config", None)
+    hands = None
+    if hand_config:
+        if manual_pico is None or not getattr(args, "manual_pico", False):
+            raise ValueError("Hand grip requires manual Pico mode")
+        from .actor_pico_hands import HandGripRunner, load_config
+        hand_config = load_config(hand_config)
     params, receipt = load_robot_config(args.robot_config, runtime)
     envelope = CommandEnvelope(runtime, controller.get_robot_info(args.startup_timeout), params)
     pico_max_age = runtime.config['pico_max_age_s']
@@ -654,6 +661,8 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
     try:
         if stop.is_set():
             return report
+        if hand_config:
+            hands = HandGripRunner(hand_config, manual_pico.controls, group=args.group)
         attempted = True
         entered = controller.enter_external(timeout=5.)
         if (entered.current_action != 'EXTERNAL' or phase(entered) != 'RUNNING'
@@ -661,6 +670,8 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
                 or entered.generation <= 0):
             raise RuntimeError('Entry did not confirm owned EXTERNAL/RUNNING')
         report['entered'] = True
+        if hands is not None:
+            hands.start()
         write(dict(record_type='external_entered', status=status_row(entered), actions_sent=0))
         runtime.reset_inputs()
         state, q, dq, root, gyro = inputs.read(0)
@@ -727,6 +738,8 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
             cycle = clock.monotonic()
             cpu_clock = getattr(clock,'thread_time',None)
             cpu_start = cpu_clock() if cpu_clock is not None else None
+            if hands is not None:
+                hands.check()
             status = guard.check(controller.status, entered)
             if status.ingress_drop_count != logged_drops:
                 write(dict(record_type='firmware_ingress_drop', previous=logged_drops,
@@ -949,6 +962,8 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
         print(f"ACTOR_STOP: {report['stop_reason']}, elapsed={report['elapsed_s']:.2f}s; CANCEL -> PASSIVE",flush=True)
         return report
     finally:
+        if hands is not None:
+            hands.close()
         if auto and not attempted:
             cancel_startup(controller, cancel_action, clock, write, startup_generation)
         if attempted:

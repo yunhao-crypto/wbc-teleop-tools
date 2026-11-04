@@ -211,7 +211,7 @@ class PicoReferenceProcess:
         context = multiprocessing.get_context('spawn')
         self.commands, self.output = context.Queue(maxsize=1), context.Queue(maxsize=2)
         self.stop = context.Event()
-        self.controls = context.Array('d',[0.,0.,0.]) if buttons else None
+        self.controls = context.Array('d',[0.,0.,0.,0.,0.,0.,0.]) if buttons else None
         self.head_pose = LatestPicoPose(context)
         # The reader can own an optional raw-frame writer process. A daemon
         # cannot spawn it; close() owns and reaps the entire process group.
@@ -250,7 +250,7 @@ class PicoReferenceProcess:
         if self.controls is None:
             return result
         with self.controls.get_lock():
-            count,event_time,controller_time = self.controls[:]
+            count,event_time,controller_time = self.controls[:3]
         return dict(result,trigger_event_seq=int(count),
                     trigger_event_monotonic=event_time,controller_received_monotonic=controller_time)
 
