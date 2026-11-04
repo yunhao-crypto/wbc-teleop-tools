@@ -89,9 +89,11 @@ def policy_class(math_api):
                 self.history.append(current)
             frame = int(np.clip(round(ref_time/c.period), 0, len(motion.q)-1))
             ids = np.minimum(frame+np.arange(1, c.future_frames+1), len(motion.q)-1)
-            qd_ref = (np.gradient(motion.q, c.period, axis=0) if len(motion.q)>1
-                      else np.zeros_like(motion.q))
-            future_q = motion.q[ids]
+            reference_q, changed = c.ankle.project_reference(motion.q)
+            self.reference_ankle_projected_frames = int(np.count_nonzero(changed))
+            qd_ref = (np.gradient(reference_q, c.period, axis=0) if len(reference_q)>1
+                      else np.zeros_like(reference_q))
+            future_q = reference_q[ids]
             offset = m.yaw_quaternion(yaw_offset)
             offset_R = m.rotation(offset)
             roots = [m.multiply(offset, motion.quat[i]) for i in ids]
@@ -111,6 +113,8 @@ def policy_class(math_api):
             return obs
 
         def decode(self, raw_action, **timing):
-            return decode_motor_theta(self, math_api, raw_action, **timing)
+            command, row = decode_motor_theta(self, math_api, raw_action, **timing)
+            row['reference_ankle_projected_frames'] = getattr(self, 'reference_ankle_projected_frames', 0)
+            return command, row
 
     return MorphMimicPolicy

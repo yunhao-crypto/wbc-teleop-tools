@@ -129,6 +129,45 @@ class MotorThetaAnkle:
                 row[p], row[r] = motor_angles(row[p], sign*row[r], self.geometry)
         return q
 
+    def project_reference(self, q):
+        """Project virtual references into the deployment box AND motor workspace.
+
+        Only references are projected: measured feedback is never falsified.
+        Return a copy and a per-frame changed flag. Differentiate the returned
+        virtual trajectory before applying velocity_to_policy, not the input.
+        The radial fallback follows the connected neutral-pose workspace.
+        """
+        result = np.array(q, dtype=np.float64, copy=True)
+        if not np.isfinite(result).all():
+            raise ValueError('non-finite ankle reference')
+        original = result.copy()
+        lo, hi = self.motor_limits
+        def feasible(pitch, roll):
+            theta = motor_angles(pitch, roll, self.geometry)
+            # IK uses clamped asin/discriminants; independently check rod closure.
+            for (y, height), angle in zip(_links(self.geometry), theta):
+                anchor = np.asarray(_foot(pitch, roll, -self.geometry['lx'], y, 0.))
+                crank = np.array([-self.geometry['lx']*math.cos(angle), y,
+                                  height+self.geometry['lx']*math.sin(angle)])
+                if abs(np.linalg.norm(anchor-crank)-height) > 1e-7:
+                    return False
+            return min(theta) >= lo+1e-7 and max(theta) <= hi-1e-7
+        for row in result.reshape(-1, result.shape[-1]):
+            for p, r, sign in self.legs:
+                pitch = float(np.clip(row[p], -.751, .414))
+                roll = sign*float(np.clip(row[r], -.43625, .43625))
+                if not feasible(pitch, roll):
+                    left, right = 0., 1.
+                    for _ in range(30):
+                        mid = (left+right)/2
+                        if feasible(mid*pitch, mid*roll):
+                            left = mid
+                        else:
+                            right = mid
+                    pitch, roll = left*pitch, left*roll
+                row[p], row[r] = pitch, sign*roll
+        return result, np.any(np.abs(result-original) > 1e-10, axis=-1)
+
     def velocity_to_policy(self, q, qd):
         """Virtual ankle rates to motor rates through the Jacobian at ``q``."""
         q, qd = np.asarray(q, dtype=np.float64), np.array(qd, dtype=np.float64)
