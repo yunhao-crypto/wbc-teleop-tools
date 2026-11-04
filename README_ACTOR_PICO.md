@@ -50,6 +50,8 @@ Body31 ankle pitch/roll slots. The robot must use
 `ankle_virtual_pd_intent: false`. EXTERNAL tags those commands for the existing
 motor passthrough adapter: no target FK/IK roundtrip, virtual-box clamp or
 virtual-torque compensation. Motor angle/rate/torque/gain caps still apply.
+Native motor command bounds use the same float32 representation as BodyCmd
+and the firmware range checks; no extra tolerance is added to the limits.
 
 SDK 0.2.1 and its wire schema are unchanged. `BodyState` and `RobotInfo` still
 use virtual pitch/roll coordinates. EXTERNAL's command space is immutable for

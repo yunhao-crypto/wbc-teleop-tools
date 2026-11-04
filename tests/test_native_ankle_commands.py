@@ -145,6 +145,22 @@ class NativeAnkleTests(unittest.TestCase):
                 action[slots]=(.55-policy.contract.policy_default[slots])/policy.contract.scale[slots]
                 command,_=policy.decode(action)
                 envelope.check(command)
+                # Saturated targets are serialized as float32: .61075 becomes
+                # .6107500195503235, exactly the firmware's float32 upper cap.
+                for value in (-20., 20.):
+                    saturated,_=policy.decode(np.full(28,value))
+                    envelope.check(saturated)
+                for index in policy.contract.ankle.slots:
+                    slot=int(policy.mapping[index])
+                    for field,bounds in zip(('q','dq','tau','kp','kd'),envelope.limits[slot]):
+                        for bound,direction in zip(bounds,(-np.inf,np.inf)):
+                            joints=list(command.joints)
+                            joints[slot]=replace(joints[slot],**{field:bound})
+                            envelope.check(replace(command,joints=tuple(joints)))
+                            outside=float(np.nextafter(np.float32(bound),np.float32(direction)))
+                            joints[slot]=replace(joints[slot],**{field:outside})
+                            with self.assertRaises(ValueError):
+                                envelope.check(replace(command,joints=tuple(joints)))
                 with self.assertRaises(ValueError):envelope.check(command,virtual=True)
                 measured=np.zeros(31);measured[policy.mapping[slots[0]]]=.55
                 with self.assertRaises(ValueError):envelope.check_measured_pose(SimpleNamespace(q=measured))
@@ -155,6 +171,16 @@ class NativeAnkleTests(unittest.TestCase):
             motion=ActorPicoRuntime.hold_motion(runtime)
             expected=policy.contract.nominal_root_height if isinstance(policy.contract,morph.MorphMimicContract) else 0.
             self.assertAlmostEqual(motion.base[0,2],expected)
+
+    def test_native_caps_must_fit_float32_wire_fields(self):
+        for policy in self.policies():
+            for section,key in (('caps','qd_motor_max'),('pd','kp_motor_max')):
+                root,runtime=self.config(policy)
+                root['parallel_ankle'][section][key]=1e100
+                with tempfile.TemporaryDirectory() as tmp:
+                    path=Path(tmp)/'robot.yaml';path.write_text(yaml.safe_dump(root))
+                    with self.assertRaisesRegex(ValueError,'represented as float32'):
+                        load_robot_config(path,runtime)
 
     def test_virtual_policy_cannot_claim_native_motor_wire(self):
         raw=json.loads((ROOT/'tests/fixtures/actor_pico/actor_g1_contract.json').read_text())

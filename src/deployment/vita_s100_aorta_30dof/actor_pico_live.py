@@ -177,7 +177,14 @@ def check_motor_theta_ankle(ankle, intent, runtime, native=False):
             raise ValueError('Model gains exceed native motor limits')
         if not 0 <= gains[0][0] <= ranges[3][1] or not 0 <= gains[0][1] <= ranges[4][1]:
             raise ValueError('Native motor hold gains exceed limits')
-        runtime.policy.native_motor_ranges = ranges
+        # BodyCmd fields and firmware MotorAnkleRange are float32. Compare
+        # against the same representable bounds, without a numerical margin.
+        with np.errstate(over='ignore', invalid='ignore'):
+            wire_ranges = np.asarray(ranges, dtype=np.float32)
+        if (not np.isfinite(wire_ranges).all()
+                or np.any(wire_ranges[:, 0] >= wire_ranges[:, 1])):
+            raise ValueError('Native motor limits cannot be represented as float32')
+        runtime.policy.native_motor_ranges = [tuple(map(float, row)) for row in wire_ranges]
         runtime.policy.native_hold_gains = gains[0]
         return
     # The actor's clamp feedforward assumes the robot clamps to this same box.
