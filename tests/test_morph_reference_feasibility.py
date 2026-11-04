@@ -80,3 +80,28 @@ def test_conservative_reference_box_stays_inside_coupled_motor_travel():
     assert not changed.any()
     motors=c.ankle.to_policy(out)[:,c.ankle.slots]
     assert motors.min()>c.ankle.motor_limits[0] and motors.max()<c.ankle.motor_limits[1]
+
+
+def test_guard_is_versioned_in_model_contract():
+    import json
+    from pathlib import Path
+    from deployment.vita_s100_aorta_30dof.actor_morphmimic import MorphMimicContract,CONTRACT_KEY
+    import locomotion_aorta.wbc_tracking_policy as sdk
+    # Real exported contract, supplied by the checked-in source contract fixture
+    # plus the same layout fields the exporter emits.
+    from test_native_ankle_commands import ANKLE
+    from deployment.vita_s100_aorta_30dof.actor_parallel_ankle import MotorThetaAnkle
+    root=Path(__file__).parents[1]
+    control=json.loads((root/'tests/fixtures/actor_pico/actor_g1_contract.json').read_text())
+    ankle=MotorThetaAnkle(control['joint_names'],ANKLE)
+    control['default_joint_pos']=ankle.to_policy(control['default_joint_pos']).tolist();control['ankle']=ANKLE
+    for i in ankle.slots:
+        control['joint_pos_limit_lower'][i],control['joint_pos_limit_upper'][i]=ANKLE['motor_limits']
+    raw=dict(schema_version=1,policy_kind='morphmimic_vita02a_tracking',goal_anchor='reference',history_length=10,input_dim=1600,future_frames=10,
+             velocity_rule='virtual_gradient_then_motor_jacobian',canonical_indices=[i for i in range(29) if i!=13],nominal_root_height=.891088,
+             control=control,anchor_chain=[dict(joint='waist_yaw_joint'),dict(joint='waist_pitch_joint')])
+    legacy=MorphMimicContract.from_metadata(sdk,{CONTRACT_KEY:json.dumps(raw)})
+    assert not legacy.reference_feasibility_guard
+    raw['reference_feasibility_guard']='virtual_box_and_coupled_motor_v1'
+    candidate=MorphMimicContract.from_metadata(sdk,{CONTRACT_KEY:json.dumps(raw)})
+    assert candidate.reference_feasibility_guard
