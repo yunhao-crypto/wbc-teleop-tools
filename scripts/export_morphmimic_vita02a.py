@@ -18,6 +18,7 @@ def main():
     p.add_argument('--morph-repo', type=Path, required=True)
     p.add_argument('--checkpoint', type=Path, required=True)
     p.add_argument('--output', type=Path, default=Path('artifacts/morphmimic/morphmimic_vita02a.onnx'))
+    p.add_argument('--config-output', type=Path, default=Path('config/actor_pico_morphmimic.json'))
     args = p.parse_args()
     root = Path(__file__).resolve().parents[1]
     sys.path[:0] = [str(args.morph_repo.resolve()), str(args.morph_repo.resolve()/'src')]
@@ -115,7 +116,9 @@ def main():
     config['body_profile']['ankle_clamp_feedforward']=False
     config['reference_window']={'past_frames':1,'tail_frames':1}
     config['provenance']={'exporter':'scripts/export_morphmimic_vita02a.py',**{k:metadata[k] for k in ('checkpoint_sha256','iteration','training_commit')}}
-    (root/'config/actor_pico_morphmimic.json').write_text(json.dumps(config,indent=2)+'\n')
+    config_out = args.config_output if args.config_output.is_absolute() else root/args.config_output
+    config_out.parent.mkdir(parents=True, exist_ok=True)
+    config_out.write_text(json.dumps(config,indent=2)+'\n')
     report=dict(onnx=str(out), max_abs_onnx_error=error, iteration=c['iteration'], samples=12)
     out.with_suffix('.validation.json').write_text(json.dumps(report,indent=2)+'\n')
     print(json.dumps(report))

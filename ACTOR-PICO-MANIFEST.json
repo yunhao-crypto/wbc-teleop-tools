@@ -342,8 +342,8 @@
     },
     {
       "path": "scripts/export_morphmimic_vita02a.py",
-      "sha256": "7ee7f919e4c0032cb3b281465d9eeb6cdaf809a78544f27c329e9d1f502c6b52",
-      "bytes": 7417,
+      "sha256": "1522c8259bce54a1b5eb1d4263dd40cf4b412408c2e959198075217299fa70ec",
+      "bytes": 7643,
       "mode": "0o644"
     },
     {

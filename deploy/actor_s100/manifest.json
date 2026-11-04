@@ -116,7 +116,7 @@
     {
       "path": "ACTOR-PICO-MANIFEST.json",
       "bytes": 13975,
-      "sha256": "45593949b34fcef989e8a9c7de620f710887751d6a16f5b1cc340382b762a132"
+      "sha256": "0153844a5ed96a210ad0da44530d5613c01d037c6415f46e4cd5a20bdfda93d4"
     },
     {
       "path": "README.md",
@@ -510,8 +510,8 @@
     },
     {
       "path": "scripts/export_morphmimic_vita02a.py",
-      "bytes": 7417,
-      "sha256": "7ee7f919e4c0032cb3b281465d9eeb6cdaf809a78544f27c329e9d1f502c6b52"
+      "bytes": 7643,
+      "sha256": "1522c8259bce54a1b5eb1d4263dd40cf4b412408c2e959198075217299fa70ec"
     },
     {
       "path": "scripts/extract_incident_attitude.py",
