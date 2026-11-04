@@ -41,3 +41,42 @@ class ReferenceFeasibilityTests(unittest.TestCase):
         np.testing.assert_allclose(actual[-10:,c.ankle.slots],0,atol=1e-10)
 
 if __name__=='__main__':unittest.main()
+
+
+def test_gmr_limits_are_applied_before_engine_construction_without_source_mutation():
+    import json
+    from pathlib import Path
+    from deployment.vita_s100_aorta_30dof.actor_pico_gmr import _construct_engine
+    path=Path(__file__).parents[1]/'third_party/motion_stream_bridge/motion_stream_bridge/gmr_lite/configs/xrobot_to_vita02a.json'
+    before=path.read_bytes();seen=[]
+    def engine(**kwargs):
+        config=json.loads(Path(kwargs['config']).read_text());seen.append(config);return config
+    settings=dict(human_height_m=1.75,ankle_reference_limits=dict(pitch=[-.751,.414],roll=[-.3926987648,.3926987648]))
+    config=_construct_engine(engine,path,settings)
+    assert path.read_bytes()==before
+    assert Path(config['robot_xml']).is_absolute() and Path(config['robot_xml']).is_file()
+    for side in ('left','right'):
+        assert config['joint_limits'][side+'_ankle_pitch_joint']==[-.751,.414]
+    original=_construct_engine(engine,path,dict(human_height_m=1.75))
+    assert original==json.loads(before)
+
+
+def test_gmr_override_rejects_unsafe_or_wider_ranges():
+    import pytest
+    from pathlib import Path
+    from deployment.vita_s100_aorta_30dof.actor_pico_gmr import _construct_engine
+    path=Path(__file__).parents[1]/'third_party/motion_stream_bridge/motion_stream_bridge/gmr_lite/configs/xrobot_to_vita02a.json'
+    for pitch in [[-.88,.53],[.4,-.7],[float('nan'),.4]]:
+        with pytest.raises(ValueError):
+            _construct_engine(lambda **_:None,path,dict(human_height_m=1.75,ankle_reference_limits=dict(pitch=pitch,roll=[-.39,.39])))
+
+
+def test_conservative_reference_box_stays_inside_coupled_motor_travel():
+    c=contracts()[2]
+    pitch,roll=np.meshgrid(np.linspace(-.751,.414,41),np.linspace(-.43625,.43625,41))
+    q=np.tile(c.default,(pitch.size,1))
+    for p,r,sign in c.ankle.legs:q[:,p]=pitch.ravel();q[:,r]=sign*roll.ravel()
+    out,changed=c.ankle.project_reference(q)
+    assert not changed.any()
+    motors=c.ankle.to_policy(out)[:,c.ankle.slots]
+    assert motors.min()>c.ankle.motor_limits[0] and motors.max()<c.ankle.motor_limits[1]

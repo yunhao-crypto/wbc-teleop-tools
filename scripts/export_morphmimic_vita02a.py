@@ -117,6 +117,8 @@ def main():
     config['body_profile']['ankle_command_space']='policy'
     config['body_profile']['ankle_clamp_feedforward']=False
     config['reference_window']={'past_frames':1,'tail_frames':1}
+    if c.get('data_version_sha256'):
+        config['retargeting']['ankle_reference_limits']={'pitch':[-.751,.414], 'roll':[-.3926987648,.3926987648]}
     config['provenance']={'exporter':'scripts/export_morphmimic_vita02a.py',**{k:metadata[k] for k in ('checkpoint_sha256','iteration','training_commit','data_version_sha256','finetune_source_sha256','reference_feasibility_guard')}}
     config_out = args.config_output if args.config_output.is_absolute() else root/args.config_output
     config_out.parent.mkdir(parents=True, exist_ok=True)
