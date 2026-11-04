@@ -4,10 +4,10 @@
   "policy_kind": "morphmimic_vita02a_tracking",
   "artifacts": {
     "model": {
-      "path": "artifacts/morphmimic/morphmimic_vita02a.onnx",
-      "sha256": "c688c0d66d076dd86da62d7943bba2621e1b5364c9665bda0c09e0f95248593b",
-      "source_name": "ckpt_24500.pt",
-      "bytes": 35506759
+      "path": "artifacts/morphmimic/morphmimic_vita02a_iter34000.onnx",
+      "sha256": "416f9f11e0e3861c699fd08a0332e51a7d3d28161db620a18447143d90ffe778",
+      "bytes": 35506759,
+      "source_name": "ckpt_34000.pt"
     },
     "urdf": {
       "path": "artifacts/output_envelopes.motion.urdf",
@@ -223,8 +223,8 @@
   "pico_hold_age_s": 0.25,
   "provenance": {
     "exporter": "scripts/export_morphmimic_vita02a.py",
-    "checkpoint_sha256": "3e90b7f6685b79c75ea1e0533833565f3eda151283522ba9eaeeb55671dd4cfc",
-    "iteration": 24500,
+    "checkpoint_sha256": "85bc1ab224cd8dc5cd7ba153aafc6eb41a3519fd8f0cf99dd875d7e312784c72",
+    "iteration": 34000,
     "training_commit": "8899e47565201ba92af7169a167f03e87abe9b32"
   },
   "retargeting": {

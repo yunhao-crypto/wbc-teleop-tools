@@ -330,8 +330,8 @@
     },
     {
       "path": "config/actor_pico_morphmimic.json",
-      "sha256": "90ef3e6d08beb16f8bcea3132e2ec259e9dd2494dda3420e44211a1341d422a3",
-      "bytes": 7803,
+      "sha256": "cd3456d8d5b4883b9d6e99b71a3aa2a39b6a5f55ec006b5a3e131462484b244c",
+      "bytes": 7813,
       "mode": "0o644"
     },
     {
@@ -392,8 +392,8 @@
       "provision": "Supply separately using bootstrap_actor_s100.py --policy supermimic --model"
     },
     {
-      "path": "artifacts/morphmimic/morphmimic_vita02a.onnx",
-      "sha256": "c688c0d66d076dd86da62d7943bba2621e1b5364c9665bda0c09e0f95248593b",
+      "path": "artifacts/morphmimic/morphmimic_vita02a_iter34000.onnx",
+      "sha256": "416f9f11e0e3861c699fd08a0332e51a7d3d28161db620a18447143d90ffe778",
       "bytes": 35506759,
       "provision": "Supply separately using bootstrap_actor_s100.py --policy morphmimic --model"
     }

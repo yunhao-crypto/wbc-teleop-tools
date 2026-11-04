@@ -73,8 +73,8 @@
       "provision": "Supply separately using bootstrap_actor_s100.py --policy supermimic --model"
     },
     {
-      "path": "artifacts/morphmimic/morphmimic_vita02a.onnx",
-      "sha256": "c688c0d66d076dd86da62d7943bba2621e1b5364c9665bda0c09e0f95248593b",
+      "path": "artifacts/morphmimic/morphmimic_vita02a_iter34000.onnx",
+      "sha256": "416f9f11e0e3861c699fd08a0332e51a7d3d28161db620a18447143d90ffe778",
       "bytes": 35506759,
       "provision": "Supply separately using bootstrap_actor_s100.py --policy morphmimic --model"
     }
@@ -115,8 +115,8 @@
     },
     {
       "path": "ACTOR-PICO-MANIFEST.json",
-      "bytes": 13975,
-      "sha256": "0153844a5ed96a210ad0da44530d5613c01d037c6415f46e4cd5a20bdfda93d4"
+      "bytes": 13985,
+      "sha256": "2d0c7d2c2709031f0093af93abafe282622431aebf4ce7f99576bf1ae925da23"
     },
     {
       "path": "README.md",
@@ -135,13 +135,23 @@
     },
     {
       "path": "artifacts/morphmimic/input_parity.json",
-      "bytes": 342,
-      "sha256": "59179f1854f73797c020af9155a8a61875b849dd8d859a67c6c7b05ecabad821"
+      "bytes": 341,
+      "sha256": "dc5af2a6e3dec038996c88b7b12954c2bfb480d351953cd0c6f4dbaadcc167cb"
+    },
+    {
+      "path": "artifacts/morphmimic/iter34000.deployment.json",
+      "bytes": 4759,
+      "sha256": "4671b3a89f78ebca35eb3d4e95e95a57f770fa9f9cbd0fbd6fc23aabcd721986"
     },
     {
       "path": "artifacts/morphmimic/morphmimic_vita02a.validation.json",
       "bytes": 181,
       "sha256": "05a50efb643be038115bf5cfa23466104546ea0c81ab01e87510a6e38516fce2"
+    },
+    {
+      "path": "artifacts/morphmimic/morphmimic_vita02a_iter34000.validation.json",
+      "bytes": 189,
+      "sha256": "a21a495d2e16ea2e7f694cd33a1f7753e67335d13f1e63fd96b6ffba9aad10f4"
     },
     {
       "path": "artifacts/output_envelopes.interface.json",
@@ -185,8 +195,8 @@
     },
     {
       "path": "config/actor_pico_morphmimic.json",
-      "bytes": 7803,
-      "sha256": "90ef3e6d08beb16f8bcea3132e2ec259e9dd2494dda3420e44211a1341d422a3"
+      "bytes": 7813,
+      "sha256": "cd3456d8d5b4883b9d6e99b71a3aa2a39b6a5f55ec006b5a3e131462484b244c"
     },
     {
       "path": "config/actor_pico_supermimic.json",
