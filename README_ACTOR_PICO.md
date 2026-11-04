@@ -698,6 +698,11 @@ already increased counter as its baseline. Logging records requested commands, s
 input state IDs; publication alone is not proof of actuator execution.
 
 Every attempted entry exits through SDK CANCEL and requires PASSIVE/IDLE.
+The launcher creates a separate private client-mode Zenoh session for the
+short-lived firmware CLI used by FIXED_STAND and startup cancellation. It
+connects through the existing router with the same namespace/authentication;
+the SDK feedback and continuous control session remains in peer mode. A failed
+or timed-out motion request is never retried automatically.
 An incomplete exit is reported with the actual available status. **PASSIVE
 can let loaded limbs fall**; keep support through exit. EXTERNAL has no automatic
 expiry: the application duration is not a server lease, and a killed/crashed

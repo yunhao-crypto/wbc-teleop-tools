@@ -44,7 +44,7 @@ def main():
             actor['files'].append(dict(path=name))
     additional = ['scripts/configure_actor_s100.py', 'tests/test_actor_local_provision.py',
                   'src/deployment/vita_s100_aorta_30dof/actor_pico_head.py',
-                  'tests/test_actor_pico_head.py',
+                  'tests/test_actor_pico_head.py', 'tests/test_actor_firmware_session.py',
                   'src/deployment/vita_s100_aorta_30dof/actor_pico_scheduling.py',
                   'src/deployment/vita_s100_aorta_30dof/actor_pico_gmr.py',
                   'tests/fixtures/actor_pico/bridge_gmr_golden.npz',

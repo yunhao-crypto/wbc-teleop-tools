@@ -6,8 +6,8 @@
   "files": [
     {
       "path": "README_ACTOR_PICO.md",
-      "sha256": "e283cad1f045ef8b494ee40f931526f3de3cdaa83e6d72f0405a0d48be0f7b6e",
-      "bytes": 57360,
+      "sha256": "e78caec125fd801322978f088dfc4789f13e8d4817bb32103b584b3b5c2de58f",
+      "bytes": 57724,
       "mode": "0o644"
     },
     {
@@ -30,8 +30,8 @@
     },
     {
       "path": "scripts/start_actor_pico.sh",
-      "sha256": "645c9ddce03a974534b2d4cd36476e59ab9f3169a290b4af8f39f67ab74b49d5",
-      "bytes": 5640,
+      "sha256": "87667b82deaf2443271649b15e0956ee52b93642116c3874dd361fccb1d1cd2b",
+      "bytes": 5788,
       "mode": "0o755"
     },
     {
@@ -90,8 +90,8 @@
     },
     {
       "path": "src/deployment/vita_s100_aorta_30dof/actor_pico_startup.py",
-      "sha256": "34f512e800fd2e3f20ff5be61cc115716af241afebb055be76af8fff2d32e6a2",
-      "bytes": 12998,
+      "sha256": "894f7037f0b840ad1bd6c90e06e8d21a7523c9ccf7b62de2b9e956da4cd22b32",
+      "bytes": 13396,
       "mode": "0o644"
     },
     {
@@ -530,6 +530,12 @@
       "path": "tests/pico_viewer/VideoWireTest.java",
       "sha256": "eb1f0effcd5a2dedd0662cb1c9a9039b0423f99dfd82f9ca2bac393a0755372b",
       "bytes": 2344,
+      "mode": "0o644"
+    },
+    {
+      "path": "tests/test_actor_firmware_session.py",
+      "sha256": "9ea20e57ce6a855949a2b714e5293e9e561bf233840c41ffb8fc14706c17bdbb",
+      "bytes": 5385,
       "mode": "0o644"
     }
   ],

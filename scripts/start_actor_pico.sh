@@ -112,8 +112,10 @@ fi
 if [[ $HELP == 0 && ( "$MODE" == state-check || "$MODE" == shadow || "$MODE" == live ) ]]; then
   "$PYTHON" "$ROOT/scripts/prepare_zenoh_session.py" \
     --source /app_param/zenoh/s100_session_peer.json5 \
-    --output "$ROOT/outputs/actor_pico_zenoh_session.json5"
+    --output "$ROOT/outputs/actor_pico_zenoh_session.json5" \
+    --cli-output "$ROOT/outputs/actor_pico_cli_session.json5"
   export ZENOH_SESSION_CONFIG_URI="$ROOT/outputs/actor_pico_zenoh_session.json5"
+  export VITA_ACTOR_CLI_SESSION_CONFIG="$ROOT/outputs/actor_pico_cli_session.json5"
 fi
 if [[ "$MODE" == connect ]]; then
   exec "$PYTHON" "$ROOT/scripts/pico_session_services.py" --connect-only \

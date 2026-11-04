@@ -5,6 +5,7 @@ only action-request implementation; EXTERNAL remains owned by the real SDK.
 """
 from dataclasses import replace
 import math
+import os
 from pathlib import Path
 import subprocess
 import uuid
@@ -90,8 +91,15 @@ class FirmwareActions:
         cli = '/app/locomotion/humanoid_locomotion_cli'
         command = ([cli, 'request', '--mode', 'FIXED_STAND', '--req_id', 'actor-'+uuid.uuid4().hex]
                    if action == 'FIXED_STAND' else [cli, 'cancel'])
+        cli_env = None
+        config = os.environ.get('VITA_ACTOR_CLI_SESSION_CONFIG')
+        if config:
+            path = Path(config)
+            if not path.is_file() or path.stat().st_mode & 0o077:
+                raise ValueError('Firmware CLI session must be an existing private 0600 file')
+            cli_env = dict(os.environ, ZENOH_SESSION_CONFIG_URI=str(path))
         process = subprocess.Popen(command+['--timeout_ms', '5000'], stdout=subprocess.PIPE,
-                                   stderr=subprocess.STDOUT, text=True)
+                                   stderr=subprocess.STDOUT, text=True, env=cli_env)
         try:
             deadline = self.clock.monotonic()+6.
             while process.poll() is None:
