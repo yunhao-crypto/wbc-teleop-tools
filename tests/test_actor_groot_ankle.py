@@ -58,6 +58,8 @@ def metadata(raw):
 def install_motor_theta(runtime):
     """Point a runtime at a motor_theta contract on the delivered network weights."""
     runtime.model.contract = ga.contract_from_metadata(runtime.math, metadata(motor_theta_contract()))
+    # This fixture exercises compatibility with the former virtual wire path.
+    runtime.config['body_profile']['ankle_command_space']='virtual_pitch_roll'
     runtime.policy = ga.create_policy(runtime.model.contract, runtime.config['body_profile'], runtime.math)
     runtime.reset_inputs()
 
@@ -66,7 +68,8 @@ class GrootAnkleTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.runtime = ActorPicoRuntime(ROOT, backend='auto')
-        cls.math, cls.profile = cls.runtime.math, cls.runtime.config['body_profile']
+        cls.math, cls.profile = cls.runtime.math, dict(cls.runtime.config['body_profile'],
+                                                     ankle_command_space='virtual_pitch_roll')
         cls.raw = motor_theta_contract()
         cls.c = ga.contract_from_metadata(cls.math, metadata(cls.raw))
         # The same export read as if every slot were a serial joint: the policy-space reference.
@@ -182,9 +185,11 @@ class AnkleTypeReportTests(unittest.TestCase):
         spec.loader.exec_module(entry)
         runtime = ActorPicoRuntime(ROOT, backend='ort')
         self.assertEqual(entry.ankle_type(runtime), dict(ankle_control_space='virtual_pitch_roll',
+                                                         required_ankle_command_space='virtual_pitch_roll',
                                                          required_ankle_virtual_pd_intent=True))
         install_motor_theta(runtime)
         self.assertEqual(entry.ankle_type(runtime), dict(ankle_control_space='motor_theta',
+                                                         required_ankle_command_space='virtual_pitch_roll',
                                                          required_ankle_virtual_pd_intent=False))
 
 

@@ -16,6 +16,8 @@ import time
 
 import numpy as np
 
+from .actor_parallel_ankle import command_space
+
 STATE_AGE = .1
 STATUS_AGE = .5
 TARGET_PERIOD = .020
@@ -80,9 +82,10 @@ def load_robot_config(path, runtime=None):
     This is not discovery of the running process's selected configuration.
     The attendant must verify that selection in the interactive confirmation.
     With a runtime, the EXTERNAL ankle mode must match its model: virtual
-    pitch/roll actors need virtual PD; motor_theta actors need PD-A with the
-    trained motor gains, motor limits and virtual box. Without one (local
-    start configuration) either boolean is accepted.
+    pitch/roll actors need virtual PD. Motor-theta actors select either native
+    motor commands or the legacy virtual-target motor-PD adapter. Match the
+    command space before using its limits. Without a runtime, validate the YAML
+    structure only (local start configuration).
     """
     import yaml
     path = Path(path)
@@ -100,12 +103,19 @@ def load_robot_config(path, runtime=None):
         motor_theta = runtime is not None and getattr(runtime.model.contract, 'ankle', None) is not None
         if type(intent) is not bool:
             raise ValueError('EXTERNAL ankle_virtual_pd_intent must be a boolean')
+        space = params.get('ankle_command_space', 'virtual_pitch_roll')
+        if space not in ('virtual_pitch_roll', 'motor_theta'):
+            raise ValueError('Invalid EXTERNAL ankle_command_space')
+        if runtime is not None and space != command_space(runtime.policy):
+            raise ValueError('Model deployment/EXTERNAL ankle_command_space mismatch')
+        if space == 'motor_theta' and (intent or (runtime is not None and not motor_theta)):
+            raise ValueError('motor_theta requires a motor-angle policy and motor PD')
         if motor_theta:
-            check_motor_theta_ankle(ankle, intent, runtime)
+            check_motor_theta_ankle(ankle, intent, runtime, native=space == 'motor_theta')
         elif runtime is not None and (ankle['pd']['strategy'] != 'virtual_pd' or intent is not True):
             raise ValueError('Requires virtual_pd and EXTERNAL ankle_virtual_pd_intent=true; no config is changed')
         unknown = set(params)-{'command_timeout_ms', 'recover_valid_frames',
-                              'interpolation', 'safe_hold', 'ankle_virtual_pd_intent'}
+                              'interpolation', 'safe_hold', 'ankle_virtual_pd_intent', 'ankle_command_space'}
         if unknown:
             raise ValueError('Unsupported EXTERNAL params: '+', '.join(sorted(unknown)))
         timeout = params['command_timeout_ms']
@@ -137,15 +147,15 @@ def load_robot_config(path, runtime=None):
     return params, dict(path=str(path), sha256=hashlib.sha256(payload).hexdigest())
 
 
-def check_motor_theta_ankle(ankle, intent, runtime):
-    """PD-A must track the IK of the actor's virtual targets with the trained motor PD."""
+def check_motor_theta_ankle(ankle, intent, runtime, native=False):
+    """Validate native motor caps, or the compatibility IK/fixed-gain contract."""
     contract, profile = runtime.model.contract, runtime.config['body_profile']
     if intent is not False:
         raise ValueError('motor_theta actor requires EXTERNAL ankle_virtual_pd_intent=false (motor PD); '
                          'no config is changed')
     slots = contract.ankle.slots
     gains = [(float(ankle['pd']['kp_motor']), float(ankle['pd']['kd_motor']))]
-    if {(float(contract.kp[i]), float(contract.kd[i])) for i in slots} != set(gains):
+    if not native and {(float(contract.kp[i]), float(contract.kd[i])) for i in slots} != set(gains):
         raise ValueError(f'Robot ankle motor gains {gains[0]} differ from the trained motor PD')
     caps = (float(ankle['caps']['theta_min']), float(ankle['caps']['theta_max']))
     if not np.allclose(caps, contract.ankle.motor_limits, rtol=0, atol=1e-9):
@@ -153,6 +163,23 @@ def check_motor_theta_ankle(ankle, intent, runtime):
     for name, value in contract.ankle.geometry.items():
         if not math.isclose(ankle['geometry'][name], value, rel_tol=0, abs_tol=1e-9):
             raise ValueError('Model/robot ankle geometry differs: '+name)
+    if native:
+        caps = ankle['caps']
+        pd = ankle['pd']
+        ranges = [tuple(contract.ankle.motor_limits),
+                  (-float(caps['qd_motor_max']), float(caps['qd_motor_max'])),
+                  (-float(caps['tau_motor_max']), float(caps['tau_motor_max'])),
+                  (0., float(pd['kp_motor_max'])), (0., float(pd['kd_motor_max']))]
+        if any(not np.isfinite(r).all() or r[0] >= r[1] for r in ranges):
+            raise ValueError('Invalid native motor limits')
+        if any(not 0 <= contract.kp[i] <= ranges[3][1] or
+               not 0 <= contract.kd[i] <= ranges[4][1] for i in slots):
+            raise ValueError('Model gains exceed native motor limits')
+        if not 0 <= gains[0][0] <= ranges[3][1] or not 0 <= gains[0][1] <= ranges[4][1]:
+            raise ValueError('Native motor hold gains exceed limits')
+        runtime.policy.native_motor_ranges = ranges
+        runtime.policy.native_hold_gains = gains[0]
+        return
     # The actor's clamp feedforward assumes the robot clamps to this same box.
     for axis in ('pitch', 'roll'):
         box = [float(x) for x in ankle['virtual_limits'][axis]]
@@ -178,11 +205,15 @@ class CommandEnvelope:
         runtime.policy.bind_body_info(self.body)
         self.limits = []
         self.delegated_joints = []
+        self.measured_q_ranges = []
+        self.virtual_limits = []
         ankles = {'left_ankle_pitch_joint', 'left_ankle_roll_joint',
                   'right_ankle_pitch_joint', 'right_ankle_roll_joint'}
         for index, (name, cap) in enumerate(zip(self.body.joint_names, self.body.joints)):
+            self.measured_q_ranges.append((cap.q_min, cap.q_max) if cap.populated else None)
             if not cap.populated:
                 self.limits.append(None)
+                self.virtual_limits.append(None)
                 continue
             if cap.is_mock or cap.slot_role != 1:
                 raise ValueError('Physical ACTIVE body actuator required: '+name)
@@ -200,10 +231,17 @@ class CommandEnvelope:
             if any(not np.isfinite(bounds).all() or bounds[0] >= bounds[1]
                    for bounds in ranges if bounds is not None):
                 raise ValueError('Invalid advertised command ranges: '+name)
+            self.virtual_limits.append(list(ranges))
+            native = name in ankles and command_space(runtime.policy) == 'motor_theta'
+            if native:
+                if not hasattr(runtime.policy, 'native_motor_ranges'):
+                    raise ValueError('Native motor mode requires effective robot config validation')
+                ranges = runtime.policy.native_motor_ranges
             for key, value_range in (('kp', ranges[3]), ('kd', ranges[4])):
                 values = params['safe_hold'][key]
                 slot = index if len(values) == 31 else BODY_TO_LEGACY[index]
-                value = values[slot]
+                value = (runtime.policy.native_hold_gains[0 if key == 'kp' else 1]
+                         if native else values[slot])
                 if (not math.isfinite(value) or value <= 0 or (value_range is not None
                         and not value_range[0] <= value <= value_range[1])):
                     raise ValueError('safe_hold gain unavailable/out of bounds: '+name)
@@ -217,15 +255,16 @@ class CommandEnvelope:
     def check_measured_pose(self, state):
         # Observations are measurements, not decoded policy targets. Match the
         # SDK example: straight knees may be below the model's output bounds.
-        command = replace(self.profile_command, joints=tuple(
-            replace(j, q=float(state.q[i])) if self.limits[i] else j
-            for i, j in enumerate(self.profile_command.joints)))
-        self.check(command, q_margin=MEASURED_Q_MARGIN)
+        for i, bounds in enumerate(self.measured_q_ranges):
+            if bounds is not None and (not math.isfinite(state.q[i]) or
+                    not bounds[0]-MEASURED_Q_MARGIN <= state.q[i] <= bounds[1]+MEASURED_Q_MARGIN):
+                raise ValueError('Measured virtual joint outside bounds: '+self.body.joint_names[i])
 
-    def check(self, command, q_margin=0.):
+    def check(self, command, q_margin=0., *, virtual=False):
         if len(command.joints) != 31:
             raise ValueError('Command must contain exactly 31 slots')
-        for name, joint, ranges in zip(self.body.joint_names, command.joints, self.limits):
+        limits = self.virtual_limits if virtual else self.limits
+        for name, joint, ranges in zip(self.body.joint_names, command.joints, limits):
             values = [getattr(joint, key) for key in ('q', 'dq', 'tau', 'kp', 'kd')]
             if not np.isfinite(values).all():
                 raise ValueError('Nonfinite body command: '+name)
@@ -479,7 +518,7 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
         raise ValueError('Manual Pico mode requires an idle capture worker')
     runtime.reset_inputs()
     # Warm actual inference before taking ownership; erase its action history.
-    runtime.infer_motion(runtime.math.Motion.hold(runtime.model.contract.default),
+    runtime.infer_motion(runtime.hold_motion(),
         q=runtime.model.contract.default, dq=np.zeros(28), root=[1, 0, 0, 0], gyro=np.zeros(3))
     runtime.reset_inputs()
     preflight_deadline = clock.monotonic()+args.startup_timeout
@@ -512,7 +551,7 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
                 command, obs, row = pico_reference_command(runtime, inputs.snapshot, started,
                     q=q, dq=dq, root=root, gyro=gyro)
             else:
-                motion = runtime.math.Motion.hold(runtime.model.contract.default)
+                motion = runtime.hold_motion()
                 motion = motion.lead_in(q, root, runtime.config['body_profile']['lead_in'])
                 command, obs, row = runtime.infer_motion_command(motion,
                     q=q, dq=dq, root=root, gyro=gyro, yaw_offset=runtime.math.yaw(root))
@@ -573,7 +612,7 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
             # earlier passive snapshot, and still before requesting EXTERNAL.
             runtime.reset_inputs()
             begin = clock.monotonic()
-            lead = runtime.math.Motion.hold(runtime.model.contract.default).lead_in(
+            lead = runtime.hold_motion().lead_in(
                 q, root, runtime.config['body_profile']['lead_in'])
             command, obs, row = runtime.infer_motion_command(lead,q=q,dq=dq,root=root,gyro=gyro,
                                                             yaw_offset=runtime.math.yaw(root))
@@ -621,7 +660,7 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
             startup.check_hardware_pose(envelope,state)
         if not auto:
             envelope.check_measured_pose(state)
-        lead = runtime.math.Motion.hold(runtime.model.contract.default).lead_in(
+        lead = runtime.hold_motion().lead_in(
             q, root, runtime.config['body_profile']['lead_in'])
         offset = runtime.math.yaw(root)
         preparation = max(3., (len(lead.q)-1)*runtime.model.contract.period)
@@ -759,7 +798,7 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
                     manual_reference(runtime,snapshot,clock.monotonic())
                     tracking = False
                     auto_pico = False
-                    lead = runtime.math.Motion.hold(runtime.model.contract.default).lead_in(
+                    lead = runtime.hold_motion().lead_in(
                         q,root,runtime.config['body_profile']['lead_in'])
                     offset = runtime.math.yaw(root)
                     stand_tick = 0

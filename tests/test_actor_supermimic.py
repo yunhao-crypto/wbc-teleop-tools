@@ -29,7 +29,9 @@ class SuperMimicTests(unittest.TestCase):
         cls.motion = cls.math.Motion(cls.fx['q'], cls.fx['base'], cls.fx['quat_wxyz'])
 
     def setUp(self):
-        self.policy = sm.create_policy(self.c, self.runtime.config['body_profile'],
+        # Preserve legacy FK/clamp-compensation coverage; native tests are separate.
+        self.policy = sm.create_policy(self.c, dict(self.runtime.config['body_profile'],
+                                      ankle_command_space='virtual_pitch_roll'),
                                        self.math, self.runtime.config)
 
     def test_fixture_is_from_the_configured_model(self):
@@ -299,6 +301,8 @@ class SuperMimicLiveTests(test_actor_pico_live.LiveTests):
     @classmethod
     def setUpClass(cls):
         cls.runtime = ActorPicoRuntime(ROOT, backend='ort', policy='supermimic')
+        cls.runtime.config['body_profile']['ankle_command_space']='virtual_pitch_roll'
+        cls.runtime.policy.profile['ankle_command_space']='virtual_pitch_roll'
 
     def test_motor_theta_robot_config_must_match_the_trained_ankle(self):
         from deployment.vita_s100_aorta_30dof.actor_pico_live import load_robot_config

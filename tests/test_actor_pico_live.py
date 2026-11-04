@@ -50,7 +50,7 @@ def robot_config(runtime=None):
     for name in ('PASSIVE','QUIET_PASSIVE'):
         config['actions'][name] = dict(generator='builtin::keyframe', params=dict(
             kp=0.,keyframes=[dict(timestamp=0,positions=[0.]*42,kd=5.),
-                            dict(timestamp=2,positions=[0.]*42,kd=0.)]))
+                            dict(timestamp=4,positions=[0.]*42,kd=0.)]))
     return config
 
 
@@ -1657,7 +1657,7 @@ class LocalStartTests(unittest.TestCase):
         self.assertIn('Select the actor policy explicitly',refused('check','--steps','1'))
         self.assertIn('Conflicting',refused('sonic','--policy','supermimic'))
         self.assertIn("Unknown policy 'g1'",refused('--policy','g1'))
-        for policy in ('sonic','supermimic'):
+        for policy in ('sonic','supermimic','morphmimic'):
             args=launch(policy)
             self.assertEqual(args[1:4],['live','--policy',policy])
             for flag in ('--auto-start','--wait-pico','--manual-pico','--confirm-motion','--local-start'):
@@ -1673,7 +1673,7 @@ class LocalStartTests(unittest.TestCase):
         self.assertEqual(launch('shadow','--policy','sonic','--seconds','3')[1:],['shadow','--policy','sonic','--seconds','3'])
         # Interactive menu: a number selects; an empty answer starts nothing.
         import pty
-        for answer,expected in ((b'2\n','supermimic'),(b'1\n','sonic'),(b'\n',None)):
+        for answer,expected in ((b'2\n','supermimic'),(b'1\n','sonic'),(b'3\n','morphmimic'),(b'\n',None)):
             output.unlink(missing_ok=True)
             master,slave=pty.openpty()
             try:
@@ -1736,6 +1736,7 @@ class LocalStartTests(unittest.TestCase):
         runtime=NS(config={'artifacts':{'model':{}},'retargeting':{'implementation':'motion_stream_bridge_gmr_vita02a'}},reference=NS(delay=.2),
                 retarget=NS(accelerated=True),
                 model=NS(contract=NS(input_dim=1520)))
+        runtime.policy=NS(contract=runtime.model.contract,profile={'ankle_command_space':'policy'})
         for tail,expected in [([],0),(['--seconds','5'],5),(['--seconds','600'],600)]:
             captured=[]
             def live(runtime,args,write):

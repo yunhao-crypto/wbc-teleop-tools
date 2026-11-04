@@ -79,3 +79,6 @@ __pycache__/
 !/deploy/actor_s100/runtime/*.tar.gz
 !/tests/fixtures/actor_pico/pico_replay.npz
 !/tests/fixtures/actor_pico/bridge_gmr_golden.npz
+
+# Exported MorphMimic policy is provisioned separately; keep validation reports.
+/artifacts/morphmimic/*.onnx

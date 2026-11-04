@@ -27,7 +27,7 @@ from deployment.vita_s100_aorta_30dof.actor_pico_runtime import ActorPicoRuntime
 
 def check(runtime, args, write):
     c = runtime.model.contract
-    motion = runtime.math.Motion.hold(c.default)
+    motion = runtime.hold_motion()
     for _ in range(args.steps):
         obs, row = runtime.infer_motion(motion, q=c.default, dq=np.zeros(28),
                                         root=[1., 0., 0., 0.], gyro=np.zeros(3))
@@ -38,8 +38,10 @@ def check(runtime, args, write):
 
 def ankle_type(runtime):
     """The model's ankle control space and the robot EXTERNAL mode it needs."""
+    from deployment.vita_s100_aorta_30dof.actor_parallel_ankle import command_space
     motor = getattr(runtime.model.contract, 'ankle', None) is not None
     return dict(ankle_control_space='motor_theta' if motor else 'virtual_pitch_roll',
+                required_ankle_command_space=command_space(runtime.policy),
                 required_ankle_virtual_pd_intent=not motor)
 
 

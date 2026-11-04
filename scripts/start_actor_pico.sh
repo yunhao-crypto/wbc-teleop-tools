@@ -1,21 +1,21 @@
 #!/usr/bin/env bash
 set -euo pipefail
 ROOT=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
-USAGE='Usage: start_actor_pico.sh [sonic|supermimic] [check|replay|state-check|shadow|configure|live|auto] [options]'
+USAGE='Usage: start_actor_pico.sh [sonic|supermimic|morphmimic] [check|replay|state-check|shadow|configure|live|auto] [options]'
 # The actor policy is always an explicit choice: a positional name, --policy,
 # or the interactive menu. There is no default and no substitute policy.
 POLICY=
 choose_policy() {
   case "$1" in
-    sonic|supermimic) ;;
-    *) echo "Unknown policy '$1'; choose sonic or supermimic. $USAGE" >&2; exit 2 ;;
+    sonic|supermimic|morphmimic) ;;
+    *) echo "Unknown policy '$1'; choose sonic, supermimic or morphmimic. $USAGE" >&2; exit 2 ;;
   esac
   if [[ -n "$POLICY" && "$POLICY" != "$1" ]]; then
     echo "Conflicting policy selections: $POLICY and $1; nothing started." >&2; exit 2
   fi
   POLICY=$1
 }
-if [[ "${1:-}" == sonic || "${1:-}" == supermimic ]]; then
+if [[ "${1:-}" == sonic || "${1:-}" == supermimic || "${1:-}" == morphmimic ]]; then
   choose_policy "$1"; shift
 fi
 if [[ "${1:-}" == --help || "${1:-}" == -h ]]; then
@@ -30,14 +30,14 @@ case "$MODE" in
   auto|check|replay|state-check|shadow|live|configure) shift ;;
   *) echo "$USAGE" >&2; exit 2 ;;
 esac
-if [[ "${1:-}" == sonic || "${1:-}" == supermimic ]]; then
+if [[ "${1:-}" == sonic || "${1:-}" == supermimic || "${1:-}" == morphmimic ]]; then
   choose_policy "$1"; shift
 fi
 HELP=0
 REST=()
 while (( $# )); do
   case "$1" in
-    --policy) (( $# >= 2 )) || { echo '--policy requires sonic or supermimic' >&2; exit 2; }
+    --policy) (( $# >= 2 )) || { echo '--policy requires sonic, supermimic or morphmimic' >&2; exit 2; }
               choose_policy "$2"; shift 2 ;;
     --policy=*) choose_policy "${1#--policy=}"; shift ;;
     -h|--help) HELP=1; REST+=("$1"); shift ;;
@@ -54,11 +54,13 @@ if [[ "$MODE" != configure && $HELP == 0 && -z "$POLICY" ]]; then
       echo 'Select the actor policy (no default):'
       echo '  1) sonic       GR00T G1 actor     config/actor_pico.json'
       echo '  2) supermimic  SuperMimic actor   config/actor_pico_supermimic.json'
+      echo '  3) morphmimic  MorphMimic actor   config/actor_pico_morphmimic.json'
     } >&2
-    read -r -p 'Policy [1/2]: ' answer || answer=
+    read -r -p 'Policy [1/2/3]: ' answer || answer=
     case "$answer" in
       1|sonic) POLICY=sonic ;;
       2|supermimic) POLICY=supermimic ;;
+      3|morphmimic) POLICY=morphmimic ;;
       *) echo 'No policy selected; nothing started.' >&2; exit 2 ;;
     esac
   else

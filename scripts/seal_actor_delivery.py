@@ -21,7 +21,7 @@ def main():
     root = ROOT
     actor_path = root/'ACTOR-PICO-MANIFEST.json'
     actor = json.loads(actor_path.read_text())
-    configs = {'sonic': 'config/actor_pico.json', 'supermimic': 'config/actor_pico_supermimic.json'}
+    configs = {'sonic': 'config/actor_pico.json', 'supermimic': 'config/actor_pico_supermimic.json', 'morphmimic': 'config/actor_pico_morphmimic.json'}
     external = []
     for policy, config in configs.items():
         model = json.loads((root/config).read_text())['artifacts']['model']
@@ -61,6 +61,10 @@ def main():
                   'deploy/actor_s100/full_load_replay_20261030.json',
                   'tests/test_actor_pico_session.py',
                   'tests/fixtures/actor_pico/robot42_pico_session_20261029.npz']
+    additional += ['config/actor_pico_morphmimic.json',
+                   'src/deployment/vita_s100_aorta_30dof/actor_morphmimic.py',
+                   'scripts/export_morphmimic_vita02a.py', 'scripts/check_morphmimic_vita02a.py',
+                   'scripts/prepare_external_ankle_config.py', 'tests/test_native_ankle_commands.py']
     additional += [str(p.relative_to(root)) for p in (root/'third_party/motion_stream_bridge').rglob('*')
                    if p.is_file() and '__pycache__' not in p.parts]
     for name in additional:
@@ -75,7 +79,8 @@ def main():
     if models & set(names):
         raise RuntimeError('Remove the external models from the Git index before sealing')
     required = ['artifacts/output_envelopes.motion.urdf',
-                'config/actor_pico.json', 'config/actor_pico_supermimic.json', 'config/sdk021-wheel-guard.json',
+                'config/actor_pico.json', 'config/actor_pico_supermimic.json', 'config/actor_pico_morphmimic.json',
+                'src/deployment/vita_s100_aorta_30dof/actor_morphmimic.py', 'config/sdk021-wheel-guard.json',
                 'scripts/bootstrap_actor_s100.py', 'scripts/configure_actor_s100.py', 'scripts/start_actor_pico.sh',
                 'src/deployment/vita_s100_aorta_30dof/actor_pico_live.py',
                 'src/deployment/vita_s100_aorta_30dof/actor_pico_local.py',
@@ -106,7 +111,7 @@ def main():
     missing = set(required)-set(names)
     if missing:
         raise RuntimeError('Stage these required delivery files first: '+', '.join(sorted(missing)))
-    record = dict(schema='vita_actor_s100_delivery_v1', version='2026.10.29-actor21-supermimic-delivery',
+    record = dict(schema='vita_actor_s100_delivery_v1', version='2026.11.04-actor21-native-ab-morphmimic',
                   target=dict(os='Linux', architecture='aarch64', python='3.10', glibc_min='2.35'),
                   scope='offline/shadow checks and explicitly armed supported EXTERNAL trials; hardware not_measured',
                   required_inputs=required, external_resources=external, archives=archives,

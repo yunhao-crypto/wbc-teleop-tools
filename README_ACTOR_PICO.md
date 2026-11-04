@@ -16,7 +16,8 @@ launchers, SDK installation and protocol guards are not replaced.
 
 `start_actor_pico.sh` requires an explicit policy for every mode except
 `configure`: `sonic` (`config/actor_pico.json`) or `supermimic`
-(`config/actor_pico_supermimic.json`), given as the first word
+(`config/actor_pico_supermimic.json`) or `morphmimic`
+(`config/actor_pico_morphmimic.json`), given as the first word
 (`start_actor_pico.sh supermimic shadow ...`), after the mode, or as `--policy`.
 Without one, a terminal shows a menu with no default; an empty answer or a
 non-interactive run starts nothing. Conflicting selections are rejected. A
@@ -41,17 +42,28 @@ The SuperMimic model is the closed-loop-ankle checkpoint
 is embedded in the ONNX metadata and checked at load. Its ankle contract is
 `motor_theta`: the policy observes and commands the two Achilles motor angles in
 the ankle pitch/roll slots. The actor maps measured state and references to
-motor angles (training IK and Jacobian, `actor_parallel_ankle.py`) and maps the
-motor targets back to virtual pitch/roll by forward kinematics for Body31.
-The robot must run PD-A (`actions.EXTERNAL.params.ankle_virtual_pd_intent: false`),
-which clamps the virtual target to its ankle box, solves IK and tracks the motor
-angles with `kp_motor`/`kd_motor` 20/1, the trained motor PD. With
-`ankle_clamp_feedforward` the actor sends the motor PD torque removed by that
-clamp as virtual ankle torque (mapped to motors by the adapter's J^-T), so the
-robot applies the trained motor torque outside the box too.
+motor angles using training IK and the Jacobian. With the default
+`body_profile.ankle_command_space: policy`, motor-theta policies send the A/B
+angle targets and their independent motor PD gains directly in the existing
+Body31 ankle pitch/roll slots. The robot must use
+`actions.EXTERNAL.params.ankle_command_space: motor_theta` and
+`ankle_virtual_pd_intent: false`. EXTERNAL tags those commands for the existing
+motor passthrough adapter: no target FK/IK roundtrip, virtual-box clamp or
+virtual-torque compensation. Motor angle/rate/torque/gain caps still apply.
 
-SuperMimic always needs PD-A (`ankle_virtual_pd_intent: false`). SONIC needs
-either mode depending on its ankle type; see the next section.
+SDK 0.2.1 and its wire schema are unchanged. `BodyState` and `RobotInfo` still
+use virtual pitch/roll coordinates. EXTERNAL's command space is immutable for
+the robot process; there is no remote SDK negotiation. The client checks the
+provided effective YAML against the model/profile, but that file is not proof
+of the running firmware configuration. Install the matching robot build and
+YAML before starting the client. Do not mix an old virtual-command client with
+a robot configured for native A/B.
+
+For a legacy robot, explicitly set the actor profile to
+`ankle_command_space: virtual_pitch_roll`. A motor-theta policy then retains
+the former FK/IK motor-PD path and its optional clamp feedforward; the robot
+must also use `virtual_pitch_roll` and `ankle_virtual_pd_intent: false`.
+A virtual-ankle policy requires virtual commands and virtual PD (`true`).
 
 Provision the SuperMimic model with
 `bootstrap_actor_s100.py --policy supermimic --model /path/to/supermimic_vita02a.onnx`
@@ -79,7 +91,7 @@ type the installed `actor_g1.onnx` is and set the robot to match.
 | SONIC type | Typical checkpoint | ONNX `ankle.control_space` | Robot YAML `actions.EXTERNAL.params.ankle_virtual_pd_intent` | Robot ankle PD |
 |---|---|---|---|---|
 | Serial ankle (virtual) | delivered `model_step_431500` (`TRL_Vita02A_Baseline`) | `virtual_pitch_roll` | `true` | `parallel_ankle.pd.strategy: virtual_pd` |
-| Closed-loop ankle (motor) | GR00T `vita02a_closed_loop` (`TRL_Vita02A_ClosedLoop`) exports | `motor_theta` | `false` | PD-A: `kp_motor`/`kd_motor` = the model's ankle gains (20/1), `caps` = model `motor_limits` |
+| Closed-loop ankle (motor) | GR00T `vita02a_closed_loop` (`TRL_Vita02A_ClosedLoop`) exports | `motor_theta` | `false` | Native A/B: per-command motor PD; `caps` = model `motor_limits` |
 
 The actor decides the type only from the ONNX metadata
 (`ankle.control_space` of `groot_wbc.tracking_contract.v1`), never from the file
@@ -90,23 +102,26 @@ name, the configuration or the robot:
   proprioception history and of the future joint references carry the two
   Achilles motor angles (IK of the pose, rates through the Jacobian, as in
   training). Motor targets stop at the model's ankle limits (exports may carry
-  soft limits inside `motor_limits`) and are mapped back to virtual pitch/roll
-  by forward kinematics, exactly like SuperMimic (`actor_groot_ankle.py`).
+  soft limits inside `motor_limits`). With command space `policy`, these A/B
+  targets and model gains are transmitted directly (`actor_groot_ankle.py`).
 
 The actor **never changes** `ankle_virtual_pd_intent` or any other robot setting.
-Edit the robot's running effective YAML yourself, restart its service as your
-robot procedure requires, and pass that file as `--robot-config`. If the YAML
+Prepare a separate YAML using `scripts/prepare_external_ankle_config.py`
+(`--input SOURCE --output NEW_FILE --space motor_theta` or `virtual_pitch_roll`).
+The script writes a new file only; it never installs it or restarts a service.
+Install the matching robot configuration and pass it as `--robot-config`. If the YAML
 does not match the model type (wrong intent, gains, motor limits, geometry or
 `virtual_limits`), `live` stops before requesting EXTERNAL or sending any
 command.
 
 To see the type of the installed model, run `check`; its report and every log
-header give `ankle_control_space` and the required
+header give `ankle_control_space`, `required_ankle_command_space` and the required
 `ankle_virtual_pd_intent`:
 
 ```bash
 bash scripts/start_actor_pico.sh sonic check --steps 10
 #   "ankle_control_space": "motor_theta",
+#   "required_ankle_command_space": "motor_theta",
 #   "required_ankle_virtual_pd_intent": false,
 ```
 
@@ -115,6 +130,37 @@ update `config/actor_pico.json` (model path, `sha256`, `bytes`), reseal the
 manifests and install it with
 `bootstrap_actor_s100.py --policy sonic --model /path/to/actor_g1.onnx`; then
 change the robot YAML to the matching row above.
+## MorphMimic Vita02A
+
+`morphmimic` uses 1600 inputs (10 × 93 proprioception + 10 × 67 reference)
+and 28 outputs, including native A/B ankles. Observation/goal normalizers are
+baked into the exported ONNX. The reference includes the waist anchor and its
+absolute height; standing references use the training robot's nominal root
+height. Feedback remains virtual and is converted by the same IK/Jacobian
+used in training. There is no SDK modification.
+
+Export a checkpoint using MorphMimic's Python:
+
+```bash
+python scripts/export_morphmimic_vita02a.py --morph-repo /path/to/morphmimic \
+  --checkpoint /path/to/ckpt_24500.pt
+python scripts/prepare_external_ankle_config.py --input /path/to/asample.yaml \
+  --output /path/to/asample-native-ab.yaml --space motor_theta
+bash scripts/start_actor_pico.sh morphmimic check --steps 100
+```
+
+The exporter pins model SHA256/size and writes a PyTorch/ONNX parity report.
+`scripts/check_morphmimic_vita02a.py --morph-repo ... --clip ...` independently
+compares deployment inputs with the training feature implementation. Models
+are external delivery resources: stage source/config changes and run
+`scripts/seal_actor_delivery.py` before packaging. The bootstrap installer
+accepts `--policy morphmimic --model /path/to/morphmimic_vita02a.onnx`.
+
+SONIC's serial-ankle checkpoint cannot become a native A/B policy by changing
+a flag. Supply a real closed-loop motor-theta export and update its pinned
+model identity. The three native decoders are covered by offline tests; this
+does not constitute physical robot validation.
+
 ## Data path and calibration
 
 ```text
@@ -304,9 +350,10 @@ motion directly without a typed `MOVE` prompt. Reliable support, clear
 movement/pinch zones, an attendant and usable E-stop remain required.
 The sequence is:
 
-1. Wait the configured PASSIVE or QUIET_PASSIVE damping duration plus two
-   seconds on continuous fresh feedback (currently 42 s / 6 s on the selected
-   board). SDK `action_phase=IDLE` is the EXTERNAL session phase, not damping
+1. Wait the configured PASSIVE or QUIET_PASSIVE damping duration from the
+   first fresh observation. The updated A-sample YAMLs use 4 seconds for both;
+   no extra two-second delay is added. An older 40-second YAML still waits 40
+   seconds. The firmware continues to gate FIXED_STAND admission. SDK `action_phase=IDLE` is the EXTERNAL session phase, not damping
    completion. A retired keyframe can clear the action name; that alone does
    not count as FIXED_STAND readiness.
 2. Request FIXED_STAND once, and require actual active FIXED_STAND plus healthy,
