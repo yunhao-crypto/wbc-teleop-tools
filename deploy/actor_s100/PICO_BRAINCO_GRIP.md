@@ -2,7 +2,8 @@
 
 工作分支 `feat/pico-brainco-grip-20261105`。SDK 源码基线是
 `feat/sdk-shared-end-effector-client-s91220` 的 `c573e3289d68f2b944af59b98e3f06bb304501e1`，
-与 2026-11-05 在机器人 10.100.23.42 的 `/userdata/sdk-demo` 读到的部署版本相同。
+当前使用其派生提交 `01973e650c57b0811b4eff36dae2c4589d4459cd`，增加可选触觉订阅并优化重复反馈检查。
+机器人 `/userdata/sdk-demo` 保留原基线。
 该 SDK 是开发候选，不代表正式发布；此文档描述本次开发验证，不授权替换机器人 SDK 或固件。
 
 ## 控制链路
@@ -18,6 +19,8 @@
 启动或输入失效后，必须先松开双侧键才能重新抓握。输入/包时间戳 200 ms 不更新时切回张开。
 双手线程以 50 Hz 发布，身体循环不等待手部发布。左右手顺序提交，不是硬件原子同步。
 
+抓握客户端显式设置 `subscribe_touch=False`，不接收不用的触觉流；Info 和 State 仍保留。
+手部反馈不进入 WBC 模型观测。
 采用 SDK 的原始位置样本和接收时间；纯遥测更新不刷新位置新鲜度。
 最新状态的有效权限位必须允许输出；有效故障、位置过期或 SDK 异常终止本次控制，走 CANCEL。
 退出前尽力发送一次张开目标；急停、失联或禁止输出时不保证物理回位。
@@ -36,7 +39,8 @@
 bash scripts/build_pico_arm64.sh
 ```
 
-本次 wheelhouse 已换为与 c573e328 对应的 SDK 和 gc783514130bb 消息包，
+本次 wheelhouse 使用派生 SDK 01973e6 的 build 1 wheel 和 gc783514130bb 消息包。
+该开发 wheel 仅更新 Python end_effector.py；ARM64 原生库与已校验基线逐字节一致，
 `config/sdk021-wheel-guard.json` 同时锁定 Python 源码、ARM64 原生库和 BFBS。
 不可用旧 SDK 的 venv，也不可只改 PYTHONPATH 绕过校验。
 原机器人部署、私有配置和模型保持不变；新测试目录需按既有部署流程准备依赖及相同模型。

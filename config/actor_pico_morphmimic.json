@@ -39,7 +39,7 @@
     }
   },
   "sdk_version": "0.2.1",
-  "sdk_commit": "c573e3289d68f2b944af59b98e3f06bb304501e1",
+  "sdk_commit": "01973e650c57b0811b4eff36dae2c4589d4459cd",
   "sdk_sources": {
     "wbc_tracking_policy.py": "8bf9ecbcce9d06fde34eaaa817fe7966354958be012f74af159cfd711ce53b9e",
     "_policy_state.py": "779b3ee099a8955b2d10518f19cf8db6201a092605df6d689d2ca24546d1cac0",

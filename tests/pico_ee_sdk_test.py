@@ -27,6 +27,7 @@ class AdapterTests(unittest.TestCase):
         self.clients = {}
 
     def factory(self, side, **kwargs):
+        self.assertIs(kwargs.get("subscribe_touch"), False)
         client = EndEffectorClient(side, **kwargs)
         self.addCleanup(client.close)
         self.clients[side] = client

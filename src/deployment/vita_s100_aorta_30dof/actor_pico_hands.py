@@ -74,7 +74,7 @@ class HandGripRunner:
         self.feedback = {}
         try:
             for side in ('left', 'right'):
-                client = factory(side, connection=connection,
+                client = factory(side, connection=connection, subscribe_touch=False,
                                  observation_sources=((SampleStream.EE_STATE, 1 if side == 'left' else 2),))
                 self.clients[side] = client
                 info = client.wait_info(timeout=3.)

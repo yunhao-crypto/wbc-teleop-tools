@@ -1,6 +1,6 @@
 # S100 actor/Pico offline delivery
 
-本分支使用 SDK c573e328 的共享末端接口，同时运行 WBC 与双侧键抓握。
+本分支使用 SDK 01973e6（基于 c573e328） 的共享末端接口，同时运行 WBC 与双侧键抓握。
 见 [Pico 强脑抓握测试说明](PICO_BRAINCO_GRIP.md)。这是开发候选，需重编 Pico 绑定。
 
 This directory versions the actor dependencies. The separate `live` entry can
