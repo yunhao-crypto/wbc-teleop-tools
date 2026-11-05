@@ -120,7 +120,14 @@ class HandGripRunner:
             if (latest is None or latest.status_valid_mask & required != required
                     or not latest.ready or not latest.output_allowed
                     or latest.inhibit_reason != InhibitReason.NONE):
-                raise RuntimeError(f'{side}: unavailable or revoked output permission')
+                detail = 'no state' if latest is None else (
+                    f'runtime_id={latest.runtime_id} state_id={latest.state_id} '
+                    f'status_valid_mask=0x{latest.status_valid_mask:x} '
+                    f'ready={latest.ready} output_allowed={latest.output_allowed} '
+                    f'inhibit_reason={latest.inhibit_reason} '
+                    f'ts_state_pub_us={latest.ts_state_pub_us} '
+                    f'position_age_s={None if received is None else now-received}')
+                raise RuntimeError(f'{side}: unavailable or revoked output permission; {detail}')
             if (position is None or received is None or not 0 <= now-received < .2
                     or position.sample_status != SampleStatus.OK
                     or not all(mask & Field.POS and math.isfinite(q) and lo <= q <= hi

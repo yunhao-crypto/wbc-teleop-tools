@@ -91,7 +91,7 @@ class AdapterTests(unittest.TestCase):
         telemetry.inhibitReason=1
         for axis in telemetry.axes: axis.validFields=0
         self.node.emit('right','state',telemetry)
-        with self.assertRaisesRegex(RuntimeError,'permission'):
+        with self.assertRaisesRegex(RuntimeError, r'permission; runtime_id=100.*output_allowed=False.*inhibit_reason=1'):
             r.publish(True,time.monotonic())
         self.assertFalse(self.node.commands)
 
