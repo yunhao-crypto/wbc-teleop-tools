@@ -91,6 +91,15 @@ class HandGripRunner:
                         pos=tuple(spec['grasp_rad' if grasp else 'open_rad']),
                         vel_limit=tuple(spec['speed_rad_s'])))
                     for grasp in (False, True)}
+                # Info and State arrive independently. Complete the first-state
+                # wait before EXTERNAL entry, never inside its body loop.
+                # Output permission is checked only after entry by publish().
+                try:
+                    state = client.wait_state(timeout=3.)
+                except TimeoutError as error:
+                    raise TimeoutError(f'{side}: initial hand State did not arrive within 3s') from error
+                codec.validate_state(info, state)
+
         except BaseException:
             for client in self.clients.values():
                 client.close()

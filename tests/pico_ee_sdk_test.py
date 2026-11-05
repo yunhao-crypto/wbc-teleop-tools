@@ -4,6 +4,7 @@ PYTHONPATH=$SDK/python:$SDK/tests:build/sdk-ee-bindings python tests/pico_ee_sdk
 """
 import sys
 import time
+import threading
 import unittest
 from unittest.mock import patch
 from pathlib import Path
@@ -25,6 +26,7 @@ class AdapterTests(unittest.TestCase):
                              open_rad=[0]*6, grasp_rad=[.03]*6, speed_rad_s=[.1]*6)
                        for s in ('left','right')}
         self.clients = {}
+        self.defer_right_state = False
 
     def factory(self, side, **kwargs):
         self.assertIs(kwargs.get("subscribe_touch"), False)
@@ -36,13 +38,34 @@ class AdapterTests(unittest.TestCase):
         info.deviceModel = DeviceModel.BRAINCO_REVO2
         info.positionDomain = [PositionDomain.JOINT_ANGLE]*6
         self.node.emit(side, 'info', info)
-        self.node.emit(side, 'state', state_object(side=wire_side,n=6))
+        if side == 'right' and self.defer_right_state:
+            timer = threading.Timer(.05, lambda: self.node.emit(
+                side, 'state', state_object(side=wire_side, n=6)))
+            self.addCleanup(timer.join)
+            timer.start()
+        else:
+            self.node.emit(side, 'state', state_object(side=wire_side,n=6))
         return client
 
     def runner(self):
         r = HandGripRunner(self.config, None, connection=self.harness.controller, factory=self.factory)
         self.addCleanup(r.close)
         return r
+
+    def test_initial_state_wait_precedes_any_hand_command(self):
+        self.defer_right_state = True
+        runner = self.runner()
+        self.assertIsNotNone(self.clients['right'].motion_feedback()[0])
+        self.assertFalse(self.node.commands)
+        runner.publish(True)
+        self.assertEqual(len(self.node.commands), 2)
+
+    def test_initial_state_timeout_closes_clients_without_commands(self):
+        with patch.object(EndEffectorClient, 'wait_state', side_effect=TimeoutError('no state')):
+            with self.assertRaisesRegex(TimeoutError, 'left: initial hand State'):
+                self.runner()
+        self.assertFalse(self.node.commands)
+        self.assertTrue(all(client._closed for client in self.clients.values()))
 
     def test_real_wire_targets_share_session_and_sequence(self):
         r = self.runner()

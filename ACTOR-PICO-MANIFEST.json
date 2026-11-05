@@ -540,8 +540,8 @@
     },
     {
       "path": "src/deployment/vita_s100_aorta_30dof/actor_pico_hands.py",
-      "sha256": "44b09df8684ec013a390bedbc44a93421b749cc56b12475e5eb1e8613d3b18e8",
-      "bytes": 8943,
+      "sha256": "c3e41bdd95d5a0512b78d9dd3ca05229ca1d082a6075e369ecaf58fbc341607d",
+      "bytes": 9457,
       "mode": "0o644"
     },
     {
@@ -552,8 +552,8 @@
     },
     {
       "path": "tests/pico_ee_sdk_test.py",
-      "sha256": "771762021ae8a0734502483040398f7afdc8a89cb53802669a3803cfacdf6a6d",
-      "bytes": 6254,
+      "sha256": "1d8f252c3f359368f7af1f68ec56d0f391be7ab94f1ebc5a42de7ff77cffbc45",
+      "bytes": 7328,
       "mode": "0o644"
     },
     {
