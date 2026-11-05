@@ -126,7 +126,7 @@
     {
       "path": "ACTOR-PICO-MANIFEST.json",
       "bytes": 20993,
-      "sha256": "9c261ef5a1ad1631b70804d2f99ecd3ee0abf23954bfdce3b45996e7b384cc68"
+      "sha256": "2909592118428ea1bc1d51e3e0e4ad2183d8e2aa244e2c5065fef2c2b5757110"
     },
     {
       "path": "README.md",
@@ -221,7 +221,7 @@
     {
       "path": "config/pico_brainco_grip.example.json",
       "bytes": 1060,
-      "sha256": "b568dbbd5e44b17dea6d7a36608d95fddde735fbf5837d59b8d0d9301350020a"
+      "sha256": "ca59971c66e5e7b0b4ab67f408542c33d9fd02502812c4f947af445689a210a0"
     },
     {
       "path": "config/sdk021-wheel-guard.json",
