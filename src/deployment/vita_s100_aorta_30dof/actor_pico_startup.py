@@ -173,12 +173,14 @@ def fixed_stand_startup(plan, envelope, runtime, args, controller, inputs, stop,
             write(dict(record_type='fixed_stand_requested',actions_sent=0))
             request_action('FIXED_STAND')
         deadline=clock.monotonic()+args.startup_timeout; settled=None; next_print=clock.monotonic()
+        fixed_seen = initial == 'FIXED_STAND'
         while True:
             if stop.is_set(): raise InterruptedError('Startup interrupted after FIXED_STAND')
             state,status,root,gyro=monitor()
             tilt=math.acos(float(np.clip(runtime.math.rotation(root)[2,2],-1.,1.)))
             gyro_speed=float(np.linalg.norm(gyro))
             if status.current_action == 'FIXED_STAND':
+                fixed_seen = True
                 # Tilt validity is already checked by policy.state against the
                 # reviewed tracking profile. Display it, but do not invent a
                 # tighter angular admission threshold from a single sample.
@@ -190,8 +192,14 @@ def fixed_stand_startup(plan, envelope, runtime, args, controller, inputs, stop,
                                entry_policy=plan.review['entry_policy'],q=state.q.tolist(),dq=state.dq.tolist(),
                                root_wxyz=root.tolist(),gyro=gyro.tolist(),tilt_deg=math.degrees(tilt)))
                     return True
-            elif status.current_action != initial:
-                raise RuntimeError('Unexpected action during FIXED_STAND activation')
+            elif (fixed_seen or status.current_action not in (
+                    (initial, '') if initial in plan.damping else (initial,))):
+                raise RuntimeError('Unexpected action during FIXED_STAND activation: '
+                                   f'initial={initial!r}, actual={status.current_action!r}, '
+                                   f'fixed_seen={fixed_seen}')
+            # Before FIXED_STAND is observed, the retired damping action may
+            # still be cached as an empty name. Wait within startup_timeout;
+            # an acknowledgement alone never establishes physical readiness.
             if clock.monotonic() >= deadline:
                 i=int(np.argmax(np.abs(state.q-plan.fixed_q)));v=int(np.argmax(np.abs(state.dq)))
                 raise TimeoutError(f'FIXED_STAND did not settle; no EXTERNAL request sent; '

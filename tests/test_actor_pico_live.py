@@ -404,7 +404,7 @@ class LiveTests(unittest.TestCase):
                     pico_timestamp_ns=value['pico_timestamp_ns'],
                     received_monotonic=self.clock.monotonic(),source='pico_reader')
                 if len(self.transport.commands)>160:
-                    value['received_monotonic']=self.clock.monotonic()-.601
+                    value['received_monotonic']=self.clock.monotonic()-self.runtime.config['pico_max_age_s']-.001
             return value
         with patch.object(worker,'snapshot',snapshot),self.assertRaisesRegex(TimeoutError,'reference worker snapshot'):
             self.run_trial(manual_pico=worker,poll_command=command)
@@ -452,17 +452,18 @@ class LiveTests(unittest.TestCase):
     def test_hold_age_must_lie_below_pico_maximum_age(self):
         from deployment.vita_s100_aorta_30dof import actor_pico_runtime as module
         config=json.loads((ROOT/module.POLICY_CONFIGS['sonic']).read_text())
-        for value in (0.,.6,.7,float('nan'),True,None):
+        for value in (0.,config['pico_max_age_s'],config['pico_max_age_s']+.1,float('nan'),True,None):
             with self.subTest(value=value),tempfile.TemporaryDirectory() as tmp:
                 (Path(tmp)/'config').mkdir()
                 (Path(tmp)/'config/actor_pico.json').write_text(json.dumps(dict(config,pico_hold_age_s=value)))
                 with self.assertRaisesRegex(ValueError,'hold age'):module.load_actor_config(tmp)
 
-    def test_input_age_settings_match_original_holomotion_deployment(self):
+    def test_demo_pico_age_override_preserves_body_age_limit(self):
         import yaml
         from deployment.vita_s100_aorta_30dof.actor_pico_live import STATE_AGE
         original=yaml.safe_load((ROOT/'src/deployment/vita_s100_aorta_30dof/config/vita02a_s100.yaml').read_text())
-        self.assertEqual(self.runtime.config['pico_max_age_s'],original['runtime']['pico_max_age'])
+        expected = 1.0 if self.runtime.policy_name == 'sonic' else original['runtime']['pico_max_age']
+        self.assertEqual(self.runtime.config['pico_max_age_s'], expected)
         self.assertEqual(STATE_AGE,original['runtime']['state_max_age'])
 
 
@@ -563,7 +564,7 @@ class LiveTests(unittest.TestCase):
         original=self.worker.snapshot
         def snapshot():
             value=original()
-            value.update(trigger_event_seq=1,trigger_event_monotonic=self.clock.monotonic()-.601,
+            value.update(trigger_event_seq=1,trigger_event_monotonic=self.clock.monotonic()-self.runtime.config['pico_max_age_s']-.001,
                          controller_received_monotonic=self.clock.monotonic())
             return value
         with patch.object(self.worker,'snapshot',snapshot):self.auto_trial()
@@ -584,7 +585,7 @@ class LiveTests(unittest.TestCase):
 
     def test_manual_stale_reference_rejects_switch_and_keeps_stand(self):
         worker, command=self.manual_trial()
-        worker.fault=lambda:dict(state='ready',received_monotonic=self.clock.monotonic()-.601)
+        worker.fault=lambda:dict(state='ready',received_monotonic=self.clock.monotonic()-self.runtime.config['pico_max_age_s']-.001)
         result=self.run_trial(manual_pico=worker,poll_command=command)
         self.assertTrue(result['exit_confirmed'])
         self.assertTrue(any(r.get('record_type')=='pico_switch_rejected' for r in self.rows))
@@ -817,7 +818,8 @@ class LiveTests(unittest.TestCase):
     def test_stale_pico_after_entry_cancels_without_retry(self):
         self.transport.after_publish = lambda c:setattr(self.pico, 'fault', lambda:None)
         with self.assertRaisesRegex(TimeoutError, 'Pico input'): self.run_trial()
-        self.assertLessEqual(len(self.transport.commands), 35)
+        self.assertLessEqual(len(self.transport.commands),
+                             int(self.runtime.config['pico_max_age_s']/self.runtime.model.contract.period)+5)
         self.assert_cancelled()
 
     def test_failed_pico_worker_after_entry_cancels(self):
@@ -1405,6 +1407,29 @@ class LiveTests(unittest.TestCase):
         self.assertGreaterEqual(self.startup_calls[0][1],104.)
         self.assert_cancelled()
 
+    def test_auto_delayed_fixed_status_after_retired_damping(self):
+        self.auto_setup('PASSIVE')
+        original = self.transport.state_fault
+        requested_at = []
+        def action(name):
+            self.startup_calls.append((name, self.clock.monotonic()))
+            if name == 'FIXED_STAND':
+                requested_at.append(self.clock.monotonic())
+                self.transport.value = replace(self.transport.value, current_action='')
+            else:
+                self.transport.value = replace(self.transport.value, current_action='PASSIVE')
+        def feedback(state):
+            if requested_at and not self.transport.requests:
+                name = 'FIXED_STAND' if self.clock.monotonic()-requested_at[0] > .1 else ''
+                self.transport.value = replace(self.transport.value, current_action=name)
+            return original(state)
+        self.request_action = action
+        self.transport.state_fault = feedback
+        self.auto_trial()
+        self.assertEqual([x[0] for x in self.startup_calls], ['FIXED_STAND'])
+        self.assertTrue(any(r.get('record_type') == 'fixed_stand_confirmed' for r in self.rows))
+        self.assert_cancelled()
+
     def test_auto_empty_action_does_not_replace_fixed_stand_feedback_validation(self):
         self.auto_setup('')
         def action(name):
@@ -1506,13 +1531,13 @@ class LiveTests(unittest.TestCase):
         self.assertEqual([r.operation.value for r in self.transport.requests],['PREPARE','COMMIT','CANCEL'])
         self.assert_cancelled()
 
-    def test_online_auto_pico_uses_600ms_age_without_neutral_gate(self):
+    def test_online_auto_pico_uses_configured_age_without_neutral_gate(self):
         for stale in (True,False):
             self.setUp();self.online_setup();self.args.wait_pico=self.args.auto_pico=True
             original=self.worker.snapshot
             def sample():
                 value=original()
-                if stale:value['received_monotonic']-=.601
+                if stale:value['received_monotonic']-=self.runtime.config['pico_max_age_s']+.001
                 else:value['q']=value['q']+.2
                 return value
             self.worker.snapshot=sample
