@@ -227,7 +227,7 @@
     "max_velocity_rad_s": null,
     "filter_time_constant_s": 0.04
   },
-  "pico_max_age_s": 1.0,
+  "pico_max_age_s": 3.0,
   "pico_hold_age_s": 0.25,
   "provenance": {
     "tracking_checkout_commit": "5eb34b2",

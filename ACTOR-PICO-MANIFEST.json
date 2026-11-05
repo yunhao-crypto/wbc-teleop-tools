@@ -12,7 +12,7 @@
     },
     {
       "path": "config/actor_pico.json",
-      "sha256": "ebde1a2996f1fa2f2fc52a8d289c04a0e09b1d83eb5251448226cab944f03234",
+      "sha256": "54e44842a61a761e0795c2c765ab3cde51a20998f99eb539e587752ddd37aa0f",
       "bytes": 7341,
       "mode": "0o644"
     },
@@ -78,7 +78,7 @@
     },
     {
       "path": "tests/test_actor_pico_live.py",
-      "sha256": "971605a3f251ba4f80dbf800c37ecfe8f5248308874f0c057f491d0889464066",
+      "sha256": "765dfbe1ca0596bad70aa4a5760baae47ddabae8c367d7a206f4d0e16741eeb1",
       "bytes": 107134,
       "mode": "0o644"
     },
@@ -546,8 +546,8 @@
     },
     {
       "path": "config/pico_brainco_grip.example.json",
-      "sha256": "ca59971c66e5e7b0b4ab67f408542c33d9fd02502812c4f947af445689a210a0",
-      "bytes": 1060,
+      "sha256": "f3f0830b776bc5f58e4f0a6b074c2fcbbcc55e1f9dbfd4e008e505222051343a",
+      "bytes": 1072,
       "mode": "0o644"
     },
     {

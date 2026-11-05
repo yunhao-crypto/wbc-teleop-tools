@@ -462,7 +462,7 @@ class LiveTests(unittest.TestCase):
         import yaml
         from deployment.vita_s100_aorta_30dof.actor_pico_live import STATE_AGE
         original=yaml.safe_load((ROOT/'src/deployment/vita_s100_aorta_30dof/config/vita02a_s100.yaml').read_text())
-        expected = 1.0 if self.runtime.policy_name == 'sonic' else original['runtime']['pico_max_age']
+        expected = 3.0 if self.runtime.policy_name == 'sonic' else original['runtime']['pico_max_age']
         self.assertEqual(self.runtime.config['pico_max_age_s'], expected)
         self.assertEqual(STATE_AGE,original['runtime']['state_max_age'])
 
