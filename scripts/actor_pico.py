@@ -95,6 +95,7 @@ def state_check(runtime, args, write):
     frames, last_key = 0, None
     deadline = time.monotonic()+args.seconds
     try:
+        source.get_robot_info(timeout=min(5., args.seconds))
         validator = Inputs(runtime, source, None, time)
         while time.monotonic() < deadline:
             remaining = deadline-time.monotonic()
@@ -153,6 +154,7 @@ def shadow(runtime, args, write):
             resources.callback(close_service)
             source = PullStateSource(group=args.group, node_name='vita-actor-pico-shadow')
             resources.callback(source.close)
+            source.get_robot_info(timeout=5.)
             if source.group != args.group:
                 raise RuntimeError('SDK source group mismatch')
             pico = create_pico_source(logger=logging.getLogger('actor-pico'), maximum_age=runtime.config['pico_max_age_s'],

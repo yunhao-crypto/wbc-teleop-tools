@@ -126,11 +126,13 @@ class Loopback:
         self.exit_action = 'PASSIVE'
         self.status_fault = lambda s:s
         self.closed = False
-        self.value = ControlStatus(1, 'PASSIVE', ExternalPhase.IDLE)
-        caps = tuple(BodyJointCapability(i, 1, False, i != 14, 31, 31,
+        self.value = ControlStatus(1, 'PASSIVE', ExternalPhase.IDLE, runtime_id=100)
+        caps = tuple(BodyJointCapability(i, 1, i == 14, 31 if i != 14 else 0, 31 if i != 14 else 0,
                 -4., 4., -25., 25., -100., 100., 0., 500., 0., 50.) for i in range(31))
         body = BodyInfo(1, 31, tuple(runtime.policy.order), caps, ())
-        self.reply = GetRobotInfoResponse(0, RobotInfo(1, 1, body, ()), '')
+        from locomotion_aorta import EndEffectorCapability, ServiceStatus
+        endpoints = tuple(EndEffectorCapability(side, True, None, False, ServiceStatus.UNAVAILABLE, 'fixture') for side in (1,2))
+        self.reply = GetRobotInfoResponse(0, RobotInfo(2, 1, body, endpoints), '', runtime_id=100)
 
     def subscribe(self, topic, callback):
         self.callbacks.setdefault(topic, []).append(callback)
@@ -158,10 +160,11 @@ class Loopback:
             tau_est=np.zeros(31, np.float32), joint_stamps_us=np.full((31, 3), stamp, np.uint64),
             error_code=np.zeros(31, np.uint32), imu_values=imu,
             imu_stamps_us=np.full((1, 4), stamp, np.uint64), imu_location=np.array([0]),
-            imu_status=np.array([1]), imu_state_present=np.array([True]), protocol_version=2,
+            imu_status=np.array([1]), imu_state_present=np.array([True]), protocol_version=3,
             roster_version=1, ts_state_real_us=stamp, ts_state_pub_us=stamp,
             ts_consumed_us=stamp, attitude_valid=True, applied_session_id=0,
-            applied_sequence=0, ts_first_output_us=0,
+            applied_sequence=0, ts_first_output_us=0, runtime_id=100, ts_control_us=0,
+            applied_key_valid=False, association_source_type=0,
             received_monotonic_ns=round(self.clock.monotonic()*1e9), received_realtime_ns=self.clock.time_ns())
         return self.state_fault(state) if self.state_fault else state
 
@@ -174,18 +177,31 @@ class Loopback:
             return
         if topic != CONTROL_REQUEST_TOPIC: raise AssertionError(topic)
         self.requests.append(message)
-        lease = 'mock-lease'
+        lease = 13
         op = message.operation
         if op == ControlOperation.COMMIT:
             if self.entry_fault: raise RuntimeError('injected entry failure')
             self.value = replace(self.value, current_action='EXTERNAL', phase=ExternalPhase.RUNNING,
-                                 lease_id=lease, client_id=message.client_id, generation=7)
+                                 control_id=lease, client_id=message.client_id, generation=7)
         if op == ControlOperation.CANCEL:
             if self.exit_fault: raise RuntimeError('injected exit failure')
-            self.value = replace(self.value, current_action=self.exit_action, phase=ExternalPhase.IDLE)
-        ack = ControlAck(message.request_id, op, True, lease_id=lease)
+            self.value = replace(self.value, current_action=self.exit_action, phase=ExternalPhase.IDLE, runtime_id=100)
+        ack = ControlAck(message.request_id, op, True, control_id=lease, runtime_id=100, client_id=7)
         for callback in self.callbacks.get(CONTROL_ACK_TOPIC, []): callback(ack)
         self.poll_control_status()
+
+    def _prepare_body_output(self): pass
+
+    def _publish_control(self, message, guard):
+        from locomotion_aorta.transport import CONTROL_REQUEST_TOPIC
+        return guard(lambda: self.publish(CONTROL_REQUEST_TOPIC, message))
+
+    def _publish_body(self, message, guard):
+        from locomotion_aorta.transport import BODY_CMD_TOPIC
+        return guard(lambda: self.publish(BODY_CMD_TOPIC, message))
+
+    def _ensure_open(self):
+        if self.closed: raise RuntimeError("transport closed")
 
     def close(self): self.closed = True
 
@@ -203,7 +219,7 @@ class LiveTests(unittest.TestCase):
         self.config.write_text(json.dumps(robot_config(self.runtime)))  # JSON is YAML, no parser stubs.
         self.clock, self.stop, self.rows = Clock(), threading.Event(), []
         self.transport = Loopback(self.runtime, self.clock)
-        self.controller = PullController(group='default', client_id='mock-client', _transport=self.transport)
+        self.controller = PullController(group='default', client_id=7, _transport=self.transport)
         self.addCleanup(self.controller.close)
         self.pico = Pico(self.runtime, self.clock)
         self.args = NS(robot_config=self.config, robot_id='TEST-ONLY', startup_timeout=5.,
@@ -227,7 +243,7 @@ class LiveTests(unittest.TestCase):
         self.assertTrue(result['exit_confirmed'])
         self.assertGreater(result['actions_sent'], 150)
         self.assertEqual([r.operation.value for r in self.transport.requests], ['PREPARE', 'COMMIT', 'CANCEL'])
-        self.assertTrue(all(r.requested_lease_ms == 0 for r in self.transport.requests))
+        self.assertTrue(all(r.runtime_id == 100 and r.protocol_version == 4 for r in self.transport.requests))
         self.assertEqual([c.sequence for c in self.transport.commands], list(range(1, result['actions_sent']+1)))
         self.assertTrue(all(c.session_id == 7 and c.input_state_id > 0 for c in self.transport.commands))
         self.assertTrue(any(r.get('stage') == 'pico_tracking' for r in self.rows))
@@ -822,7 +838,7 @@ class LiveTests(unittest.TestCase):
 
     def test_reject_drop_timeout_and_ownership_changes_stop_publication(self):
         for change in (dict(reject_count=1), dict(timeout_hold=True),
-                       dict(client_id='other'), dict(generation=8)):
+                       dict(client_id=999), dict(generation=8)):
             with self.subTest(change=change):
                 self.setUp()
                 self.transport.after_publish = lambda c:setattr(self.transport, 'status_fault',
@@ -938,7 +954,7 @@ class LiveTests(unittest.TestCase):
         caps = list(body.joints); caps[0] = replace(caps[0], is_mock=True)
         self.transport.reply = replace(self.transport.reply,
             info=replace(self.transport.reply.info, body=replace(body, joints=tuple(caps))))
-        with self.assertRaisesRegex(ValueError, 'Physical ACTIVE'): self.run_trial()
+        with self.assertRaisesRegex(RuntimeError, 'physical policy30'): self.run_trial()
         self.assertEqual(self.transport.requests, [])
 
     def test_config_changed_during_preflight_refuses_entry(self):
@@ -1563,6 +1579,7 @@ class LiveTests(unittest.TestCase):
         params,_=load_robot_config(self.config)
         envelope=CommandEnvelope(self.runtime,self.transport.reply,params)
         plan=StartupPlan(self.runtime,envelope,self.config)
+        self.controller.get_robot_info(.1)
         inputs=Inputs(self.runtime,self.controller,None,self.clock)
         with redirect_stdout(io.StringIO()):
             ready=fixed_stand_startup(plan,envelope,self.runtime,self.args,self.controller,inputs,
@@ -1603,6 +1620,7 @@ class LiveTests(unittest.TestCase):
 
     def test_status_freeze_is_detected(self):
         guard = StatusGuard(self.clock)
+        self.controller.get_robot_info(.1)
         status = self.controller.status
         guard.check(status)
         self.clock.sleep(.51)

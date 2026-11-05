@@ -1,5 +1,8 @@
 # S100 actor/Pico offline delivery
 
+本分支使用 SDK c573e328 的共享末端接口，同时运行 WBC 与双侧键抓握。
+见 [Pico 强脑抓握测试说明](PICO_BRAINCO_GRIP.md)。这是开发候选，需重编 Pico 绑定。
+
 This directory versions the actor dependencies. The separate `live` entry can
 move the robot only after explicit on-site confirmation; see
 [supported trial instructions](../../README_ACTOR_PICO.md#supported-external-trial).
@@ -28,7 +31,7 @@ disables video. Offline validation modes do not start it.
 ## Included dependencies
 
 `wheelhouse/` contains 21 pinned wheels: locomotion-aorta 0.2.1,
-aorta-sdk/aorta-msgs 2026.10.20, vbot-humanoid-msgs 0.1.5,
+aorta-sdk/aorta-msgs 2026.10.20, vbot-humanoid-msgs 0.0.0+gc783514130bb,
 FlatBuffers 25.12.19, NumPy 1.26.4, PyYAML 6.0.3 and pybind11 2.13.6, plus the complete pinned GMR dependency closure
 (mink 1.3.0, MuJoCo 3.11.0, SciPy 1.15.3, DAQP 0.10.3 and qpsolvers 4.13.0).
 The bootstrap uses pip's full dependency resolver with `--no-index` and runs
@@ -66,7 +69,7 @@ Retain the original license/notices associated with each dependency.
 
 The tested robot baseline is `1.6.0-200`, commit
 `c9b4e80c074a8898d1290927a1be5350bc725d4a`, with Aorta/messages `2026.10.20`.
-The actor uses SDK `0.2.1`, Body31 protocol 2 / roster 1, 28 policy joints and
+The actor uses SDK `0.2.1`, Body31 protocol 3 / roster 1, 28 policy joints and
 fixed neck targets; waist-roll slot 14 is unpopulated. A different firmware
 requires an interface/configuration review before live use. Device-owned peer
 credentials and the active effective A-sample YAML are external prerequisites,

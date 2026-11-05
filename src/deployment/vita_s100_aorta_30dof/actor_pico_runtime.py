@@ -75,7 +75,7 @@ def sdk_math(root, config):
     if str(site) not in sys.path:
         sys.path.append(str(site))
     module = importlib.import_module('locomotion_aorta.wbc_tracking_policy')
-    if Path(module.__file__).resolve() != site/'locomotion_aorta/wbc_tracking_policy.py':
+    if Path(module.__file__).resolve() != (site/'locomotion_aorta/wbc_tracking_policy.py').resolve():
         raise RuntimeError('Actor requires the pinned SDK from this deployment venv')
     return module
 

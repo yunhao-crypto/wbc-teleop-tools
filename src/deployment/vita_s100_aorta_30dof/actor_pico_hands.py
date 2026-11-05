@@ -56,11 +56,17 @@ class GripGate:
 
 
 class HandGripRunner:
-    def __init__(self, config, shared, *, group, factory=None):
+    def __init__(self, config, shared, *, connection, factory=None):
         if factory is None:
-            from locomotion_aorta.hand import HandClient
-            factory = HandClient
+            from locomotion_aorta.end_effector import EndEffectorClient
+            factory = EndEffectorClient
+        from locomotion_aorta import _end_effector_codec as codec
+        from locomotion_aorta.end_effector_types import (
+            ControlMode, DeviceModel, EndEffectorTarget, Field, PositionDomain, SampleStream)
+        self.codec = codec
         self.clients = {}
+        self.targets = {}
+        self.infos = {}
         self.config, self.shared = config, shared
         self.stop = threading.Event()
         self.error = None
@@ -68,17 +74,23 @@ class HandGripRunner:
         self.feedback = {}
         try:
             for side in ('left', 'right'):
-                client = factory(side, group=group)
+                client = factory(side, connection=connection,
+                                 observation_sources=((SampleStream.EE_STATE, 1 if side == 'left' else 2),))
                 self.clients[side] = client
                 info = client.wait_info(timeout=3.)
                 spec = config[side]
-                if int(info.hand_type) != 1 or tuple(info.joint_names) != tuple(spec['joint_names']):
-                    raise ValueError(f'{side}: BrainCo type/joint order differs from configuration')
-                for key in ('open_rad', 'grasp_rad'):
-                    if not all(lo <= q <= hi for lo, q, hi in zip(info.q_min, spec[key], info.q_max)):
-                        raise ValueError(f'{side}: {key} outside advertised limits')
-                if not all(0 < v <= maximum for v, maximum in zip(spec['speed_rad_s'], info.dq_max)):
-                    raise ValueError(f'{side}: speed outside advertised limits')
+                codec.validate_info(info)
+                if (info.device_model != DeviceModel.BRAINCO_REVO2
+                        or tuple(info.axis_names) != tuple(spec['joint_names'])
+                        or any(domain != PositionDomain.JOINT_ANGLE for domain in info.position_domain)):
+                    raise ValueError(f'{side}: BrainCo type/joint order/SI domain differs from configuration')
+                self.infos[side] = info
+                self.targets[side] = {
+                    grasp: codec.prepare_target(info, EndEffectorTarget(
+                        (ControlMode.POSITION,) * 6, (Field.POS | Field.VEL_LIMIT,) * 6,
+                        pos=tuple(spec['grasp_rad' if grasp else 'open_rad']),
+                        vel_limit=tuple(spec['speed_rad_s'])))
+                    for grasp in (False, True)}
         except BaseException:
             for client in self.clients.values():
                 client.close()
@@ -89,22 +101,36 @@ class HandGripRunner:
         self.thread.start()
 
     def publish(self, grasp, now):
+        from locomotion_aorta.end_effector_types import (
+            Field, SampleStatus, InhibitReason, _STATE_READY_VALID,
+            _STATE_OUTPUT_ALLOWED_VALID, _STATE_INHIBIT_REASON_VALID)
         states = {}
         for side, client in self.clients.items():
-            state = client.state
-            if state is None:
-                raise RuntimeError(f'{side}: missing hand feedback')
-            previous, changed = self.feedback.get(side, (None, now))
-            if previous != state.state_id:
-                changed = now
-            self.feedback[side] = state.state_id, changed
-            if now-changed > .2 or not state.output_allowed:
-                raise RuntimeError(f'{side}: stale or inhibited hand feedback')
-            states[side] = state
+            # The SDK preserves the original position sample across telemetry-only
+            # publications. Latest status is authoritative for permission revocation.
+            latest, position, fault, received = client.motion_feedback()
+            info = client.info  # also detects a retired descriptor/runtime
+            for state in (latest, position, fault):
+                if state is not None:
+                    self.codec.validate_state(info, state)
+                    if any(mask & Field.ERROR_CODE and code
+                           for mask, code in zip(state.valid_fields, state.error_code)):
+                        raise RuntimeError(f'{side}: valid end-effector fault')
+            required = _STATE_READY_VALID | _STATE_OUTPUT_ALLOWED_VALID | _STATE_INHIBIT_REASON_VALID
+            if (latest is None or latest.status_valid_mask & required != required
+                    or not latest.ready or not latest.output_allowed
+                    or latest.inhibit_reason != InhibitReason.NONE):
+                raise RuntimeError(f'{side}: unavailable or revoked output permission')
+            if (position is None or received is None or not 0 <= now-received < .2
+                    or position.sample_status != SampleStatus.OK
+                    or not all(mask & Field.POS and math.isfinite(q) and lo <= q <= hi
+                        for mask, q, lo, hi in zip(position.valid_fields, position.pos,
+                                                  info.pos_min, info.pos_max))):
+                raise RuntimeError(f'{side}: stale or invalid original position feedback')
+            states[side] = position
         for side, client in self.clients.items():
-            spec = self.config[side]
-            client.publish(spec['grasp_rad' if grasp else 'open_rad'],
-                           spec['speed_rad_s'], input_state=states[side])
+            client.publish(self.targets[side][grasp],
+                           input_observations=(states[side].sample_ref,))
 
     def run(self):
         gate = GripGate()

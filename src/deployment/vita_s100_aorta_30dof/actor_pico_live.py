@@ -217,8 +217,8 @@ class CommandEnvelope:
         ankles = {'left_ankle_pitch_joint', 'left_ankle_roll_joint',
                   'right_ankle_pitch_joint', 'right_ankle_roll_joint'}
         for index, (name, cap) in enumerate(zip(self.body.joint_names, self.body.joints)):
-            self.measured_q_ranges.append((cap.q_min, cap.q_max) if cap.populated else None)
-            if not cap.populated:
+            self.measured_q_ranges.append((cap.q_min, cap.q_max) if not cap.is_mock else None)
+            if cap.is_mock:
                 self.limits.append(None)
                 self.virtual_limits.append(None)
                 continue
@@ -397,7 +397,7 @@ class StatusGuard:
                                    '/'.join(self.initial_actions)+'/IDLE')
         elif (status.current_action != 'EXTERNAL' or phase(status) != 'RUNNING'
               or status.timeout_hold or any(getattr(status, key) != getattr(entered, key)
-                  for key in ('generation', 'client_id', 'lease_id', 'reject_count'))):
+                  for key in ('runtime_id', 'generation', 'client_id', 'control_id', 'reject_count'))):
             raise RuntimeError('EXTERNAL ownership/state or reject/drop counters changed')
         else:
             self.ingress_drops(status, entered)
@@ -662,11 +662,11 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
         if stop.is_set():
             return report
         if hand_config:
-            hands = HandGripRunner(hand_config, manual_pico.controls, group=args.group)
+            hands = HandGripRunner(hand_config, manual_pico.controls, connection=controller)
         attempted = True
         entered = controller.enter_external(timeout=5.)
         if (entered.current_action != 'EXTERNAL' or phase(entered) != 'RUNNING'
-                or entered.client_id != controller.client_id or not entered.lease_id
+                or entered.client_id != controller.client_id or not entered.control_id
                 or entered.generation <= 0):
             raise RuntimeError('Entry did not confirm owned EXTERNAL/RUNNING')
         report['entered'] = True
@@ -916,7 +916,9 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
                 ts_client_created_us=clock.time_ns()//1000)
             state_age_before_publish = inputs.ages(state)
             before = clock.monotonic()
-            sent = controller.publish(command)  # SDK alone owns session + sequence.
+            sent = controller.publish(command,
+                target_names=tuple(name for name, cap in zip(envelope.body.joint_names, envelope.body.joints)
+                                   if not cap.is_mock), required_fields=0x1f)  # shared Body/EE sequence
             runtime.policy.last_action = pending_action
             if runtime.head is not None:
                 runtime.head.commit(pending_head)

@@ -1,6 +1,6 @@
 {
   "schema": "vita_actor_s100_delivery_v1",
-  "version": "2026.11.04-actor23-native-ab-pico-camera",
+  "version": "2026.11.05-actor24-shared-ee-grip",
   "target": {
     "os": "Linux",
     "architecture": "aarch64",
@@ -64,7 +64,7 @@
     "deploy/actor_s100/wheelhouse/qpsolvers-4.13.0-py3-none-any.whl",
     "deploy/actor_s100/wheelhouse/scipy-1.15.3-cp310-cp310-manylinux_2_17_aarch64.manylinux2014_aarch64.whl",
     "deploy/actor_s100/wheelhouse/typing_extensions-4.16.0-py3-none-any.whl",
-    "deploy/actor_s100/wheelhouse/vbot_humanoid_msgs-0.1.5-py3-none-any.whl",
+    "deploy/actor_s100/wheelhouse/vbot_humanoid_msgs-0.0.0+gc783514130bb-py3-none-any.whl",
     "deploy/actor_s100/wheelhouse/zipp-4.1.2-py3-none-any.whl",
     "deploy/actor_s100/runtime/pico_service_arm64.tar.gz",
     "deploy/actor_s100/runtime/pico_binding_cp310_aarch64.tar.gz"
@@ -125,8 +125,8 @@
     },
     {
       "path": "ACTOR-PICO-MANIFEST.json",
-      "bytes": 20008,
-      "sha256": "eb73da9bea4eca71fd4bd24076ae545c2ebd36e4bd456132058f028d364e2b7a"
+      "bytes": 20993,
+      "sha256": "cf71e59035c29d1e7b04a222772fd8cb288e7ce1d8a471d8ab4152169adb8cb9"
     },
     {
       "path": "README.md",
@@ -135,8 +135,8 @@
     },
     {
       "path": "README_ACTOR_PICO.md",
-      "bytes": 57873,
-      "sha256": "2b2edad02b00336bda41d9b9749a98e4a9948f6915fb00638336406544784108"
+      "bytes": 58940,
+      "sha256": "29ac2f2004cd6e479895483797fb95a7617827a48d3e7bbd35f80eb501242888"
     },
     {
       "path": "artifacts/model_motion/pools_nk/manifest.json",
@@ -201,17 +201,17 @@
     {
       "path": "config/actor_pico.json",
       "bytes": 7341,
-      "sha256": "e55e8f57e43e0e77073f11288870a0bbf2a8f33354fc9e717dff2ac56970da1b"
+      "sha256": "08d3b1141df9129c0ec9d6922b00d8ecbdb322175bce54a0ce02fe59366736e7"
     },
     {
       "path": "config/actor_pico_morphmimic.json",
       "bytes": 8138,
-      "sha256": "c39d8539e8629202e16aebe0cb2a4c22a1c5fd3acf3997936f82ddf111f4ecd6"
+      "sha256": "63de1b9a6ca64c5b4cd0d1f980dbc873be0cfa027e45b39f796c5e4aa36e89d0"
     },
     {
       "path": "config/actor_pico_supermimic.json",
       "bytes": 8646,
-      "sha256": "0a639941bfa13a7069120eee8f1ab263a0721310a1bf8ee8f9d12311c6ab3905"
+      "sha256": "a7155e3a7ca198997b9a9ff11ce4be1b060f8aeeae94d9ee6b215d00d064fa90"
     },
     {
       "path": "config/motion_groups.json",
@@ -219,14 +219,24 @@
       "sha256": "df57d64d1cdf0c12f0dfe9a33b43dd4830bfabedf5ef8db0936a9472273c7e8a"
     },
     {
+      "path": "config/pico_brainco_grip.example.json",
+      "bytes": 1060,
+      "sha256": "b568dbbd5e44b17dea6d7a36608d95fddde735fbf5837d59b8d0d9301350020a"
+    },
+    {
       "path": "config/sdk021-wheel-guard.json",
-      "bytes": 4231,
-      "sha256": "a12d012c71bd828cd99366233f1f0a208489293b7a34350251dd2e392c4664c3"
+      "bytes": 4297,
+      "sha256": "19cb9f44bf8378ab7361499949d77317804f47092e601e027343bddf926c7726"
+    },
+    {
+      "path": "deploy/actor_s100/PICO_BRAINCO_GRIP.md",
+      "bytes": 4507,
+      "sha256": "96620b7320f63812876a6324134433e93956cccbe178451b74b0b744195f6d0f"
     },
     {
       "path": "deploy/actor_s100/README.md",
-      "bytes": 10350,
-      "sha256": "807dd2adb2d0998033e3475d3b07ee8cc74c0e585fe2682d335a0c799a201f06"
+      "bytes": 10563,
+      "sha256": "7559a9441102da29f97792d4f0461e1d14b1c227d29c93f554a23f7150ef3604"
     },
     {
       "path": "deploy/actor_s100/body_state_diagnosis_20261030.json",
@@ -255,8 +265,8 @@
     },
     {
       "path": "deploy/actor_s100/requirements.txt",
-      "bytes": 303,
-      "sha256": "0ce288931f91965bb09fb001ff0ed8850823c0ff49589d12b486aae2fd9ae654"
+      "bytes": 317,
+      "sha256": "c417f642264e07e035d98535cd4a444b3d083de0809f162dcbf635d764b9c92d"
     },
     {
       "path": "deploy/actor_s100/runtime/pico_binding_cp310_aarch64.tar.gz",
@@ -315,8 +325,8 @@
     },
     {
       "path": "deploy/actor_s100/wheelhouse/locomotion_aorta-0.2.1-cp310-cp310-manylinux_2_35_aarch64.whl",
-      "bytes": 8499176,
-      "sha256": "5671d88680ae2f47dd39b50e9a650f4cb51b7a53bd7dc76b39f512adba81f66b"
+      "bytes": 9159427,
+      "sha256": "4ae634f53a50e3ad8eb7f1760caf41134678a8518528c2fc4d36a126ddb8efda"
     },
     {
       "path": "deploy/actor_s100/wheelhouse/mink-1.3.0-cp310-cp310-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl",
@@ -364,9 +374,9 @@
       "sha256": "481caa481374e813c1b176ada14e97f1f67a4539ce9cfeb3f350d78d6370c2e8"
     },
     {
-      "path": "deploy/actor_s100/wheelhouse/vbot_humanoid_msgs-0.1.5-py3-none-any.whl",
-      "bytes": 154176,
-      "sha256": "371a06baefebaa4ceff88dd430784ea47c960e372fe4abe1e3be2c31c1f79646"
+      "path": "deploy/actor_s100/wheelhouse/vbot_humanoid_msgs-0.0.0+gc783514130bb-py3-none-any.whl",
+      "bytes": 186910,
+      "sha256": "0faf300ee8254695963bfd34fd9cf6fd977264104c46a64253b5608231623df7"
     },
     {
       "path": "deploy/actor_s100/wheelhouse/zipp-4.1.2-py3-none-any.whl",
@@ -525,8 +535,8 @@
     },
     {
       "path": "scripts/actor_pico.py",
-      "bytes": 24156,
-      "sha256": "5a6c65901e32ff151dbbf672c0a5faa41b3c2e5c9c58af01def7bbb1a499e6f5"
+      "bytes": 24786,
+      "sha256": "c13667a895f4f5b1cb090bf6fbe04838625017446f45a6d83aeb8cabecab6bfc"
     },
     {
       "path": "scripts/analyze_latest_live_logs.py",
@@ -545,8 +555,8 @@
     },
     {
       "path": "scripts/bench_pico_full_load.py",
-      "bytes": 20294,
-      "sha256": "4b44f348678c951c88309cbce0e995c5194626b25a46725e41c463f977c8ec62"
+      "bytes": 20388,
+      "sha256": "8e8298bd7860bec707ab76c7dc4b82a854fce1500d53f4bba02a9d582b134f43"
     },
     {
       "path": "scripts/bench_pico_gmr.py",
@@ -580,13 +590,18 @@
     },
     {
       "path": "scripts/build_pico_arm64.sh",
-      "bytes": 1700,
-      "sha256": "b83948102b772ee83bb2e140f00d0dc0556b84823253090dc9274dabdb05824d"
+      "bytes": 1764,
+      "sha256": "9eeecf1d5681bd7c7fb445d1d32d879d5288cec8bd097e7ab19273090922426c"
     },
     {
       "path": "scripts/build_pico_camera_viewer.sh",
       "bytes": 1167,
       "sha256": "44f60b1f245f1568c4fd5f203fa50555b22fa88e72cf2ea8589ec5e8370d03d7"
+    },
+    {
+      "path": "scripts/build_sdk_source_test_native.py",
+      "bytes": 2722,
+      "sha256": "32dad9b3a01ad5e4549168b98a9827da990a3dabcc37762ad649111efc2bfca5"
     },
     {
       "path": "scripts/check_morphmimic_vita02a.py",
@@ -675,8 +690,8 @@
     },
     {
       "path": "scripts/generate_sdk021_guard.py",
-      "bytes": 4769,
-      "sha256": "cb2eea0e6a944cd0d49cbbbe6c2dff3e8df081a2aa27678875597f7eaa785b67"
+      "bytes": 4810,
+      "sha256": "ac20b1fab1dcee566331f7184e2edcaab558f3fd7bc7eb3d74a04bd6f8fb5841"
     },
     {
       "path": "scripts/group_flow_replay.py",
@@ -950,8 +965,8 @@
     },
     {
       "path": "scripts/seal_actor_delivery.py",
-      "bytes": 9944,
-      "sha256": "7fcbc66f8bc643dab6d2e36a08ffb5dd9cad4943594d74c2020e551165ed28eb"
+      "bytes": 10224,
+      "sha256": "d0bf91ed10f78ba6faf13a1f15250d8c616316f658c7853a1debd70f5ed3f972"
     },
     {
       "path": "scripts/send_fake_pico_via_robot_ssh.py",
@@ -985,8 +1000,8 @@
     },
     {
       "path": "scripts/state_test_pico_snapshot.py",
-      "bytes": 4615,
-      "sha256": "b6ab0a150676e4a2d3fdf4f1ae1edfc24650faed46c9ad5a7ad52afd9e38f933"
+      "bytes": 5357,
+      "sha256": "964aaebc1e005005a931b21a3ecdcd3d6ba76ae489167e81f36c905a9f32e5b4"
     },
     {
       "path": "scripts/state_validate_guards.py",
@@ -1175,8 +1190,8 @@
     },
     {
       "path": "src/deployment/unitree_g1_ros2_29dof/src/humanoid_policy/local_smpl_source.py",
-      "bytes": 1940,
-      "sha256": "fc6bc3b2edca4464bda5c3139bdf9e4307e7e15c4c973916d8f0cbe489a3f2bc"
+      "bytes": 2022,
+      "sha256": "03972f3cac3368347c5d7d351c9076051e3a28fffa1ac0d822d934fddf178a9d"
     },
     {
       "path": "src/deployment/unitree_g1_ros2_29dof/src/humanoid_policy/motion_clip_library.py",
@@ -1215,8 +1230,8 @@
     },
     {
       "path": "src/deployment/unitree_g1_ros2_29dof/src/humanoid_policy/pico_body_pose_reader.py",
-      "bytes": 8174,
-      "sha256": "eebd37b5c0dc718333623740184d29fc21d200513c2011c16dea84dc23d73515"
+      "bytes": 10947,
+      "sha256": "94135f5429084d18450330215905859af3d945a067452f2a6b2ae2bae9600273"
     },
     {
       "path": "src/deployment/unitree_g1_ros2_29dof/src/humanoid_policy/policy_node_29dof.py",
@@ -1405,8 +1420,8 @@
     },
     {
       "path": "src/deployment/vita_s100_aorta_30dof/actor_pico_buttons.py",
-      "bytes": 2830,
-      "sha256": "2eaab3793cd3f292bc366cecacb298eb47953a0e88807ee8e4374836ceb3981a"
+      "bytes": 3268,
+      "sha256": "ba77ea70b73ab2ccc2f40a00c38561151c1f1406312a93e3df903d59fe5db7d8"
     },
     {
       "path": "src/deployment/vita_s100_aorta_30dof/actor_pico_gmr.py",
@@ -1414,14 +1429,24 @@
       "sha256": "cea92494c20e962c8a8173a3c8bae3cf7338750db846c03fa73ebe6e017af77b"
     },
     {
+      "path": "src/deployment/vita_s100_aorta_30dof/actor_pico_hands.py",
+      "bytes": 7678,
+      "sha256": "81ed1c74cb514a626e8866b14161358ae0ba80ef1bace110c00f8ecabb3da85c"
+    },
+    {
       "path": "src/deployment/vita_s100_aorta_30dof/actor_pico_head.py",
-      "bytes": 8969,
-      "sha256": "d287ba9808561b795913f7833bff7ead86d5a74868f4f1121166cc1da656667e"
+      "bytes": 9290,
+      "sha256": "d1efb309d38dc4957511250b3910d7c24440696c4b69eb1873dab25b528910c5"
+    },
+    {
+      "path": "src/deployment/vita_s100_aorta_30dof/actor_pico_latest.py",
+      "bytes": 1604,
+      "sha256": "7b22b4ea7778ab32063db0307918c3213225f70df34bf1d21bd8215462af94f7"
     },
     {
       "path": "src/deployment/vita_s100_aorta_30dof/actor_pico_live.py",
-      "bytes": 55194,
-      "sha256": "0a3af3b874508b8085fad31ac6dc641559c65b4dcfd0254157b4ab47356970b7"
+      "bytes": 56029,
+      "sha256": "7d40094e232221531e26d056a513e5e095d011d2b527ecdd9e2ad6b7d4083080"
     },
     {
       "path": "src/deployment/vita_s100_aorta_30dof/actor_pico_local.py",
@@ -1435,8 +1460,8 @@
     },
     {
       "path": "src/deployment/vita_s100_aorta_30dof/actor_pico_runtime.py",
-      "bytes": 14891,
-      "sha256": "5a19c675ee652e522fa8cbb9827185d9f80b075f8e45f66eefc29cbf2d335deb"
+      "bytes": 15147,
+      "sha256": "92f3ef2f808b43a9188c47653e0e9e5e4df0faadae24bdb0d5d58ddc55e24769"
     },
     {
       "path": "src/deployment/vita_s100_aorta_30dof/actor_pico_scheduling.py",
@@ -1460,8 +1485,8 @@
     },
     {
       "path": "src/deployment/vita_s100_aorta_30dof/actor_pico_worker.py",
-      "bytes": 12101,
-      "sha256": "4a45b43b9dba30f275ddda70ed6934b345db3ded7816c8a9eee590bc0ea8018e"
+      "bytes": 12744,
+      "sha256": "50bd9ac00c9357e4efb5bf9d4d5875a2d6633e7b8e9a6c4ea760ed0652bdf6ae"
     },
     {
       "path": "src/deployment/vita_s100_aorta_30dof/actor_supermimic.py",
@@ -1665,8 +1690,8 @@
     },
     {
       "path": "src/deployment/vita_s100_aorta_30dof/pico_input.py",
-      "bytes": 1068,
-      "sha256": "5fb2d3a6dc7b5aef5e35bc0a7cf01015768a3426e4da95b2c47cd19ca79dca1c"
+      "bytes": 1133,
+      "sha256": "afd66a11bfe7f5d2f3e13ef32db9b67293a26d894b0eb14f9b45feb486c6c0e8"
     },
     {
       "path": "src/deployment/vita_s100_aorta_30dof/policy_contract.py",
@@ -1710,13 +1735,13 @@
     },
     {
       "path": "src/deployment/vita_s100_aorta_30dof/sdk021_guard.py",
-      "bytes": 4390,
-      "sha256": "a25055f88746b3124f61dc65d8b93d95b5b4f34aaa03e76ee67d39b320232c53"
+      "bytes": 4428,
+      "sha256": "9c9029186555118c87fda7d070e29903ce6252e3764bce33b57234de67fbb2c0"
     },
     {
       "path": "src/deployment/vita_s100_aorta_30dof/sdkmain_adapter.py",
-      "bytes": 11526,
-      "sha256": "5891379e26444cf1ed0155cb7c1a6b071d5e3fd04836ba9ada9a364edcfa851b"
+      "bytes": 11516,
+      "sha256": "e027242dcb36b20ee15b43b6129e6f95c9b3eb0778c20ad33b13ec18de4bb369"
     },
     {
       "path": "src/deployment/vita_s100_aorta_30dof/shadow_adapter.py",
@@ -3470,8 +3495,8 @@
     },
     {
       "path": "src/tests/test_pico_atomic_reader.py",
-      "bytes": 4775,
-      "sha256": "93da41f4b2fa76e86000f467c1f1ed8e5ea225ece729eacdb30fcb578b680bc1"
+      "bytes": 7448,
+      "sha256": "c399c030d8a2b73091e724ae348e09c17ab09a5073c0c906d58444349de7fc83"
     },
     {
       "path": "src/tests/test_resilient_xbox.py",
@@ -3589,6 +3614,16 @@
       "sha256": "a8f2518f51d219b9dfe3730a2dbe7fe9e48b9a4c7e30a609d0ec9a3acee1366b"
     },
     {
+      "path": "tests/pico_ee_sdk_test.py",
+      "bytes": 5446,
+      "sha256": "4aaa6ae1e448156f85af986d53f6b8725b0049ecacaab3821c05d720d9f1df93"
+    },
+    {
+      "path": "tests/pico_hand_grip_test.py",
+      "bytes": 1139,
+      "sha256": "dc5fb6b84b815b505110ea788243300cb2d9044c12730d19964da770c406e672"
+    },
+    {
       "path": "tests/pico_viewer/FourButtonChordTest.cs",
       "bytes": 2245,
       "sha256": "4edc3a242f210f57595bbb3df40e038ad9323c1e72e49cad8b726cdcc2472831"
@@ -3650,13 +3685,18 @@
     },
     {
       "path": "tests/test_actor_pico_head.py",
-      "bytes": 11288,
-      "sha256": "55659e831aa86ddb3895a3eb46ff2f497cf2c2a8447f7c2c75f82c730566aee2"
+      "bytes": 12792,
+      "sha256": "2df90b952895fb31cae186ad6b375dc14cc007a716c52860a99ce2662f0c1e4f"
+    },
+    {
+      "path": "tests/test_actor_pico_latest.py",
+      "bytes": 6072,
+      "sha256": "879326b0f2a728de04bbea2f6ea9db96562d54ee3c865da0723611461cb2291c"
     },
     {
       "path": "tests/test_actor_pico_live.py",
-      "bytes": 103625,
-      "sha256": "da727d08b426cd605337c78579aa4f43acbbbee43db26fbd4e5a352733dc78df"
+      "bytes": 105561,
+      "sha256": "00f83d2f5b769b5608163627626de59ba01ccfacaad53764ac603bcdeb05d435"
     },
     {
       "path": "tests/test_actor_pico_session.py",
@@ -3865,13 +3905,13 @@
     },
     {
       "path": "third_party/pico_binding/bindings/controller_trigger_snapshot.h",
-      "bytes": 1494,
-      "sha256": "d767af3cdcb1295f23ccf70aebb7583a84aa3393046a6d4bbf021c0983c29d2c"
+      "bytes": 1511,
+      "sha256": "689b9e7510c0ce23a6eda91dd253665fa136287810daf92bfa915442941a62b5"
     },
     {
       "path": "third_party/pico_binding/bindings/py_bindings.cpp",
-      "bytes": 24228,
-      "sha256": "4803b705ef1162b12313bbaf089d5fcf3a248ec806c6fd060adbb8194c5b7820"
+      "bytes": 25098,
+      "sha256": "8c63df7ad3dc35c185a07773081df92d34bc8c3474fb0cbc368770ece0682e63"
     },
     {
       "path": "third_party/pico_binding/include/PXREARobotSDK.h",

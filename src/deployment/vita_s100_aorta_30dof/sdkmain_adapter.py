@@ -41,7 +41,7 @@ JOINT_ERROR_NAMES = {v: k for k, v in vars(JointError).items()
 def verify_state_decoder():
     import body_state_schema_meta as schema
     if os.environ.get('VITA_STATE_LIBRARY'):
-        raise RuntimeError('SDK-main uses the SDK BODY2 decoder; unset VITA_STATE_LIBRARY')
+        raise RuntimeError('SDK-main uses the SDK BODY3 decoder; unset VITA_STATE_LIBRARY')
     if (schema.SCHEMA_HASH_HEX != BODY_STATE_SCHEMA_HASH or
             hashlib.sha256(schema.SCHEMA_BFBS).hexdigest() != BODY_STATE_SCHEMA_HASH):
         raise RuntimeError('Unexpected BodyState schema')
@@ -53,20 +53,20 @@ def validate_robot_info(reply):
     from aorta.services.common.ServiceStatus import ServiceStatus
     info = reply.info
     if (reply.status not in (ServiceStatus.SUCCESS, ServiceStatus.PARTIAL_SUCCESS)
-            or info is None or info.protocol_version != 1):
+            or info is None or info.protocol_version != 2):
         raise RuntimeError('Body31 robot discovery failed')
     body = info.body
     if (body is None or body.slot_count != 31 or body.joint_names != BODY_NAMES
             or len(body.joints) != 31):
         raise RuntimeError('Unexpected body31 joint roster')
     for index, joint in enumerate(body.joints):
-        if joint.body_index != index or joint.populated != (index != 14):
-            raise RuntimeError('H1 requires policy30 and unpopulated waist_roll')
+        if joint.body_index != index or (joint.is_mock != (index == 14) or (index == 14 and joint.supported_fields != 0)):
+            raise RuntimeError('Schema73 requires physical policy30 and zero-capability MOCK waist_roll')
 
 
 def raw_state_from_body(state, *, received_monotonic_ns):
-    if state.protocol_version != 2 or len(state.joints) != 31:
-        raise ValueError('Expected protocol2 body31 state')
+    if state.protocol_version != 3 or len(state.joints) != 31:
+        raise ValueError('Expected protocol3 body31 state')
     if not state.attitude_valid:
         raise ValueError('BodyState attitude is invalid')
     q, dq = np.zeros(44, np.float32), np.zeros(44, np.float32)
@@ -114,8 +114,8 @@ def decode_body_raw(payload, *, received_monotonic_ns):
 
 def validate_body_arrays(state):
     """Check native Body31 inputs without building an unused legacy44 state."""
-    if state.protocol_version != 2 or not state.attitude_valid:
-        raise ValueError('Expected valid-attitude protocol2 body31 state')
+    if state.protocol_version != 3 or not state.attitude_valid:
+        raise ValueError('Expected valid-attitude protocol3 body31 state')
     if (isinstance(state.state_id, bool) or not isinstance(state.state_id, (int, np.integer))
             or not 0 <= state.state_id < 1 << 64):
         raise ValueError('state_id must fit uint64')
@@ -202,11 +202,9 @@ class RealtimeBodyTransport(PullTransport):
         super().__init__(node_name=node_name, group=group)
         self._capture_publish_timing = True
 
-    def publish(self, topic, message):
-        if topic == BODY_CMD_TOPIC:
-            message = replace(message, ts_client_send_us=time.time_ns() // 1000)
-        result = super().publish(topic, message)
-        if topic == BODY_CMD_TOPIC:
-            # Capture the actual REALTIME-stamped wire object, after successful send.
-            self.last_body_command = message
+    def _publish_body(self, message, guard):
+        # Preserve the SDK's final connection/runtime/ownership guard.
+        message = replace(message, ts_client_send_us=time.time_ns() // 1000)
+        result = super()._publish_body(message, guard)
+        self.last_body_command = message
         return result

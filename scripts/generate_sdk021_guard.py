@@ -13,12 +13,7 @@ import re
 import subprocess
 import zipfile
 
-ORIGINAL = (
-    '__init__.py', '_body_codec.py', '_gripper_codec.py', '_gripper_lifecycle.py',
-    '_hand_codec.py', '_motor_codec.py', 'body_types.py', 'brainco_capture.py',
-    'controller.py', 'gripper.py', 'gripper_types.py', 'hand.py', 'hand_types.py',
-    'transport.py', 'types.py',
-)
+ORIGINAL = ('__init__.py', '_body_codec.py', '_ee_pull.py', '_end_effector_codec.py', '_group.py', '_motor_codec.py', '_policy_state.py', '_state_stream.py', 'body_types.py', 'brainco_capture.py', 'controller.py', 'end_effector.py', 'end_effector_types.py', 'joy.py', 'state.py', 'transport.py', 'types.py', 'wbc_tracking_policy.py')
 RUNTIME = ('pull.py', 'state_arrays.py', '_native_body_codec.py')
 
 

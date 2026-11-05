@@ -42,7 +42,11 @@ def main():
                  'third_party/pico_binding/bindings/controller_trigger_snapshot.h'):
         if not any(item['path'] == name for item in actor['files']):
             actor['files'].append(dict(path=name))
-    additional = ['scripts/configure_actor_s100.py', 'tests/test_actor_local_provision.py',
+    additional = ['src/deployment/vita_s100_aorta_30dof/actor_pico_hands.py',
+                  'config/pico_brainco_grip.example.json', 'tests/pico_ee_sdk_test.py',
+                  'scripts/build_sdk_source_test_native.py',
+                  'deploy/actor_s100/PICO_BRAINCO_GRIP.md',
+                  'scripts/configure_actor_s100.py', 'tests/test_actor_local_provision.py',
                   'src/deployment/vita_s100_aorta_30dof/actor_pico_head.py',
                   'tests/test_actor_pico_head.py', 'tests/test_actor_firmware_session.py',
                   'src/deployment/vita_s100_aorta_30dof/actor_pico_scheduling.py',
@@ -131,7 +135,7 @@ def main():
     missing = set(required)-set(names)
     if missing:
         raise RuntimeError('Stage these required delivery files first: '+', '.join(sorted(missing)))
-    record = dict(schema='vita_actor_s100_delivery_v1', version='2026.11.04-actor23-native-ab-pico-camera',
+    record = dict(schema='vita_actor_s100_delivery_v1', version='2026.11.05-actor24-shared-ee-grip',
                   target=dict(os='Linux', architecture='aarch64', python='3.10', glibc_min='2.35'),
                   scope='offline/shadow checks and explicitly armed supported EXTERNAL trials; hardware not_measured',
                   required_inputs=required, external_resources=external, archives=archives,
