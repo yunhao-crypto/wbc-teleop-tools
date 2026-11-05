@@ -126,7 +126,7 @@
     {
       "path": "ACTOR-PICO-MANIFEST.json",
       "bytes": 20993,
-      "sha256": "bd3e50f3fa8635916ece3bf8dc9c6dde8cc52e827a6096b6516537374f2488ba"
+      "sha256": "9182fa30597c17ce3f906b1f8fe46f16c63888b63f335b837099f68e589d796c"
     },
     {
       "path": "README.md",
@@ -1430,8 +1430,8 @@
     },
     {
       "path": "src/deployment/vita_s100_aorta_30dof/actor_pico_hands.py",
-      "bytes": 8200,
-      "sha256": "7776ffd3a9f61fb330ec289e4fc2d8852aef5383fd438e4fd660b8ac76b45826"
+      "bytes": 8920,
+      "sha256": "40b1c3f13ac2ca9f8f472d5506c0a557f74789087e92332af68a85f9fc50bc52"
     },
     {
       "path": "src/deployment/vita_s100_aorta_30dof/actor_pico_head.py",
@@ -3615,8 +3615,8 @@
     },
     {
       "path": "tests/pico_ee_sdk_test.py",
-      "bytes": 5504,
-      "sha256": "88ab8a6395abf3edfc0ca665e285a6a44d67938e3710286773de9db8449d189f"
+      "bytes": 6194,
+      "sha256": "36cae4e00d6da9109bf76d4454697d80412216c35d06e2948fe4c1173ac70f67"
     },
     {
       "path": "tests/pico_hand_grip_test.py",

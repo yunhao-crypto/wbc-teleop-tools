@@ -5,6 +5,7 @@ PYTHONPATH=$SDK/python:$SDK/tests:build/sdk-ee-bindings python tests/pico_ee_sdk
 import sys
 import time
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 from dataclasses import replace
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]/'src'))
@@ -82,6 +83,24 @@ class AdapterTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError,'stale'):
             r.publish(True,time.monotonic()+.3)
         self.assertFalse(self.node.commands)
+
+    def test_feedback_arriving_during_snapshot_is_fresh(self):
+        r = self.runner()
+        client = self.clients['left']
+        original = client.motion_feedback
+        before = time.monotonic()
+
+        def concurrent_feedback():
+            update = state_object(side=1, n=6, sample=2)
+            update.tsStatePubUs = 120
+            self.node.emit('left', 'state', update)
+            snapshot = original()
+            self.assertGreater(snapshot[3], before)
+            return snapshot
+
+        with patch.object(client, 'motion_feedback', concurrent_feedback):
+            r.publish(True)
+        self.assertEqual(len(self.node.commands), 2)
 
     def test_permission_revocation_blocks_both_hands(self):
         r=self.runner()

@@ -100,7 +100,7 @@ class HandGripRunner:
         self.thread = threading.Thread(target=self.run, name='pico-hand-grip', daemon=True)
         self.thread.start()
 
-    def publish(self, grasp, now):
+    def publish(self, grasp, now=None):
         from locomotion_aorta.end_effector_types import (
             Field, SampleStatus, InhibitReason, _STATE_READY_VALID,
             _STATE_OUTPUT_ALLOWED_VALID, _STATE_INHIBIT_REASON_VALID)
@@ -109,6 +109,10 @@ class HandGripRunner:
             # The SDK preserves the original position sample across telemetry-only
             # publications. Latest status is authoritative for permission revocation.
             latest, position, fault, received = client.motion_feedback()
+            # Sample the clock AFTER the atomic feedback snapshot. A callback may
+            # deliver a newer sample while this thread is entering the getter.
+            checked_at = time.monotonic() if now is None else now
+            age = None if received is None else checked_at - received
             info = client.info  # also detects a retired descriptor/runtime
             for state in (latest, position, fault):
                 if state is not None:
@@ -126,14 +130,21 @@ class HandGripRunner:
                     f'ready={latest.ready} output_allowed={latest.output_allowed} '
                     f'inhibit_reason={latest.inhibit_reason} '
                     f'ts_state_pub_us={latest.ts_state_pub_us} '
-                    f'position_age_s={None if received is None else now-received}')
+                    f'position_age_s={age}')
                 raise RuntimeError(f'{side}: unavailable or revoked output permission; {detail}')
-            if (position is None or received is None or not 0 <= now-received < .2
-                    or position.sample_status != SampleStatus.OK
-                    or not all(mask & Field.POS and math.isfinite(q) and lo <= q <= hi
-                        for mask, q, lo, hi in zip(position.valid_fields, position.pos,
-                                                  info.pos_min, info.pos_max))):
-                raise RuntimeError(f'{side}: stale or invalid original position feedback')
+            invalid_axes = [] if position is None else [
+                f'{name}:pos={q},valid=0x{int(mask):x},limits=[{lo},{hi}]'
+                for name, mask, q, lo, hi in zip(info.axis_names,
+                    position.valid_fields, position.pos, info.pos_min, info.pos_max)
+                if not (mask & Field.POS and math.isfinite(q) and lo <= q <= hi)]
+            if (position is None or age is None or not 0 <= age < .2
+                    or position.sample_status != SampleStatus.OK or invalid_axes):
+                detail = (f'position_age_s={age} '
+                          f'position_state_id={None if position is None else position.state_id} '
+                          f'sample_status={None if position is None else position.sample_status} '
+                          f'latest_state_id={latest.state_id} '
+                          f'invalid_axes={invalid_axes}')
+                raise RuntimeError(f'{side}: stale or invalid original position feedback; {detail}')
             states[side] = position
         for side, client in self.clients.items():
             client.publish(self.targets[side][grasp],
@@ -147,7 +158,7 @@ class HandGripRunner:
                 with self.shared.get_lock():
                     sample = tuple(self.shared[3:7])
                 grasp = gate.update(sample, time.monotonic())
-                self.publish(grasp, time.monotonic())
+                self.publish(grasp)
                 if grasp != previous:
                     print('PICO_HANDS: '+('grasp' if grasp else 'open'), flush=True)
                     previous = grasp
@@ -157,7 +168,7 @@ class HandGripRunner:
         finally:
             # Best effort only: emergency/inhibit cannot promise physical opening.
             try:
-                self.publish(False, time.monotonic())
+                self.publish(False)
             except Exception:
                 pass
 
