@@ -126,7 +126,7 @@
     {
       "path": "ACTOR-PICO-MANIFEST.json",
       "bytes": 20993,
-      "sha256": "cf71e59035c29d1e7b04a222772fd8cb288e7ce1d8a471d8ab4152169adb8cb9"
+      "sha256": "1c2caa2d4537fc57af558504fba9134875ef75ee1c9c9edeb2fdbc717e87c4f3"
     },
     {
       "path": "README.md",
@@ -535,8 +535,8 @@
     },
     {
       "path": "scripts/actor_pico.py",
-      "bytes": 24786,
-      "sha256": "c13667a895f4f5b1cb090bf6fbe04838625017446f45a6d83aeb8cabecab6bfc"
+      "bytes": 24782,
+      "sha256": "f8fb7790ef63f1811035d6329803e9d18dc7ef9a7fd57494f17a4ab4a6c725b5"
     },
     {
       "path": "scripts/analyze_latest_live_logs.py",

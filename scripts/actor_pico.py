@@ -187,8 +187,8 @@ def shadow(runtime, args, write):
                 source_age = (time.time_ns()-state.ts_state_pub_us*1000)*1e-9
                 if not 0 <= age <= .1 or not -.005 <= source_age <= .1:
                     raise TimeoutError('Body31 feedback is stale or clock contract differs')
-                if state.protocol_version != 2 or state.roster_version != 1:
-                    raise ValueError('Expected the pinned protocol2 roster1 body31 state')
+                if state.roster_version != 1:
+                    raise ValueError('Expected the pinned roster1 body31 state (protocol checked by native adapter)')
                 q, dq, root, gyro = runtime.policy.state(state)
                 sample = pico.step()
                 if sample is not None:

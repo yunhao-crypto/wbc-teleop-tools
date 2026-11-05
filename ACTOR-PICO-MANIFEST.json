@@ -18,8 +18,8 @@
     },
     {
       "path": "scripts/actor_pico.py",
-      "sha256": "c13667a895f4f5b1cb090bf6fbe04838625017446f45a6d83aeb8cabecab6bfc",
-      "bytes": 24786,
+      "sha256": "f8fb7790ef63f1811035d6329803e9d18dc7ef9a7fd57494f17a4ab4a6c725b5",
+      "bytes": 24782,
       "mode": "0o755"
     },
     {
