@@ -12,7 +12,7 @@
     },
     {
       "path": "config/actor_pico.json",
-      "sha256": "88045ef0ecc64cf700941bef1985dedb4e80044f37b675545a6f0f0fdaaad7b6",
+      "sha256": "ebde1a2996f1fa2f2fc52a8d289c04a0e09b1d83eb5251448226cab944f03234",
       "bytes": 7341,
       "mode": "0o644"
     },
