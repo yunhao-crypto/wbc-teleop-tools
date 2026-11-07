@@ -37,11 +37,14 @@ def motor_theta(runtime):
 
 def robot_config(runtime=None):
     """A-sample effective config; EXTERNAL ankle mode as the runtime's model needs."""
-    config = dict(parallel_ankle=dict(pd=dict(strategy='virtual_pd', kp_motor=20., kd_motor=1.),
+    from deployment.vita_s100_aorta_30dof.actor_parallel_ankle import command_space
+    config = dict(parallel_ankle=dict(pd=dict(strategy='virtual_pd', kp_motor=20., kd_motor=1.,
+                                           kp_motor_max=600., kd_motor_max=60.),
                 geometry=dict(lx=.05, ly=.02175, z_top=.31, z_bot=.235),
-                caps=dict(theta_min=-.95975, theta_max=.61075),
+                caps=dict(theta_min=-.95975, theta_max=.61075, qd_motor_max=12.25, tau_motor_max=50.),
                 virtual_limits=dict(pitch=[-.751, .414], roll=[-.43625, .43625])),
         actions=dict(EXTERNAL=dict(generator='builtin::external', params=dict(
+            ankle_command_space=command_space(runtime.policy) if runtime is not None else 'virtual_pitch_roll',
             ankle_virtual_pd_intent=not (runtime is not None and motor_theta(runtime)), command_timeout_ms=1000,
             recover_valid_frames=1, interpolation=dict(min_period_ms=2, max_period_ms=100),
             safe_hold=dict(kp=[10.]*42, kd=[1.]*42)))))
@@ -964,7 +967,7 @@ class LiveTests(unittest.TestCase):
             self.config.write_text(json.dumps(root))
             return result
         with patch.object(self.runtime,'infer_motion',changed):
-            with self.assertRaisesRegex(ValueError, 'ankle_virtual_pd_intent'): self.run_trial()
+            with self.assertRaisesRegex(ValueError, 'ankle_virtual_pd_intent|motor PD'): self.run_trial()
         self.assertEqual(self.transport.requests, [])
 
     def test_full_body_compensation_command_is_preserved(self):
@@ -1028,7 +1031,7 @@ class LiveTests(unittest.TestCase):
         params = config['actions']['EXTERNAL']['params']
         params['ankle_virtual_pd_intent'] = not params['ankle_virtual_pd_intent']
         self.config.write_text(json.dumps(config))
-        with self.assertRaisesRegex(ValueError, 'ankle_virtual_pd_intent'): self.run_trial()
+        with self.assertRaisesRegex(ValueError, 'ankle_virtual_pd_intent|motor PD'): self.run_trial()
         self.assertEqual((self.transport.requests, self.transport.commands), ([], []))
 
     def test_measured_pose_has_small_margin_but_commands_use_exact_ranges(self):
@@ -1854,8 +1857,8 @@ class LocalStartTests(unittest.TestCase):
         spec=importlib.util.spec_from_file_location('actor_cli_duration_test',ROOT/'scripts/actor_pico.py')
         cli=importlib.util.module_from_spec(spec);spec.loader.exec_module(cli)
         self.cfg['seconds']=0;self.save();defaults=self.load()
-        runtime=NS(config={'artifacts':{'model':{}},'retargeting':{'implementation':'motion_stream_bridge_gmr_vita02a'}},reference=NS(delay=.2),
-                retarget=NS(accelerated=True),
+        runtime=NS(config={'artifacts':{'model':{}},'body_profile':{},'retargeting':{'implementation':'motion_stream_bridge_gmr_vita02a'}},reference=NS(delay=.2),
+                retarget=NS(accelerated=True), reference_source='pico', head=None,
                 model=NS(contract=NS(input_dim=1520)))
         runtime.policy=NS(contract=runtime.model.contract,profile={'ankle_command_space':'policy'})
         for tail,expected in [([],0),(['--seconds','5'],5),(['--seconds','600'],600)]:

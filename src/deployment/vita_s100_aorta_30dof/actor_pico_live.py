@@ -145,7 +145,12 @@ def load_robot_config(path, runtime=None):
                 raise ValueError('Model/robot ankle geometry differs: '+key)
     except (KeyError, TypeError) as error:
         raise ValueError('Incomplete effective A-sample robot configuration') from error
-    return params, dict(path=str(path), sha256=hashlib.sha256(payload).hexdigest())
+    # Compare trial YAMLs without exposing their contents: only the wire-space
+    # selector may differ in a controlled ankle-path A/B trial.
+    comparable = json.loads(json.dumps(root))
+    comparable['actions']['EXTERNAL']['params'].pop('ankle_command_space', None)
+    return params, dict(path=str(path), sha256=hashlib.sha256(payload).hexdigest(),
+        ankle_path_comparison_sha256=hashlib.sha256(json.dumps(comparable, sort_keys=True).encode()).hexdigest())
 
 
 def check_motor_theta_ankle(ankle, intent, runtime, native=False):
@@ -500,7 +505,7 @@ def record_period_overrun(write, phase_name, elapsed, actions_sent, **details):
 
 def run_live(runtime, args, write, controller, pico, stop, service_alive,
              clock=time, manual_pico=None, poll_command=lambda:None,
-             request_action=None):
+             request_action=None, motion_source=None):
     """One trial only. Every attempted entry is followed by checked CANCEL.
 
     Fake I/O in unit tests exercises this same runner; actual transport and
@@ -509,6 +514,8 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
     if not math.isfinite(args.seconds) or args.seconds < 0:
         raise ValueError('Live duration must be finite and nonnegative; 0 means until STOP')
     params, receipt = load_robot_config(args.robot_config, runtime)
+    if motion_source is not None:
+        write(dict(record_type='robot_configuration', robot_config=receipt, actions_sent=0))
     envelope = CommandEnvelope(runtime, controller.get_robot_info(args.startup_timeout), params)
     pico_max_age = runtime.config['pico_max_age_s']
     auto = bool(getattr(args, 'auto_start', False))
@@ -522,8 +529,10 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
                                          cancel_startup, FirmwareActions)
         startup = StartupPlan(runtime, envelope, args.robot_config)
     manual = bool(getattr(args, 'manual_pico', False))
-    requires_pico = not args.stand_only and not manual
-    if auto and (not manual or args.stand_only):
+    if motion_source is not None and (manual or wait_pico or auto_pico or args.stand_only):
+        raise ValueError('File motion cannot combine Pico following or stand-only mode')
+    requires_pico = motion_source is None and not args.stand_only and not manual
+    if auto and ((not manual and motion_source is None) or args.stand_only):
         raise ValueError('One-click startup requires manual Pico mode')
     # Firmware retires completed keyframes, leaving current_action empty. Auto
     # explicitly requests FIXED_STAND and verifies measured targets afterward;
@@ -587,15 +596,19 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
         policy=runtime.policy_name, model=runtime.config['artifacts']['model'], config=receipt,
         stand_only=args.stand_only, seconds=args.seconds,
         manual_pico=manual, auto_start=auto, entry_policy='policy-online',
+        reference_source='npz' if motion_source is not None else 'pico',
+        motion=motion_source.metadata if motion_source is not None else None,
         wait_pico=wait_pico, auto_pico=auto_pico,
         startup_plan=startup.review if auto else None,
         default_pose=dict(zip(runtime.model.contract.names, runtime.model.contract.default.tolist())),
         kp=dict(zip(runtime.model.contract.names, runtime.model.contract.kp.tolist())),
         kd=dict(zip(runtime.model.contract.names, runtime.model.contract.kd.tolist())),
-        fixed_joints=runtime.config['body_profile']['fixed_joints'], reference_delay_s=runtime.reference.delay,
-        human_height_m=runtime.config['retargeting']['human_height_m'],
-        pico_stream=runtime.config.get('pico_stream'), pico_worker=runtime.config.get('pico_worker'),
-        head_control=runtime.config.get('head_control'))), flush=True)
+        fixed_joints=runtime.config['body_profile']['fixed_joints'],
+        reference_delay_s=runtime.reference.delay if motion_source is None else 0.,
+        human_height_m=runtime.config['retargeting']['human_height_m'] if motion_source is None else None,
+        pico_stream=runtime.config.get('pico_stream') if motion_source is None else None,
+        pico_worker=runtime.config.get('pico_worker'),
+        head_control=runtime.config.get('head_control') if runtime.head is not None else None)), flush=True)
     print('ACTOR_START: motion requested; '+
           ('running until STOP/Ctrl-C or fault' if args.seconds == 0 else f'duration limit {args.seconds:g}s')+
           '; exit requests CANCEL -> PASSIVE. Keep support and E-stop available.',flush=True)
@@ -687,14 +700,16 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
         policy_tick = 0
         stand_tick = 0
         tracking = False
-        if runtime.head is not None and not args.stand_only:
+        motion_complete = False
+        if runtime.head is not None and not args.stand_only and motion_source is None:
             print('PICO_HEAD: look straight ahead relative to your chest when enabling following; '
                   'this pose becomes head neutral.', flush=True)
         last_inferred_identity = None
         last_inferred_receipt_ns = None
         report['duplicate_body_ticks'] = 0
         if auto:
-            print('POLICY_LEAD_IN: ONNX runs from measured-pose reference toward model stand; awaiting Pico',flush=True)
+            print('POLICY_LEAD_IN: ONNX runs from measured-pose reference toward model stand; '+
+                  ('then fixed NPZ playback' if motion_source is not None else 'awaiting Pico'),flush=True)
         if manual:
             print('PICO_BUTTONS: release both triggers, then squeeze both past 0.7 to toggle '
                   'following/ONNX stand. STOP or Ctrl-C cancels.',flush=True)
@@ -727,6 +742,10 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
             return following
 
         while not stop.is_set() and clock.monotonic() < end:
+            if motion_source is not None:
+                poll_command()  # Terminal STOP/EOF sets the same cancellation event.
+                if stop.is_set():
+                    break
             if requires_pico and not service_alive():
                 raise RuntimeError('Pico service exited')
             clock.sleep(max(0., deadline-clock.monotonic()))
@@ -854,7 +873,21 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
                         write(dict(record_type='tracking_started',actions_sent=sent_count,
                                    reference_yaw_offset=tracking_yaw))
             published_action = runtime.policy.last_action.copy()
-            if manual and tracking:
+            if motion_source is not None and elapsed >= preparation:
+                if not tracking:
+                    motion_source.begin(q, root)
+                    tracking = True
+                    write(dict(record_type='motion_started', actions_sent=sent_count,
+                        motion=motion_source.metadata, lead_frames=motion_source.lead_frames,
+                        total_ticks=motion_source.total_ticks, policy_history_reset=False))
+                    print('MOTION_PLAYING: one pass, live robot feedback; STOP/Ctrl-C cancels.',flush=True)
+                if motion_source.finished:
+                    motion_complete = True
+                    break
+                reference_frame = motion_source.tick
+                reference_time = reference_frame*runtime.model.contract.period
+                command, obs, row = motion_source.infer(q=q, dq=dq, root=root, gyro=gyro)
+            elif manual and tracking:
                 command, obs, row = pico_reference_command(runtime, snapshot, clock.monotonic(),
                     q=q, dq=dq, root=root, gyro=gyro, yaw_offset=tracking_yaw)
             elif requires_pico and elapsed >= preparation:
@@ -878,7 +911,7 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
             pending_action = runtime.policy.last_action.copy()
             runtime.policy.last_action = published_action
             command, pending_head = runtime.apply_head(command, row, now=clock.monotonic(),
-                measured_q=state.q, tracking=tracking,
+                measured_q=state.q, tracking=tracking and motion_source is None,
                 snapshot=(snapshot if manual else inputs.snapshot) if tracking else None)
             envelope.check(command)
             compute_end = clock.monotonic()
@@ -920,15 +953,18 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
             policy_tick += 1
             if not tracking:
                 stand_tick += 1
+            elif motion_source is not None:
+                motion_source.advance()
             report['actions_sent'] = sent_count
             if auto and not report['onnx_control_enabled']:
-                print('ONNX_READY: policy commands started; both Pico triggers toggle following',flush=True)
+                print('ONNX_READY: policy commands started; '+('NPZ playback follows stand preparation'
+                      if motion_source is not None else 'both Pico triggers toggle following'),flush=True)
             report['onnx_control_enabled'] = True
             write(dict(row, actions_sent=sent_count, control_handles_created=1,
-                stage='pico_tracking' if tracking else 'prepare_stand',
+                stage=('motion_tracking' if motion_source is not None else 'pico_tracking') if tracking else 'prepare_stand',
                 policy_tick=policy_tick-1,
-                reference_time_s=0. if tracking else reference_time,
-                reference_frame=0 if tracking else reference_frame,
+                reference_time_s=0. if tracking and motion_source is None else reference_time,
+                reference_frame=0 if tracking and motion_source is None else reference_frame,
                 state_id=int(state.state_id), source_state_us=int(state.ts_state_real_us),
                 feedback_timing=dict(at_read=state_age_at_read, before_publish=state_age_before_publish,
                     publication_us=int(state.ts_state_pub_us),
@@ -944,14 +980,17 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
                 compute_ms=(compute_end-cycle)*1000,
                 sent_body_targets=[dict(q=j.q, dq=j.dq, tau=j.tau, kp=j.kp, kd=j.kd) for j in sent.joints]), obs)
             if sent_count % 50 == 0:
-                stage = 'pico_tracking' if tracking else 'stand'
+                stage = ('motion_tracking' if motion_source is not None else 'pico_tracking') if tracking else 'stand'
                 print(f'ACTOR_LIVE steps={sent_count} stage={stage}', flush=True)
             complete = clock.monotonic()
             record_period_overrun(write,'complete_cycle',complete-cycle,sent_count)
             deadline = advance(deadline)
         report['stopped_by_signal'] = stop.is_set()
         report['elapsed_s'] = clock.monotonic()-start
-        report['stop_reason'] = 'operator_stop' if stop.is_set() else 'duration_elapsed'
+        report['stop_reason'] = 'operator_stop' if stop.is_set() else 'motion_complete' if motion_complete else 'duration_elapsed'
+        if motion_source is not None:
+            report['motion'] = motion_source.metadata
+            report['motion_ticks'] = motion_source.tick
         write(dict(record_type='stop_requested',reason=report['stop_reason'],
             elapsed_s=report['elapsed_s'],duration_limit_s=args.seconds,actions_sent=sent_count))
         print(f"ACTOR_STOP: {report['stop_reason']}, elapsed={report['elapsed_s']:.2f}s; CANCEL -> PASSIVE",flush=True)

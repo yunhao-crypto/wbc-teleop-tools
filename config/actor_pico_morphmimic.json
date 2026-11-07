@@ -4,10 +4,10 @@
   "policy_kind": "morphmimic_vita02a_tracking",
   "artifacts": {
     "model": {
-      "path": "artifacts/morphmimic/morphmimic_vita02a_iter34000.onnx",
-      "sha256": "416f9f11e0e3861c699fd08a0332e51a7d3d28161db620a18447143d90ffe778",
-      "bytes": 35506759,
-      "source_name": "ckpt_34000.pt"
+      "path": "artifacts/morphmimic/teleop_20261105/iter_0031000/policy.onnx",
+      "sha256": "77216ff87069dc8ec5b4b780de9e9f85232470ef936219736ffa6907f82f36ca",
+      "bytes": 35507011,
+      "source_name": "checkpoint.pt"
     },
     "urdf": {
       "path": "artifacts/output_envelopes.motion.urdf",
@@ -223,16 +223,29 @@
   "pico_hold_age_s": 0.25,
   "provenance": {
     "exporter": "scripts/export_morphmimic_vita02a.py",
-    "checkpoint_sha256": "85bc1ab224cd8dc5cd7ba153aafc6eb41a3519fd8f0cf99dd875d7e312784c72",
-    "iteration": 34000,
-    "training_commit": "8899e47565201ba92af7169a167f03e87abe9b32"
+    "checkpoint_sha256": "c8d84f6e3124d5d6ef71776a311d222cf5bc19767a2bd775e9588cc87470de57",
+    "iteration": 31000,
+    "training_commit": "d4a257152b3cfb30ec83a0fa1ba095287c9fad56",
+    "data_version_sha256": "968f5caadb96eec371959e8b6dfbb950a6448eb7eaf0eec4029107dbba320389",
+    "finetune_source_sha256": "a7e258c6148034112a90fa08f0377863b22f2a7024f7f81226e5ac799550fde6",
+    "reference_feasibility_guard": "virtual_box_and_coupled_motor_v1"
   },
   "retargeting": {
     "implementation": "motion_stream_bridge_gmr_vita02a",
     "source_commit": "763f5607c3f0accb61a415cfd676af54b72e1232",
     "human_height_m": 1.75,
     "robot": "vita02a",
-    "offset_to_ground": true
+    "offset_to_ground": true,
+    "ankle_reference_limits": {
+      "pitch": [
+        -0.751,
+        0.414
+      ],
+      "roll": [
+        -0.3926987648,
+        0.3926987648
+      ]
+    }
   },
   "reference_window": {
     "past_frames": 1,

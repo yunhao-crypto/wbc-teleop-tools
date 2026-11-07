@@ -4,10 +4,10 @@
   "policy_kind": "supermimic_vita02a_tracking",
   "artifacts": {
     "model": {
-      "path": "artifacts/supermimic/supermimic_vita02a.onnx",
-      "sha256": "40896a887dadebf2af6419a7ed662ab9164c41a63f49de112fd643202ef7e63c",
-      "bytes": 36075606,
-      "source_name": "supermimic_vita02a.onnx"
+      "path": "artifacts/supermimic/F_ckpt_038000_supermimic_vita02a.onnx",
+      "sha256": "48e139003f47e75552b4d84f88487cca3a8b7437d2be8ffbd354222e864e687e",
+      "bytes": 36078650,
+      "source_name": "F_ckpt_038000_supermimic_vita02a.onnx"
     },
     "urdf": {
       "path": "artifacts/output_envelopes.motion.urdf",
@@ -172,7 +172,7 @@
         "kd": 1.0
       }
     },
-    "ankle_clamp_feedforward": true,
+    "ankle_clamp_feedforward": false,
     "lead_in": {
       "speed_q_per_s": 1.2,
       "min_duration_s": 0.3,
@@ -222,8 +222,14 @@
   "head_control": {
     "enabled": true,
     "joint_limits": {
-      "neck_yaw_joint": [-1.0471975511965976, 1.0471975511965976],
-      "neck_pitch_joint": [-0.5235987755982988, 0.3490658503988659]
+      "neck_yaw_joint": [
+        -1.0471975511965976,
+        1.0471975511965976
+      ],
+      "neck_pitch_joint": [
+        -0.5235987755982988,
+        0.3490658503988659
+      ]
     },
     "max_velocity_rad_s": null,
     "filter_time_constant_s": 0.04
@@ -234,13 +240,14 @@
     "tracking_checkout_commit": "5eb34b2",
     "tracking_profile_source": "humanoid-sdk-tracking/examples/groot_tracking_asample.json",
     "tracking_profile_sha256": "7969af4d52d44e7a0ac4c6060a74300b233715c6a0430080c06c843629f2b1e7",
-    "model_source": "trackerlab-supermimic scripts/rls/supermimic/export_vita_deployment.py",
+    "model_source": "/host/onnx/F_ckpt_038000_supermimic_vita02a.onnx",
     "retargeter": "Unmodified motion-stream-bridge Vita02A GMR, named-joint selection",
     "training_checkpoint": {
-      "run": "logs/vita02a_curated_v2/train_v3_8gpu_24h_20261029",
-      "iteration": 23000,
-      "sha256": "9eb1ebf7f15761eb5bbe05071f11509c5e10c8b3c4cfb3506751ff0055e15944",
-      "ankle": "closed-loop plant; motor_theta contract, robot EXTERNAL ankle_virtual_pd_intent=false (PD-A)"
+      "run": "F_init4k_sonic_align_4gpu_24h",
+      "iteration": 38000,
+      "sha256": "9144f0f4e6e9f7daa1a6f609ca6dc8b709ca1814afc8284474ed5c8e7273459f",
+      "training_contract_sha256": "475a92c77afb8a8318bfcb481ca59e199436b6d6f72314e8fc387e311103c252",
+      "ankle": "motor_theta, native A/B, motor PD 20/1"
     }
   },
   "retargeting": {
@@ -257,17 +264,37 @@
   },
   "pico_stream": {
     "playback_margin_s": 0.06,
-    "joint_filter": {"min_cutoff_hz": 3.0, "beta": 0.5, "d_cutoff_hz": 1.0},
-    "root_filter": {"min_cutoff_hz": 1.5, "beta": 0.3, "d_cutoff_hz": 1.0},
+    "joint_filter": {
+      "min_cutoff_hz": 3.0,
+      "beta": 0.5,
+      "d_cutoff_hz": 1.0
+    },
+    "root_filter": {
+      "min_cutoff_hz": 1.5,
+      "beta": 0.3,
+      "d_cutoff_hz": 1.0
+    },
     "root_max_tilt_deg": 25.0,
     "note": "Worker ships conditioned raw GMR samples; the control loop resamples them at now - clock offset - playback_margin_s - reference delay, so the reference advances 20 ms per tick."
   },
   "pico_worker": {
     "ik_max_iter": 3,
     "reader_poll_interval_s": 0.002,
-    "worker_cpus": [0, 1, 2, 3, 4],
-    "gmr_cpus": [1],
-    "control_cpus": [2, 3, 4],
+    "worker_cpus": [
+      0,
+      1,
+      2,
+      3,
+      4
+    ],
+    "gmr_cpus": [
+      1
+    ],
+    "control_cpus": [
+      2,
+      3,
+      4
+    ],
     "note": "Same GMR/receiver/control layout for every policy. ik_max_iter caps GMR refinement passes per frame (pinned default 10). S100 robot42 calibration: SDK/readers inherit worker_cpus; only the GMR calling thread narrows to gmr_cpus after receivers start. Live control threads move to control_cpus after the worker is spawned, keeping the real-time loop off the GMR CPU (full-load layout B). These CPU indices require the reviewed six-core S100 layout. Frequency is unchanged."
   }
 }

@@ -67,6 +67,11 @@ def main():
                    'src/deployment/vita_s100_aorta_30dof/actor_morphmimic.py',
                    'scripts/export_morphmimic_vita02a.py', 'scripts/check_morphmimic_vita02a.py',
                    'scripts/prepare_external_ankle_config.py', 'tests/test_native_ankle_commands.py']
+    additional += ['config/actor_motion.json', 'scripts/start_actor_motion.sh',
+                   'src/deployment/vita_s100_aorta_30dof/actor_motion.py', 'tests/test_actor_motion.py',
+                   'scripts/import_actor_motion.py', 'scripts/compare_actor_motion.py',
+                   'tests/test_actor_motion_tools.py']
+    additional += ['artifacts/morphmimic/iter31000.deployment.json', 'tests/test_morph_reference_feasibility.py']
     additional += ['scripts/pico_camera_bridge.py', 'scripts/check_pico_camera_stream.py',
                    'scripts/pico_session_services.py', 'tests/test_pico_session_services.py',
                    'scripts/prepare_pico_camera_viewer.py', 'scripts/build_pico_camera_viewer.sh',

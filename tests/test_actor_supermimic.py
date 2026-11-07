@@ -1,5 +1,6 @@
 """SuperMimic actor regressions against training-code fixtures; no robot or network."""
 import json
+import hashlib
 from dataclasses import replace
 from pathlib import Path
 import sys
@@ -10,7 +11,7 @@ import numpy as np
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT/'src'))
 sys.path.insert(0, str(ROOT/'tests'))
-from deployment.vita_s100_aorta_30dof.actor_pico_runtime import ActorPicoRuntime, load_actor_config
+from deployment.vita_s100_aorta_30dof.actor_pico_runtime import ActorModel, ActorPicoRuntime, load_actor_config
 from deployment.vita_s100_aorta_30dof import actor_supermimic as sm
 from deployment.vita_s100_aorta_30dof import actor_parallel_ankle as pa
 import test_actor_pico_live
@@ -33,8 +34,18 @@ class SuperMimicTests(unittest.TestCase):
         self.policy = sm.create_policy(self.c, dict(self.runtime.config['body_profile']),
                                       self.math, self.runtime.config)
 
-    def test_fixture_is_from_the_configured_model(self):
-        self.assertEqual(str(self.fx['onnx_sha256']), self.runtime.config['artifacts']['model']['sha256'])
+    def fixture_model(self):
+        # Training golden actions belong to their original checkpoint, not to
+        # whichever policy has subsequently been selected for deployment.
+        path = ROOT/'artifacts/supermimic/supermimic_vita02a.onnx'
+        if not path.is_file():
+            self.skipTest('Supply the original SuperMimic fixture ONNX separately')
+        self.assertEqual(hashlib.sha256(path.read_bytes()).hexdigest(), str(self.fx['onnx_sha256']))
+        return ActorModel(path, self.math, backend='auto', policy_kind=sm.POLICY_KIND)
+
+    def test_fixture_contract_matches_current_observation_layout(self):
+        fixture = self.fixture_model()
+        self.assertEqual(list(fixture.contract.names), list(self.c.names))
         self.assertEqual(list(self.fx['joint_names']), list(self.c.names))
         self.assertEqual((self.c.input_dim, self.c.history_length, self.c.future_frames), (1670, 10, 10))
         # Closed-loop checkpoint: ankle slots hold motor angles under motor PD.
@@ -72,6 +83,7 @@ class SuperMimicTests(unittest.TestCase):
 
     def test_observation_history_and_actions_match_training(self):
         f = self.fx
+        fixture_model = self.fixture_model()
         self.policy.reset()
         for i, frame in enumerate(f['tick_frames']):
             self.policy.last_action = f['tick_last_action'][i].astype(np.float32)
@@ -81,9 +93,20 @@ class SuperMimicTests(unittest.TestCase):
             goal, expected = obs[960:].reshape(10, 71), f['tick_input'][i][960:].reshape(10, 71)
             np.testing.assert_allclose(goal[:, :9], expected[:, :9], rtol=0, atol=2e-6)
             np.testing.assert_allclose(goal[:, 15:], expected[:, 15:], rtol=0, atol=2e-6)
-            np.testing.assert_allclose(self.runtime.model.infer(f['tick_input'][i]), f['tick_action'][i],
+            np.testing.assert_allclose(fixture_model.infer(f['tick_input'][i]), f['tick_action'][i],
                                        rtol=0, atol=2e-5)
-            np.testing.assert_allclose(self.runtime.model.infer(obs), f['tick_action'][i], rtol=0, atol=.02)
+            np.testing.assert_allclose(fixture_model.infer(obs), f['tick_action'][i], rtol=0, atol=.02)
+
+    def test_deployed_38000_model_has_finite_actions_and_native_targets(self):
+        self.assertEqual(self.runtime.config['artifacts']['model']['sha256'],
+                         '48e139003f47e75552b4d84f88487cca3a8b7437d2be8ffbd354222e864e687e')
+        for obs in self.fx['tick_input']:
+            action = self.runtime.model.infer(obs)
+            self.assertEqual(action.shape, (28,))
+            self.assertTrue(np.isfinite(action).all())
+            _, row = self.policy.decode(action)
+            expected = self.c.policy_default+self.c.scale*np.clip(action, -self.c.action_clip, self.c.action_clip)
+            np.testing.assert_allclose(row['target'], expected, atol=1e-6)
 
     def test_history_repeats_first_frame_and_rolls_oldest_first(self):
         self.policy.reset()

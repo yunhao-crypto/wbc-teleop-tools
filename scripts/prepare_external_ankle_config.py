@@ -11,7 +11,12 @@ import re
 import yaml
 
 
-def prepare(source, space):
+def prepare(source, space, virtual_pd_intent=None):
+    if space not in ('motor_theta', 'virtual_pitch_roll'):
+        raise ValueError('Unknown ankle command space')
+    intent = space == 'virtual_pitch_roll' if virtual_pd_intent is None else virtual_pd_intent
+    if type(intent) is not bool or (space == 'motor_theta' and intent):
+        raise ValueError('Native motor commands require virtual_pd_intent=false')
     root = yaml.safe_load(source)
     action = root['actions']['EXTERNAL']
     if action['generator'] != 'builtin::external' or 'parallel_ankle' not in root:
@@ -22,7 +27,7 @@ def prepare(source, space):
         raise ValueError('Expected standard two-space EXTERNAL YAML indentation')
     block = match.group()
     block, count = re.subn(r'^      ankle_virtual_pd_intent:.*$',
-                          '      ankle_virtual_pd_intent: '+('false' if space == 'motor_theta' else 'true'),
+                          '      ankle_virtual_pd_intent: '+('true' if intent else 'false'),
                           block, flags=re.M)
     if count != 1:
         raise ValueError('Expected exactly one EXTERNAL ankle_virtual_pd_intent')
@@ -35,7 +40,7 @@ def prepare(source, space):
     parsed = yaml.safe_load(result)
     expected = root['actions']['EXTERNAL']['params']
     expected['ankle_command_space'] = space
-    expected['ankle_virtual_pd_intent'] = space == 'virtual_pitch_roll'
+    expected['ankle_virtual_pd_intent'] = intent
     if parsed != root:
         raise ValueError('Configuration rewrite changed an unrelated setting')
     return result
@@ -46,8 +51,11 @@ def main():
     parser.add_argument('--input', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--space', choices=('motor_theta', 'virtual_pitch_roll'), required=True)
+    parser.add_argument('--virtual-pd-intent', choices=('true', 'false'),
+                        help='Use false for BOTH command paths of a motor-theta model; default follows space')
     args = parser.parse_args()
-    result = prepare(args.input.read_text(), args.space)
+    result = prepare(args.input.read_text(), args.space,
+                     None if args.virtual_pd_intent is None else args.virtual_pd_intent == 'true')
     # Exclusive creation also prevents accidentally replacing a live selection.
     with args.output.open('x') as stream:
         stream.write(result)

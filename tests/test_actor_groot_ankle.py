@@ -81,11 +81,49 @@ class GrootAnkleTests(unittest.TestCase):
         quat = np.stack([np.cos(yaw/2), np.zeros(n), np.zeros(n), np.sin(yaw/2)], axis=1)
         return self.math.Motion(q, np.cumsum(np.full((n, 3), .01), axis=0), quat)
 
-    def test_delivered_virtual_model_keeps_the_sdk_contract_and_policy(self):
-        self.assertIs(type(self.runtime.model.contract), self.math.Contract)
-        self.assertIsInstance(self.runtime.policy, self.math.WbcTrackingPolicy)
+    def test_default_sonic_is_pinned_9700_native_motor_policy(self):
+        model = self.runtime.config['artifacts']['model']
+        self.assertEqual(model['sha256'], '2bc0ca6f0bddef1ba040a19a771181da68f5b7d2138d1e87913072def089135d')
+        self.assertEqual(model['source_name'], 'model_step_009700_longrun_closed_loop_g1.onnx')
+        self.assertEqual(pa.command_space(self.runtime.policy), 'motor_theta')
+        self.assertEqual(self.runtime.model.contract.action_clip, 20.)
         self.assertFalse(self.runtime.policy.clip_target_positions)
-        self.assertIs(type(ga.contract_from_metadata(self.math, metadata(serial_contract()))), self.math.Contract)
+        self.assertFalse(self.runtime.config['body_profile']['ankle_clamp_feedforward'])
+
+    def test_virtual_contract_keeps_sdk_layout_with_affine_pd_policy(self):
+        # Keep this independent of the locally deployed (motor-theta) model.
+        contract = ga.contract_from_metadata(self.math, metadata(serial_contract()))
+        self.assertIs(type(contract), self.math.Contract)
+        policy = ga.create_policy(contract, self.profile, self.math)
+        self.assertIsInstance(policy, self.math.WbcTrackingPolicy)
+        self.assertFalse(policy.clip_target_positions)
+
+    def test_virtual_policy_does_not_require_clamp_compensation(self):
+        contract = ga.contract_from_metadata(self.math, metadata(serial_contract()))
+        for value in (False, None, True):
+            policy = ga.create_policy(contract, dict(self.profile, ankle_clamp_feedforward=value), self.math)
+            self.assertFalse(policy.clip_target_positions)
+        ga.create_policy(self.c, dict(self.profile, ankle_clamp_feedforward=False), self.math)
+
+    def test_virtual_affine_targets_preserve_policy_pd_torque(self):
+        contract = ga.contract_from_metadata(self.math, metadata(serial_contract()))
+        policy = ga.create_policy(contract, dict(self.profile, ankle_clamp_feedforward=True), self.math)
+        rng = np.random.default_rng(57400)
+        for sign in (-1., 1.):
+            action = np.zeros(28)
+            action[policy.ankles] = sign * contract.action_clip
+            command, decoded = policy.decode(action)
+            q = rng.uniform(policy.lower, policy.upper)
+            dq = rng.normal(size=28)
+            raw_target = contract.default + contract.scale * np.float32(action).astype(float)
+            for i in policy.ankles:
+                joint = command.joints[policy.mapping[i]]
+                self.assertAlmostEqual(joint.q, raw_target[i], delta=1e-6)
+                self.assertEqual(joint.tau, 0.)
+                actual = joint.kp * (joint.q - q[i]) - joint.kd * dq[i]
+                expected = contract.kp[i] * (raw_target[i] - q[i]) - contract.kd[i] * dq[i]
+                self.assertAlmostEqual(actual, expected, delta=5e-5)
+            np.testing.assert_array_equal(decoded['tau_ff'], np.zeros(28))
 
     def test_motor_theta_metadata_selects_motor_space(self):
         c, slots = self.c, self.c.ankle.slots
@@ -222,6 +260,8 @@ class AnkleTypeReportTests(unittest.TestCase):
         entry = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(entry)
         runtime = ActorPicoRuntime(ROOT, backend='ort')
+        runtime.model.contract = ga.contract_from_metadata(runtime.math, metadata(serial_contract()))
+        runtime.policy = ga.create_policy(runtime.model.contract, runtime.config['body_profile'], runtime.math)
         self.assertEqual(entry.ankle_type(runtime), dict(ankle_control_space='virtual_pitch_roll',
                                                          required_ankle_command_space='virtual_pitch_roll',
                                                          required_ankle_virtual_pd_intent=True))

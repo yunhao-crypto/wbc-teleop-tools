@@ -127,10 +127,18 @@ class ActorModel:
 
 
 class ActorPicoRuntime:
-    def __init__(self, root, *, backend='auto', threads=1, human_height=None, policy='sonic'):
+    def __init__(self, root, *, backend='auto', threads=1, human_height=None, policy='sonic',
+                 reference_source='pico', ankle_command_space=None):
+        if reference_source not in ('pico', 'npz'):
+            raise ValueError('Unknown actor reference source')
+        self.reference_source = reference_source
         self.root = Path(root).resolve()
         self.policy_name = policy
         self.config = load_actor_config(root, policy)
+        if ankle_command_space is not None:
+            if reference_source != 'npz' or ankle_command_space not in ('motor_theta', 'virtual_pitch_roll'):
+                raise ValueError('Explicit ankle command-space selection requires NPZ playback')
+            self.config['body_profile']['ankle_command_space'] = ankle_command_space
         if human_height is not None:
             self.config['retargeting']['human_height_m'] = float(human_height)
         self.stream = stream_settings(self.config)
@@ -140,9 +148,11 @@ class ActorPicoRuntime:
                                 self.math, backend=backend, threads=threads,
                                 policy_kind=self.config.get('policy_kind', 'groot_vita02a_tracking'))
         self.policy = create_policy(self.model.contract, self.config['body_profile'], self.math, self.config)
+        from .actor_parallel_ankle import command_space
+        command_space(self.policy)  # Reject native commands with a virtual-angle model immediately.
         settings = head_settings(self.config)
         self.head = None
-        if settings is not None:
+        if settings is not None and reference_source == 'pico':
             gmr_config = json.loads((self.root/self.config['artifacts']['gmr_source_4']['path']).read_text())
             offset = gmr_config['ik_match_table1']['waist_pitch_link'][4]
             self.head = PicoHeadControl(settings, offset, period=self.model.contract.period,
@@ -167,7 +177,8 @@ class ActorPicoRuntime:
     def reset_reference(self):
         """Reset only Pico calibration/reference; preserve running policy history."""
         self.reference = create_reference(self.model.contract, self.math, self.config)
-        self.retarget = create_retargeter(self.root, self.config, self.model.contract, self.math)
+        self.retarget = (create_retargeter(self.root, self.config, self.model.contract, self.math)
+                         if self.reference_source == 'pico' else None)
         self.last_residual = None
         self.last_retarget_ms = None
         self.reference_yaw_offset = None

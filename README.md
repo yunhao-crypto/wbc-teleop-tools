@@ -30,6 +30,32 @@ XRT 连接、全身追踪准备与 A+B+X+Y 四键视角切换。安装 APK 不�
 在已部署的机器人目录运行 `bash scripts/start_actor_pico.sh connect`，可以先启动 XRT 连接和
 视频转发进行无机器人动作的联调；退出后，原有 `sonic` / `supermimic` 跟随入口默认带视频启动。
 
+## 固定 NPZ 动作评测
+
+新增 `scripts/start_actor_motion.sh`，共用一个参考动作文件，由所选策略生成自己的 observation。
+默认读取 `reference/fixed_motion.npz`，可在 [actor_motion.json](config/actor_motion.json) 修改路径。
+NPZ 包含具名虚拟关节角、根部位置/姿态和采样率；字段定义及运行行为见
+[固定 NPZ 播放说明](README_ACTOR_PICO.md#fixed-npz-reference-playback)。
+
+```bash
+# 导入原始数据，默认选择 L1 小幅换重；校验哈希后放到固定路径
+python3 scripts/import_actor_motion.py --archive /path/to/vita02a_dataset_tests_20261105.tar.gz
+
+# 离线检查：不连接机器人，不启动 PICO/GMR/视频
+bash scripts/start_actor_motion.sh supermimic check --steps 100
+
+# 已配置的 S100：请求运动，使用实时反馈播放一遍，然后正常退出
+bash scripts/start_actor_motion.sh supermimic --record-observations
+# 同一个 NPZ 也可选择 sonic / morphmimic
+```
+
+文件通过导入脚本放入固定路径，原始 NPZ 不改写。加载器兼容重复根部字段，并逐项记录配置允许的微小边界修正。
+同一 motor-theta 模型可用 `--ankle-command-space motor_theta` / `virtual_pitch_roll` 对照两条输出路径；
+两组机器人 EXTERNAL 配置都需要 `ankle_virtual_pd_intent: false`，且命令空间必须匹配。
+切换机器人配置与重启服务仍需单独执行，脚本不会自动修改。步骤和日志对比见
+[脚踝控制路径 A/B 测试](README_ACTOR_PICO.md#controlled-ankle-command-path-ab-trial)。
+离线检查及模拟接口测试不代表实机稳定性验收。
+
 ## 首次部署：以下命令在目标 S100 执行
 
 在 `/userdata` 下使用新目录，保留旧部署以便回退；`/root` 可能随机器人系统切换而丢失。

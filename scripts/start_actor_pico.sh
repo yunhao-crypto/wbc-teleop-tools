@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 ROOT=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
-USAGE='Usage: start_actor_pico.sh [sonic|supermimic|morphmimic] [connect|check|replay|state-check|shadow|configure|live|auto] [options] [--no-camera] [--camera-topic TOPIC]'
+USAGE='Usage: start_actor_pico.sh [sonic|supermimic|morphmimic] [connect|check|replay|motion-check|state-check|shadow|configure|live|auto] [options] [--no-camera] [--camera-topic TOPIC]'
 # The actor policy is always an explicit choice: a positional name, --policy,
 # or the interactive menu. There is no default and no substitute policy.
 POLICY=
@@ -27,17 +27,21 @@ if [[ $# == 0 || "$1" == --* ]]; then
 fi
 MODE=$1
 case "$MODE" in
-  connect|auto|check|replay|state-check|shadow|live|configure) shift ;;
+  connect|auto|check|replay|motion-check|state-check|shadow|live|configure) shift ;;
   *) echo "$USAGE" >&2; exit 2 ;;
 esac
 if [[ "${1:-}" == sonic || "${1:-}" == supermimic || "${1:-}" == morphmimic ]]; then
   choose_policy "$1"; shift
 fi
 HELP=0
+FILE_REFERENCE=0
 REST=()
 CAMERA_OPTIONS=()
 while (( $# )); do
   case "$1" in
+    --motion-config) (( $# >= 2 )) || { echo '--motion-config requires a path' >&2; exit 2; }
+              FILE_REFERENCE=1; REST+=("$1" "$2"); shift 2 ;;
+    --motion-config=*) FILE_REFERENCE=1; REST+=("$1"); shift ;;
     --policy) (( $# >= 2 )) || { echo '--policy requires sonic, supermimic or morphmimic' >&2; exit 2; }
               choose_policy "$2"; shift 2 ;;
     --policy=*) choose_policy "${1#--policy=}"; shift ;;
@@ -121,7 +125,7 @@ if [[ "$MODE" == connect ]]; then
   exec "$PYTHON" "$ROOT/scripts/pico_session_services.py" --connect-only \
     ${CAMERA_OPTIONS[@]+"${CAMERA_OPTIONS[@]}"} "$@"
 fi
-if [[ $HELP == 0 && ( "$MODE" == shadow || "$MODE" == live ) ]]; then
+if [[ $HELP == 0 && $FILE_REFERENCE == 0 && ( "$MODE" == shadow || "$MODE" == live ) ]]; then
   exec "$PYTHON" "$ROOT/scripts/pico_session_services.py" \
     ${CAMERA_OPTIONS[@]+"${CAMERA_OPTIONS[@]}"} -- \
     "$PYTHON" "$ROOT/scripts/actor_pico.py" "$MODE" "$@"

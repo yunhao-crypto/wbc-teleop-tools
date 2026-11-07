@@ -5,6 +5,8 @@
 SuperMimic actor from config/actor_pico_supermimic.json.
 """
 import argparse
+import copy
+import hashlib
 from contextlib import ExitStack
 import json
 import logging
@@ -79,6 +81,22 @@ def replay(runtime, args, write):
         raise RuntimeError('Replay never supplied the complete future-reference window')
     return dict(mode='raw_pico_replay', steps=completed, input=str(args.input),
                 reference_delay_s=runtime.reference.delay, hardware_inputs_checked=False)
+
+
+def motion_check(runtime, args, write):
+    """File/feature/inference check on synthetic stand feedback; never hardware."""
+    source, c = runtime.motion_source, runtime.model.contract
+    source.begin(c.default, np.array([1., 0., 0., 0.]))
+    completed = 0
+    while completed < args.steps and not source.finished:
+        command, obs, row = source.infer(q=c.default, dq=np.zeros(28),
+            root=np.array([1., 0., 0., 0.]), gyro=np.zeros(3))
+        write(dict(row, stage='motion_check', feedback_source='synthetic_model_stand'), obs)
+        source.advance()
+        completed += 1
+    return dict(mode='fixed_motion_check', steps=completed, motion=source.metadata,
+        complete=source.finished, feedback_source='synthetic_model_stand',
+        closed_loop=False, hardware_inputs_checked=False, **ankle_type(runtime))
 
 
 def state_check(runtime, args, write):
@@ -272,7 +290,10 @@ def live(runtime, args, write):
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
             pico = manual = None
             service_alive = lambda:True
-            if args.manual_pico:
+            motion_source = getattr(runtime, 'motion_source', None)
+            if motion_source is not None:
+                pass  # File reference: no Pico service, SDK reader, worker or GMR.
+            elif args.manual_pico:
                 import xrobotoolkit_sdk as pico_sdk
                 if not callable(getattr(pico_sdk,'get_controller_trigger_snapshot',None)):
                     raise RuntimeError('Update the Pico binding: atomic dual-trigger input is required')
@@ -298,6 +319,7 @@ def live(runtime, args, write):
             resources.callback(controller.close)
             return run_live(runtime, args, write, controller, pico, stop,
                             service_alive=service_alive, manual_pico=manual,
+                            motion_source=motion_source,
                             poll_command=TerminalCommands(args.robot_id, stop).poll)
     finally:
         for n, handler in previous.items():
@@ -306,7 +328,7 @@ def live(runtime, args, write):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('mode', choices=('check', 'replay', 'state-check', 'shadow', 'live'))
+    parser.add_argument('mode', choices=('check', 'replay', 'motion-check', 'state-check', 'shadow', 'live'))
     parser.add_argument('--root', type=Path, default=ROOT)
     parser.add_argument('--policy', choices=tuple(POLICY_CONFIGS), default='sonic',
                         help='pinned actor configuration: '+', '.join(f'{k}={v}' for k, v in POLICY_CONFIGS.items()))
@@ -321,6 +343,10 @@ def main():
     parser.add_argument('--startup-timeout', type=float, default=30)
     parser.add_argument('--group', default='default')
     parser.add_argument('--input', type=Path)
+    parser.add_argument('--motion-config', type=Path,
+                        help='live/motion-check: fixed NPZ reference configuration; no Pico input')
+    parser.add_argument('--ankle-command-space', choices=('motor_theta', 'virtual_pitch_roll'),
+                        help='NPZ trials only: select command path; robot EXTERNAL configuration must match')
     parser.add_argument('--log', type=Path)
     parser.add_argument('--record-observations', action='store_true')
     parser.add_argument('--confirm-motion', action='store_true', help='live only; explicit motion selection, with no typed MOVE prompt')
@@ -337,6 +363,16 @@ def main():
     parser.add_argument('--wait-pico', action='store_true', help='live manual-Pico path: start receiving Pico automatically while ONNX stand continues')
     parser.add_argument('--auto-pico', action='store_true', help='live: receive Pico and automatically follow only after preparation and a fresh complete reference window')
     args = parser.parse_args()
+    if args.ankle_command_space is not None and args.motion_config is None:
+        parser.error('--ankle-command-space requires --motion-config')
+    if args.motion_config is not None:
+        if args.mode not in ('live', 'motion-check'):
+            parser.error('--motion-config applies only to live or motion-check')
+        if (args.manual_pico or args.wait_pico or args.auto_pico or args.stand_only
+                or args.input is not None or args.human_height is not None):
+            parser.error('Fixed-motion playback cannot combine Pico/stand/input/height options')
+    elif args.mode == 'motion-check':
+        parser.error('motion-check requires --motion-config')
     if args.local_start:
         if args.mode != 'live' or args.robot_id or args.robot_config:
             parser.error('--local-start requires live without explicit target/config overrides')
@@ -344,10 +380,13 @@ def main():
         for key,value in load_local_start(args.root).items():
             if key != 'seconds' or args.seconds is None:
                 setattr(args,key,value)
+    if args.motion_config is not None:
+        # Device defaults describe the Pico handoff; file mode has no receiver.
+        args.manual_pico = args.wait_pico = args.auto_pico = False
     if args.seconds is None:
         args.seconds = 0. if args.mode == 'live' else 60.
     if args.mode == 'live':
-        if args.auto_start or args.wait_pico or args.auto_pico:
+        if args.motion_config is None and (args.auto_start or args.wait_pico or args.auto_pico):
             args.manual_pico = True
         if args.auto_pico:
             args.wait_pico = True
@@ -365,12 +404,21 @@ def main():
         parser.error('Invalid step/duration/startup budget')
     logging.basicConfig(level=logging.INFO)
     runtime = ActorPicoRuntime(args.root, backend=args.backend, threads=args.threads,
-                               human_height=args.human_height, policy=args.policy)
-    if args.mode in ('shadow', 'live') and args.human_height is None:
+                               human_height=args.human_height, policy=args.policy,
+                               reference_source='npz' if args.motion_config is not None else 'pico',
+                               ankle_command_space=args.ankle_command_space)
+    if args.motion_config is not None:
+        from deployment.vita_s100_aorta_30dof.actor_motion import load_motion
+        runtime.motion_source = load_motion(runtime, args.motion_config)
+        print('ACTOR_MOTION: '+json.dumps(runtime.motion_source.metadata), flush=True)
+    if args.mode in ('shadow', 'live') and args.human_height is None and args.motion_config is None:
         configured = runtime.config['retargeting'].get('human_height_m')
         print(f"ACTOR_WARNING: --human-height not given; GMR uses the configured {configured} m. "
               "Pass the operator's height.", file=sys.stderr, flush=True)
     args.log = args.log or args.root/'outputs'/f'actor_pico_{args.mode}_{time.time_ns()}.jsonl'
+    comparable_config = copy.deepcopy(runtime.config)
+    comparable_config['body_profile'].pop('ankle_command_space', None)
+    comparison_hash = hashlib.sha256(json.dumps(comparable_config, sort_keys=True).encode()).hexdigest()
     args.log.parent.mkdir(parents=True, exist_ok=True)
     with args.log.open('x', buffering=1024*1024) as stream:
         def write(row, observation=None):
@@ -384,14 +432,19 @@ def main():
                    contract=dict(input_dim=runtime.model.contract.input_dim, action_dim=28, policy_hz=50,
                                  **ankle_type(runtime)),
                    scope='supported_external_trial' if args.mode == 'live' else 'inference_only',
-                   robot_id=args.robot_id, retargeter=runtime.config['retargeting'],
-                   gmr_engine='accelerated' if runtime.retarget.accelerated else 'pinned',
-                   reference_delay_s=runtime.reference.delay, pico_stream=runtime.config.get('pico_stream'),
+                   robot_id=args.robot_id, reference_source=runtime.reference_source,
+                   effective_body_profile=runtime.config['body_profile'],
+                   comparison_config_sha256=comparison_hash,
+                   motion=runtime.motion_source.metadata if args.motion_config is not None else None,
+                   retargeter=runtime.config['retargeting'] if runtime.retarget is not None else None,
+                   gmr_engine=('accelerated' if runtime.retarget.accelerated else 'pinned') if runtime.retarget is not None else None,
+                   reference_delay_s=runtime.reference.delay if args.motion_config is None else 0.,
+                   pico_stream=runtime.config.get('pico_stream') if args.motion_config is None else None,
                    pico_worker=runtime.config.get('pico_worker'),
-                   head_control=runtime.config.get('head_control'),
+                   head_control=runtime.config.get('head_control') if runtime.head is not None else None,
                    actions_sent=0))
         try:
-            report = {'check': check, 'replay': replay, 'state-check': state_check,
+            report = {'check': check, 'replay': replay, 'motion-check': motion_check, 'state-check': state_check,
                       'shadow': shadow, 'live': live}[args.mode](runtime, args, write)
         except BaseException as exc:
             # Live fault paths may already have published; never claim zero.
