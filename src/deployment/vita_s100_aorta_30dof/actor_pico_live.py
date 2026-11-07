@@ -109,7 +109,8 @@ def load_robot_config(path, runtime=None):
         if runtime is not None and space != command_space(runtime.policy):
             raise ValueError('Model deployment/EXTERNAL ankle_command_space mismatch')
         if space == 'motor_theta' and (intent or (runtime is not None and not motor_theta)):
-            raise ValueError('motor_theta requires a motor-angle policy and motor PD')
+            raise ValueError('motor_theta requires a motor-angle policy and '
+                             'ankle_virtual_pd_intent=false (motor PD)')
         if motor_theta:
             check_motor_theta_ankle(ankle, intent, runtime, native=space == 'motor_theta')
         elif runtime is not None and (ankle['pd']['strategy'] != 'virtual_pd' or intent is not True):
@@ -187,7 +188,7 @@ def check_motor_theta_ankle(ankle, intent, runtime, native=False):
         runtime.policy.native_motor_ranges = [tuple(map(float, row)) for row in wire_ranges]
         runtime.policy.native_hold_gains = gains[0]
         return
-    # The actor's clamp feedforward assumes the robot clamps to this same box.
+    # Validate the legacy virtual wire's geometry/range contract.
     for axis in ('pitch', 'roll'):
         box = [float(x) for x in ankle['virtual_limits'][axis]]
         for side in ('left', 'right'):
@@ -210,6 +211,11 @@ class CommandEnvelope:
         if self.body.roster_version != 1:
             raise ValueError('Expected body roster_version=1')
         runtime.policy.bind_body_info(self.body)
+        # Policy setpoints encode PD effort and may exceed physical travel.
+        # Position ranges still validate measured/startup poses; other command
+        # fields retain their advertised limits during policy execution.
+        self.unbounded_target_joints = (set(runtime.model.contract.names)
+            if getattr(runtime.policy, 'clip_target_positions', True) is False else set())
         self.limits = []
         self.delegated_joints = []
         self.measured_q_ranges = []
@@ -284,6 +290,8 @@ class CommandEnvelope:
             if joint.kp < 0 or joint.kd < 0:
                 raise ValueError('Negative body command gain: '+name)
             for key, value, bounds in zip(('q', 'dq', 'tau', 'kp', 'kd'), values, ranges):
+                if key == 'q' and not virtual and name in self.unbounded_target_joints:
+                    continue
                 if bounds is None:
                     continue  # Validated by the firmware's parallel ankle adapter.
                 low, high = bounds

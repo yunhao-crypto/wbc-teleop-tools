@@ -1,8 +1,9 @@
 """Adapter to the pinned motion-stream-bridge Vita02A GMR implementation.
 
-The vendored solver, Unity conversion, XML and IK tuning are unchanged. This
-adapter only validates raw frames, selects joints by name and anchors world
-yaw at following entry. It does not calibrate an arbitrary first pose to home.
+The vendored solver, Unity conversion and XML remain intact. Candidate profiles
+may narrow ankle ranges before constructing the IK limits. The adapter validates
+raw frames and selects joints by name; following entry anchors world yaw. It does
+not calibrate an arbitrary first pose to home.
 
 For speed it runs the pinned engine through ``_accelerated_engine``, which
 keeps the solver arithmetic and only drops work whose results GMR never
@@ -14,8 +15,10 @@ mismatch raises instead of silently running the slower pinned engine;
 from ctypes import c_int
 import importlib
 import importlib.metadata
+import json
 from pathlib import Path
 import sys
+import tempfile
 
 import numpy as np
 from scipy.spatial.transform import Rotation
@@ -182,6 +185,38 @@ def _accelerated_engine(module):
     return AcceleratedGeneralMotionRetargeting
 
 
+def _construct_engine(engine, config_path, settings):
+    """Narrow candidate-specific ankle ranges before Mink snapshots IK limits.
+
+    Keep the pinned vendored config immutable. Existing profiles without the
+    override construct exactly the same engine as before.
+    """
+    kwargs = dict(src_human='xrobot', tgt_robot='vita02a',
+                  actual_human_height=float(settings['human_height_m']), verbose=False)
+    limits = settings.get('ankle_reference_limits')
+    if limits is None:
+        return engine(config=str(config_path), **kwargs)
+    if set(limits) != {'pitch', 'roll'}:
+        raise ValueError('ankle_reference_limits requires pitch and roll')
+    config = json.loads(Path(config_path).read_text())
+    safe = {'pitch': (-.751, .414), 'roll': (-.43625, .43625)}
+    for axis, bounds in limits.items():
+        values = np.asarray(bounds, dtype=float)
+        if (values.shape != (2,) or not np.isfinite(values).all() or values[0] >= values[1]
+                or values[0] < safe[axis][0] or values[1] > safe[axis][1]):
+            raise ValueError('Ankle IK override must stay inside the verified coupled workspace box')
+        for side in ('left', 'right'):
+            name = f'{side}_ankle_{axis}_joint'
+            old = config['joint_limits'][name]
+            if values[0] < old[0]-1e-9 or values[1] > old[1]+1e-9:
+                raise ValueError('Ankle IK override may only narrow the pinned configuration')
+            config['joint_limits'][name] = values.tolist()
+    config['robot_xml'] = str((Path(config_path).parent/config['robot_xml']).resolve())
+    with tempfile.NamedTemporaryFile(mode='w+', suffix='.json') as stream:
+        json.dump(config, stream); stream.flush()
+        return engine(config=stream.name, **kwargs)
+
+
 class PicoGmrRetargeter:
     def __init__(self, root, contract, math_api, settings, *, accelerated=True):
         self.math = math_api
@@ -202,10 +237,8 @@ class PicoGmrRetargeter:
                     '. Reinstall the pinned wheelhouse; the pinned engine is not substituted.')
         else:
             engine = module.GeneralMotionRetargeting
-        self.engine = engine(
-            src_human='xrobot', tgt_robot='vita02a',
-            config=str(vendor/'motion_stream_bridge/gmr_lite/configs/xrobot_to_vita02a.json'),
-            actual_human_height=float(settings['human_height_m']), verbose=False)
+        self.engine = _construct_engine(engine,
+            vendor/'motion_stream_bridge/gmr_lite/configs/xrobot_to_vita02a.json', settings)
         import mujoco
         self.indices = []
         for name in contract.names:

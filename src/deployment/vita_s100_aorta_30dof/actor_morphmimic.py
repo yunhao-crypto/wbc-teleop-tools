@@ -9,7 +9,8 @@ import json
 
 import numpy as np
 
-from .actor_groot_ankle import GrootMotorThetaContract, contract_from_metadata as control_contract
+from .actor_groot_ankle import (GrootMotorThetaContract, contract_from_metadata as control_contract,
+                              serial_policy_class)
 from .actor_parallel_ankle import decode_motor_theta
 
 CONTRACT_KEY = 'morphmimic.tracking_contract.v1'
@@ -21,11 +22,15 @@ class MorphMimicContract(GrootMotorThetaContract):
     canonical_indices: tuple = ()
     anchor_chain: tuple = ()
     nominal_root_height: float = .891088
+    reference_feasibility_guard: bool = False
     policy_kind: str = POLICY_KIND
 
     @classmethod
     def from_metadata(cls, math_api, metadata):
         raw = json.loads(metadata[CONTRACT_KEY])
+        guard = raw.get('reference_feasibility_guard')
+        if guard not in (None, 'virtual_box_and_coupled_motor_v1'):
+            raise ValueError('Unsupported MorphMimic reference feasibility guard')
         if (raw.get('schema_version') != 1 or raw.get('policy_kind') != POLICY_KIND
                 or raw.get('goal_anchor') != 'reference' or raw.get('history_length') != 10
                 or raw.get('input_dim') != 1600 or raw.get('future_frames') != 10
@@ -41,7 +46,8 @@ class MorphMimicContract(GrootMotorThetaContract):
         values = {f.name: getattr(base, f.name) for f in fields(base)}
         values.update(input_dim=1600, history_length=10, future_frames=10, include_z=False,
                       canonical_indices=tuple(raw['canonical_indices']),
-                      anchor_chain=tuple(raw['anchor_chain']), nominal_root_height=height, policy_kind=POLICY_KIND)
+                      anchor_chain=tuple(raw['anchor_chain']), nominal_root_height=height, policy_kind=POLICY_KIND,
+                      reference_feasibility_guard=guard is not None)
         if [x['joint'] for x in raw['anchor_chain']] != ['waist_yaw_joint', 'waist_pitch_joint']:
             raise ValueError('Unsupported waist anchor chain')
         return cls(**values)
@@ -68,7 +74,7 @@ def anchor_pose(c, m, q, root_pos, root_quat):
 
 @functools.cache
 def policy_class(math_api):
-    class MorphMimicPolicy(math_api.WbcTrackingPolicy):
+    class MorphMimicPolicy(serial_policy_class(math_api)):
         def canonical(self, values):
             result = np.zeros((*np.asarray(values).shape[:-1], 29))
             result[..., self.contract.canonical_indices] = values
@@ -89,9 +95,14 @@ def policy_class(math_api):
                 self.history.append(current)
             frame = int(np.clip(round(ref_time/c.period), 0, len(motion.q)-1))
             ids = np.minimum(frame+np.arange(1, c.future_frames+1), len(motion.q)-1)
-            qd_ref = (np.gradient(motion.q, c.period, axis=0) if len(motion.q)>1
-                      else np.zeros_like(motion.q))
-            future_q = motion.q[ids]
+            reference_q = motion.q
+            self.reference_ankle_projected_frames = 0
+            if c.reference_feasibility_guard:
+                reference_q, changed = c.ankle.project_reference(motion.q)
+                self.reference_ankle_projected_frames = int(np.count_nonzero(changed))
+            qd_ref = (np.gradient(reference_q, c.period, axis=0) if len(reference_q)>1
+                      else np.zeros_like(reference_q))
+            future_q = reference_q[ids]
             offset = m.yaw_quaternion(yaw_offset)
             offset_R = m.rotation(offset)
             roots = [m.multiply(offset, motion.quat[i]) for i in ids]
@@ -111,6 +122,8 @@ def policy_class(math_api):
             return obs
 
         def decode(self, raw_action, **timing):
-            return decode_motor_theta(self, math_api, raw_action, **timing)
+            command, row = decode_motor_theta(self, math_api, raw_action, **timing)
+            row['reference_ankle_projected_frames'] = getattr(self, 'reference_ankle_projected_frames', 0)
+            return command, row
 
     return MorphMimicPolicy

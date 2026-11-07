@@ -2,13 +2,13 @@
 
 The ONNX ``groot_wbc.tracking_contract.v1`` metadata names the ankle control
 space; nothing else selects it. ``virtual_pitch_roll`` (serial-ankle plant)
-returns the SDK ``Contract`` and ``WbcTrackingPolicy`` unchanged.
+uses the SDK ``Contract`` and observation builder with unclipped PD targets.
 ``motor_theta`` (closed-loop plant) keeps the SDK layout checks and term-major
 observation, but the ankle slots of the proprioception history and of the
 future joint references hold the two Achilles motor angles, as in training
 (``_policy_dof_pos``/``_policy_dof_vel``: IK of the reference pose, rates
-through the Jacobian at that pose). Targets are decoded like SuperMimic's
-motor_theta actor (``decode_motor_theta``). The robot's EXTERNAL ankle mode is
+through the Jacobian at that pose). The shared ``decode_motor_theta`` decoder
+preserves SONIC's affine targets without position clipping. The EXTERNAL ankle mode is
 never changed here; the live runner refuses a mismatched one.
 """
 from dataclasses import dataclass, fields
@@ -65,8 +65,8 @@ def contract_from_metadata(math_api, metadata):
     base = math_api.Contract.from_metadata({CONTRACT_KEY: json.dumps(serial)})
     slots = ankle.slots
     low, high = ankle.motor_limits
-    # Exports may carry soft limits inside the motor travel; decode clamps
-    # motor targets to them, the robot to its own motor caps.
+    # Exports may carry soft limits inside motor travel. They describe the
+    # training penalty region, not a bound on commanded PD setpoints.
     if np.any(base.lower[slots] < low-1e-9) or np.any(base.upper[slots] > high+1e-9):
         raise ValueError('motor_theta ankle slot limits must lie within the motor limits')
     virtual_default, residual = ankle.to_virtual(base.default)
@@ -87,8 +87,38 @@ def is_groot_motor_theta(contract):
 
 
 @functools.cache
+def serial_policy_class(math_api):
+    class GrootPositionPolicy(math_api.WbcTrackingPolicy):
+        """Action clipping followed by affine PD setpoints without position clipping."""
+
+        clip_target_positions = False
+
+        def decode(self, raw_action, **timing):
+            c = self.contract
+            action = np.asarray(raw_action, dtype=np.float64)
+            if action.shape != (28,) or not np.isfinite(action).all():
+                raise ValueError('model output must have 28 finite actions')
+            self.last_action = np.clip(action, -c.action_clip, c.action_clip).astype(np.float32)
+            target = c.default+c.scale*self.last_action.astype(np.float64)
+            motors = [math_api.BodyJointCmd() for _ in range(31)]
+            for p, slot in enumerate(self.mapping):
+                motors[slot] = math_api.BodyJointCmd(float(np.float32(target[p])), 0., 0.,
+                                                     float(np.float32(c.kp[p])), float(np.float32(c.kd[p])))
+            for name, fixed in self.profile['fixed_joints'].items():
+                motors[self.order.index(name)] = math_api.BodyJointCmd(
+                    fixed['q'], 0., 0., fixed['kp'], fixed['kd'])
+            return math_api.BodyCmd(joints=tuple(motors), **timing), {
+                'action': self.last_action.tolist(), 'raw_target': target.tolist(),
+                'target': target.tolist(), 'tau_ff': np.zeros(28).tolist(),
+                'clamped': np.zeros(28, dtype=bool).tolist(),
+            }
+
+    return GrootPositionPolicy
+
+
+@functools.cache
 def policy_class(math_api):
-    class GrootMotorThetaPolicy(math_api.WbcTrackingPolicy):
+    class GrootMotorThetaPolicy(serial_policy_class(math_api)):
         """SDK G1 observation with motor-angle ankle slots; motor_theta decode."""
 
         def observe(self, motion, ref_time, q, dq, quat, gyro, yaw_offset=0.):
@@ -129,4 +159,4 @@ def policy_class(math_api):
 def create_policy(contract, profile, math_api):
     if is_groot_motor_theta(contract):
         return policy_class(math_api)(contract, profile)
-    return math_api.WbcTrackingPolicy(contract, profile)
+    return serial_policy_class(math_api)(contract, profile)

@@ -2,19 +2,17 @@
 
 The exported model states its observation/goal layout in
 ``supermimic.tracking_contract.v1`` metadata. The SDK's quaternion math,
-feedback validation, Body31 mapping and joint limits are reused unchanged;
-the observation builder differs from the G1 actor.
+feedback validation and Body31 mapping are reused; the observation builder
+differs from the G1 actor. Actions are clipped to the exported action range,
+then decoded as affine PD targets without position clipping or compensation.
 
-Two ankle contracts exist. ``virtual_pitch_roll`` (serial-ankle plant) reuses
-the SDK decode, including its ankle clamp feedforward. ``motor_theta``
+Two ankle contracts exist. ``virtual_pitch_roll`` (serial-ankle plant) sends
+virtual targets directly. ``motor_theta``
 (closed-loop plant) observes and commands the Achilles motor angles in the
 ankle slots: measured state and references are mapped to motor space, and the
-motor-angle targets are mapped back to virtual pitch/roll through the forward
-kinematics, because Body31 EXTERNAL takes only virtual targets. The robot's
-motor PD (EXTERNAL ``ankle_virtual_pd_intent=false``) then re-solves the same
-IK, which reproduces the trained motor PD inside the virtual ankle box. Outside
-it the robot clamps the virtual target first; with ``ankle_clamp_feedforward``
-the motor PD torque that clamp removes is sent back as virtual ankle torque.
+motor-angle targets and gains are sent directly over native A/B commands.
+The legacy virtual wire instead uses FK and rejects unrepresentable targets;
+its robot adapter must re-solve IK without clipping the position target.
 """
 from dataclasses import dataclass
 import functools
@@ -25,7 +23,7 @@ from collections import deque
 
 import numpy as np
 
-from .actor_groot_ankle import create_policy as create_groot_policy
+from .actor_groot_ankle import create_policy as create_groot_policy, serial_policy_class
 from .actor_parallel_ankle import MotorThetaAnkle, decode_motor_theta
 
 CONTRACT_KEY = 'supermimic.tracking_contract.v1'
@@ -212,8 +210,8 @@ def goal_features(base, R, v, w, q, qd, frame, count, joint_velocity_scale=.1, a
 
 @functools.cache
 def policy_class(math_api):
-    class SuperMimicTrackingPolicy(math_api.WbcTrackingPolicy):
-        """SDK policy with the SuperMimic observation; SDK state/decode unchanged."""
+    class SuperMimicTrackingPolicy(serial_policy_class(math_api)):
+        """SuperMimic observations and affine PD targets with SDK state handling."""
 
         def __init__(self, contract, profile, *, past_frames, tail_frames):
             super().__init__(contract, profile)

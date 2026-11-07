@@ -49,9 +49,8 @@ Body31 ankle pitch/roll slots. The robot must use
 `actions.EXTERNAL.params.ankle_command_space: motor_theta` and
 `ankle_virtual_pd_intent: false`. EXTERNAL tags those commands for the existing
 motor passthrough adapter: no target FK/IK roundtrip, virtual-box clamp or
-virtual-torque compensation. Motor angle/rate/torque/gain caps still apply.
-Native motor command bounds use the same float32 representation as BodyCmd
-and the firmware range checks; no extra tolerance is added to the limits.
+virtual-torque compensation. Rate/torque/gain caps still apply; motor travel
+does not clip the policy's PD position setpoints.
 
 SDK 0.2.1 and its wire schema are unchanged. `BodyState` and `RobotInfo` still
 use virtual pitch/roll coordinates. EXTERNAL's command space is immutable for
@@ -63,7 +62,7 @@ a robot configured for native A/B.
 
 For a legacy robot, explicitly set the actor profile to
 `ankle_command_space: virtual_pitch_roll`. A motor-theta policy then retains
-the former FK/IK motor-PD path and its optional clamp feedforward; the robot
+the FK/IK motor-PD path, without position clipping or clamp feedforward; the robot
 must also use `virtual_pitch_roll` and `ankle_virtual_pd_intent: false`.
 A virtual-ankle policy requires virtual commands and virtual PD (`true`).
 
@@ -99,13 +98,29 @@ The actor decides the type only from the ONNX metadata
 (`ankle.control_space` of `groot_wbc.tracking_contract.v1`), never from the file
 name, the configuration or the robot:
 
-- `virtual_pitch_roll`: the SDK contract and policy are used unchanged.
+- `virtual_pitch_roll`: the SDK contract and observations are reused; SONIC
+  targets use the affine action rule below.
 - `motor_theta`: the SDK layout is kept, but the ankle slots of the
   proprioception history and of the future joint references carry the two
   Achilles motor angles (IK of the pose, rates through the Jacobian, as in
-  training). Motor targets stop at the model's ankle limits (exports may carry
-  soft limits inside `motor_limits`). With command space `policy`, these A/B
+  training). With command space `policy`, these A/B
   targets and model gains are transmitted directly (`actor_groot_ankle.py`).
+
+GR00T/SONIC, SuperMimic and MorphMimic clip only the dimensionless action to
+their exported `action_clip` (20 for the current SONIC training run), then
+send `default + scale * action` in each policy's control coordinates.
+Neither exported 0.9 soft limits, physical motor travel nor profile position
+ranges clip these PD setpoints. The soft limits describe the training penalty
+region for actual joint positions. The active command envelope allows these
+policy targets while retaining finite-value, timing, velocity, torque and gain
+checks; measured/startup poses and fixed joints still use their position bounds.
+The robot driver/firmware must implement the same target semantics. This does
+not change the physical plant's position stops or motor effort envelope.
+
+For the legacy virtual wire, a motor target must have a representable FK pose;
+an unreachable request is rejected rather than projected. Use native
+`motor_theta` commands for the full action range of motor-angle policies.
+The legacy `ankle_clamp_feedforward` profile flag has no effect on these actors.
 
 The actor **never changes** `ankle_virtual_pd_intent` or any other robot setting.
 Prepare a separate YAML using `scripts/prepare_external_ankle_config.py`
@@ -445,8 +460,9 @@ The sequence is:
    speed and 0.3--3 s duration. This matches the supplied tracking profile's
    `stand_on_activate` / online-reference design; it does not first drive an
    independent open-loop trajectory to the training pose. Raw measured q is
-   not clipped to model output limits; model targets remain clamped to the
-   trained/physical intersection. Check each command against RobotInfo ranges, state freshness,
+   not clipped to model output limits. All three actors preserve affine
+   policy targets without a second position-range clip.
+   Check the applicable command fields against RobotInfo ranges, state freshness,
    ownership/status and body tilt. Schedule at 50 Hz, record overruns and skip
    missed ticks rather than publishing a burst of accumulated commands.
 5. Start the isolated Pico receiver automatically while ONNX stand continues.
@@ -981,15 +997,17 @@ withdrawn: neither is part of the reviewed C++ tracking contract. Target
 deltas and measured tilt remain diagnostic data, never replacements for real
 observations or evidence that a command is safe by themselves.
 
-C++ parity was checked at the deployed robot revision c9b4e80c: policy
+C++ parity was previously checked at robot revision c9b4e80c: policy
 DecodeAndClampVtHumanAction applies the trained/profile range intersection,
 BuildMotorFrameFromPolicyQ writes the result and ankle clamp feedforward,
 and EXTERNAL ValidateFrameLocked checks the actual BodyCapabilityRegistry
-fields/ranges. The parallel adapter owns its motor-space caps and entry blend.
+fields/ranges. That historical target-clipping/feedforward behavior is
+superseded by the affine targets described above; robot firmware must be
+updated to match. The parallel adapter owns its effort caps and entry blend.
 No uniform policy-output delta threshold is applied by these paths. The
 profile's stream.max_step_rad=2.0 rejects glitches in incoming Pico reference
 frames; it is not a policy-output bound and is not substituted for one.
-Hardware limits, finite-value checks, gains, ankle feedforward/adapter caps,
+Physical travel limits, finite-value checks, gains, adapter effort caps,
 watchdog/interpolation, ownership and checked exit remain in place. Removing
 an extra Python gate restores this contract; hardware stability still requires
 an attended motion trial.

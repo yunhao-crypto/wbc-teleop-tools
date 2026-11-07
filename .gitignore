@@ -82,3 +82,5 @@ __pycache__/
 
 # Exported MorphMimic policy is provisioned separately; keep validation reports.
 /artifacts/morphmimic/*.onnx
+# Temporary training candidates and their per-checkpoint sidecars.
+/artifacts/morphmimic/teleop_*/
