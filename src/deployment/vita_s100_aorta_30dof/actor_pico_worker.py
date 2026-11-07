@@ -19,6 +19,7 @@ from .actor_pico_gmr import create_retargeter
 from .actor_pico_stream import SourceClock, StreamFilter, stream_settings, worker_settings
 from .actor_pico_buttons import TriggerReader
 from .actor_pico_runtime import sdk_math
+from .actor_pico_latest import LatestPicoPose
 
 
 def _latest(output, item):
@@ -124,7 +125,8 @@ class ReferenceStream:
             gmr_task_error=residual, **timing), allow_nan=False, separators=(',', ':'))+'\n')
 
 
-def _capture(root, config, contract, lower, upper, commands, output, stop, controls=None):
+def _capture(root, config, contract, lower, upper, commands, output, stop, controls=None,
+             head_pose=None):
     # All descendants (including the owned vendor service) belong to this
     # process group so the parent can clean up even if vendor init blocks.
     os.setsid()
@@ -156,7 +158,8 @@ def _capture(root, config, contract, lower, upper, commands, output, stop, contr
         worker_affinity = thread_affinity(settings.worker_cpus)
         poll = settings.reader_poll_interval_s
         pico = create_pico_source(logger=logging.getLogger('actor-manual-pico'),
-            maximum_age=config['pico_max_age_s'], duplicate_poll_interval_s=poll)
+            maximum_age=config['pico_max_age_s'], duplicate_poll_interval_s=poll,
+            on_frame=None if head_pose is None else head_pose.publish)
         pico.start()
         if controls is not None:
             buttons = TriggerReader(pico.reader.sdk,controls,maximum_age=config['pico_max_age_s'])
@@ -209,9 +212,12 @@ class PicoReferenceProcess:
         self.commands, self.output = context.Queue(maxsize=1), context.Queue(maxsize=2)
         self.stop = context.Event()
         self.controls = context.Array('d',[0.,0.,0.]) if buttons else None
+        self.head_pose = LatestPicoPose(context)
+        # The reader can own an optional raw-frame writer process. A daemon
+        # cannot spawn it; close() owns and reaps the entire process group.
         self.process = context.Process(target=_capture, args=(str(runtime.root), runtime.config,
             runtime.model.contract, runtime.policy.lower, runtime.policy.upper,
-            self.commands, self.output, self.stop,self.controls), daemon=True)
+            self.commands, self.output, self.stop,self.controls,self.head_pose))
         self.connected = False
         self.closed = False
         self.previous = dict(state='idle')
@@ -237,11 +243,15 @@ class PicoReferenceProcess:
                 break
         if not self.process.is_alive() and self.previous['state'] != 'failed':
             self.previous = dict(state='failed', error='Pico worker exited')
+        result = dict(self.previous)
+        head = self.head_pose.snapshot()
+        if head is not None:
+            result['head_snapshot'] = head
         if self.controls is None:
-            return dict(self.previous)
+            return result
         with self.controls.get_lock():
             count,event_time,controller_time = self.controls[:]
-        return dict(self.previous,trigger_event_seq=int(count),
+        return dict(result,trigger_event_seq=int(count),
                     trigger_event_monotonic=event_time,controller_received_monotonic=controller_time)
 
     def close(self):
@@ -249,7 +259,9 @@ class PicoReferenceProcess:
             return
         self.closed = True
         self.stop.set()
-        self.process.join(timeout=2)
+        # Allow reader shutdown, bounded recorder drain, SDK close and owned
+        # service termination before escalating to process-group cleanup.
+        self.process.join(timeout=9)
         if self.process.is_alive():
             try:
                 os.killpg(self.process.pid, signal.SIGTERM)

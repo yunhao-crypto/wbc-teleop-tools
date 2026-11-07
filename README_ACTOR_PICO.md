@@ -15,8 +15,9 @@ launchers, SDK installation and protocol guards are not replaced.
 ## Policy selection
 
 `start_actor_pico.sh` requires an explicit policy for every mode except
-`configure` and the connection-only `connect` mode: `sonic` (`config/actor_pico.json`) or `supermimic`
-(`config/actor_pico_supermimic.json`), given as the first word
+`configure` and the connection-only `connect` mode: `sonic` (`config/actor_pico.json`),
+`supermimic` (`config/actor_pico_supermimic.json`) or `morphmimic`
+(`config/actor_pico_morphmimic.json`), given as the first word
 (`start_actor_pico.sh supermimic shadow ...`), after the mode, or as `--policy`.
 Without one, a terminal shows a menu with no default; an empty answer or a
 non-interactive run starts nothing. Conflicting selections are rejected. A
@@ -28,7 +29,7 @@ and startup/live guards are unchanged.
 
 | | `sonic` | `supermimic` |
 |---|---|---|
-| Model | `artifacts/actor_g1/actor_g1.onnx` | `artifacts/supermimic/supermimic_vita02a.onnx` |
+| Model | `artifacts/actor_g1/model_step_009700_longrun_closed_loop_g1.onnx` | `artifacts/supermimic/F_ckpt_038000_supermimic_vita02a.onnx` |
 | Input values | 1520 | 1670 (10x96 observation history + 10x71 goal frames) |
 | Reference delay | 200 ms | 220 ms (10 future goal frames + 1 velocity tail frame) |
 | Root input | quaternion only | quaternion plus GMR base position |
@@ -41,17 +42,35 @@ The SuperMimic model is the closed-loop-ankle checkpoint
 is embedded in the ONNX metadata and checked at load. Its ankle contract is
 `motor_theta`: the policy observes and commands the two Achilles motor angles in
 the ankle pitch/roll slots. The actor maps measured state and references to
-motor angles (training IK and Jacobian, `actor_parallel_ankle.py`) and maps the
-motor targets back to virtual pitch/roll by forward kinematics for Body31.
-The robot must run PD-A (`actions.EXTERNAL.params.ankle_virtual_pd_intent: false`),
-which clamps the virtual target to its ankle box, solves IK and tracks the motor
-angles with `kp_motor`/`kd_motor` 20/1, the trained motor PD. With
-`ankle_clamp_feedforward` the actor sends the motor PD torque removed by that
-clamp as virtual ankle torque (mapped to motors by the adapter's J^-T), so the
-robot applies the trained motor torque outside the box too.
+motor angles using training IK and the Jacobian. With the default
+`body_profile.ankle_command_space: policy`, motor-theta policies send the A/B
+angle targets and their independent motor PD gains directly in the existing
+Body31 ankle pitch/roll slots. The robot must use
+`actions.EXTERNAL.params.ankle_command_space: motor_theta` and
+`ankle_virtual_pd_intent: false`. EXTERNAL tags those commands for the existing
+motor passthrough adapter: no target FK/IK roundtrip, virtual-box clamp or
+virtual-torque compensation. Rate/torque/gain caps still apply; motor travel
+does not clip the policy's PD position setpoints.
 
-SuperMimic always needs PD-A (`ankle_virtual_pd_intent: false`). SONIC needs
-either mode depending on its ankle type; see the next section.
+SDK 0.2.1 and its wire schema are unchanged. `BodyState` and `RobotInfo` still
+use virtual pitch/roll coordinates. EXTERNAL's command space is immutable for
+the robot process; there is no remote SDK negotiation. The client checks the
+provided effective YAML against the model/profile, but that file is not proof
+of the running firmware configuration. Install the matching robot build and
+YAML before starting the client. Do not mix an old virtual-command client with
+a robot configured for native A/B.
+
+For a legacy robot, explicitly set the actor profile to
+`ankle_command_space: virtual_pitch_roll`. A motor-theta policy then retains
+the FK/IK motor-PD path, without position clipping or clamp feedforward; the robot
+must also use `virtual_pitch_roll` and `ankle_virtual_pd_intent: false`.
+A virtual-ankle policy requires virtual commands and virtual PD (`true`).
+For virtual-ankle SONIC, the decoder now sends the affine PD position target
+without position clipping, matching the upstream policy contract. There is no
+removed position term to restore through clamp feedforward; the old
+`ankle_clamp_feedforward=true` requirement no longer applies. Rate, torque,
+gain, finite-value and measured-state checks remain in force. Robot-side
+configuration must still match the model's coordinate space.
 
 Provision the SuperMimic model with
 `bootstrap_actor_s100.py --policy supermimic --model /path/to/supermimic_vita02a.onnx`
@@ -63,13 +82,26 @@ bash scripts/start_actor_pico.sh supermimic shadow --seconds 60 --group default
 bash scripts/start_actor_pico.sh supermimic        # default local motion entry
 ```
 
-Offline parity: `tests/test_actor_supermimic.py` compares the deployed history,
-goal and action with the training-side fixture. A trackerlab MuJoCo closed loop
+Offline parity: `tests/test_actor_supermimic.py` compares history and goal
+features with the training-side fixture. Golden actions are checked against
+that fixture's original ONNX only when `VITA_SUPERMIMIC_PARITY_MODEL` names
+an explicitly supplied file (SHA256 pinned inside the fixture). Without it,
+only the optional golden-action test is skipped; feature checks still run.
+The configured deployment model has a finite-output/native-target smoke test; its weights are
+not expected to reproduce a different checkpoint's golden actions. A trackerlab MuJoCo closed loop
 (`validate_vita_deployment_mujoco.py`) compares the training policy, this
 observation builder and the causal Pico window on the same clips. Neither is
 hardware validation.
 
 ## SONIC has two ankle types: know which one you run
+
+The default deployment is now **closed-loop SONIC iteration 9700**, pinned by
+SHA256 `2bc0ca6f0bddef1ba040a19a771181da68f5b7d2138d1e87913072def089135d`.
+Its ONNX contract selects `motor_theta`; `ankle_command_space: policy` therefore
+publishes native A/B targets, with `action_clip: 20`. Robot EXTERNAL must use
+`ankle_command_space: motor_theta` and `ankle_virtual_pd_intent: false`.
+The previous local 57400 virtual-ankle selection is not the deployment default.
+
 
 `--policy sonic` covers two different kinds of GR00T/SONIC export. They share
 the 1520-value input layout but command the ankle in different spaces, and each
@@ -78,35 +110,54 @@ type the installed `actor_g1.onnx` is and set the robot to match.
 
 | SONIC type | Typical checkpoint | ONNX `ankle.control_space` | Robot YAML `actions.EXTERNAL.params.ankle_virtual_pd_intent` | Robot ankle PD |
 |---|---|---|---|---|
-| Serial ankle (virtual) | delivered `model_step_431500` (`TRL_Vita02A_Baseline`) | `virtual_pitch_roll` | `true` | `parallel_ankle.pd.strategy: virtual_pd` |
-| Closed-loop ankle (motor) | GR00T `vita02a_closed_loop` (`TRL_Vita02A_ClosedLoop`) exports | `motor_theta` | `false` | PD-A: `kp_motor`/`kd_motor` = the model's ankle gains (20/1), `caps` = model `motor_limits` |
+| Serial ankle (virtual) | legacy `model_step_431500` (`TRL_Vita02A_Baseline`) | `virtual_pitch_roll` | `true` | `parallel_ankle.pd.strategy: virtual_pd` |
+| Closed-loop ankle (motor) | GR00T `vita02a_closed_loop` (`TRL_Vita02A_ClosedLoop`) exports | `motor_theta` | `false` | Native A/B: per-command motor PD; `caps` = model `motor_limits` |
 
 The actor decides the type only from the ONNX metadata
 (`ankle.control_space` of `groot_wbc.tracking_contract.v1`), never from the file
 name, the configuration or the robot:
 
-- `virtual_pitch_roll`: the SDK contract and policy are used unchanged.
+- `virtual_pitch_roll`: the SDK contract and observations are reused; SONIC
+  targets use the affine action rule below.
 - `motor_theta`: the SDK layout is kept, but the ankle slots of the
   proprioception history and of the future joint references carry the two
   Achilles motor angles (IK of the pose, rates through the Jacobian, as in
-  training). Motor targets stop at the model's ankle limits (exports may carry
-  soft limits inside `motor_limits`) and are mapped back to virtual pitch/roll
-  by forward kinematics, exactly like SuperMimic (`actor_groot_ankle.py`).
+  training). With command space `policy`, these A/B
+  targets and model gains are transmitted directly (`actor_groot_ankle.py`).
+
+GR00T/SONIC, SuperMimic and MorphMimic clip only the dimensionless action to
+their exported `action_clip` (20 for the current SONIC training run), then
+send `default + scale * action` in each policy's control coordinates.
+Neither exported 0.9 soft limits, physical motor travel nor profile position
+ranges clip these PD setpoints. The soft limits describe the training penalty
+region for actual joint positions. The active command envelope allows these
+policy targets while retaining finite-value, timing, velocity, torque and gain
+checks; measured/startup poses and fixed joints still use their position bounds.
+The robot driver/firmware must implement the same target semantics. This does
+not change the physical plant's position stops or motor effort envelope.
+
+For the legacy virtual wire, a motor target must have a representable FK pose;
+an unreachable request is rejected rather than projected. Use native
+`motor_theta` commands for the full action range of motor-angle policies.
+The legacy `ankle_clamp_feedforward` profile flag has no effect on these actors.
 
 The actor **never changes** `ankle_virtual_pd_intent` or any other robot setting.
-Edit the robot's running effective YAML yourself, restart its service as your
-robot procedure requires, and pass that file as `--robot-config`. If the YAML
+Prepare a separate YAML using `scripts/prepare_external_ankle_config.py`
+(`--input SOURCE --output NEW_FILE --space motor_theta` or `virtual_pitch_roll`).
+The script writes a new file only; it never installs it or restarts a service.
+Install the matching robot configuration and pass it as `--robot-config`. If the YAML
 does not match the model type (wrong intent, gains, motor limits, geometry or
 `virtual_limits`), `live` stops before requesting EXTERNAL or sending any
 command.
 
 To see the type of the installed model, run `check`; its report and every log
-header give `ankle_control_space` and the required
+header give `ankle_control_space`, `required_ankle_command_space` and the required
 `ankle_virtual_pd_intent`:
 
 ```bash
 bash scripts/start_actor_pico.sh sonic check --steps 10
 #   "ankle_control_space": "motor_theta",
+#   "required_ankle_command_space": "motor_theta",
 #   "required_ankle_virtual_pd_intent": false,
 ```
 
@@ -115,6 +166,47 @@ update `config/actor_pico.json` (model path, `sha256`, `bytes`), reseal the
 manifests and install it with
 `bootstrap_actor_s100.py --policy sonic --model /path/to/actor_g1.onnx`; then
 change the robot YAML to the matching row above.
+## MorphMimic Vita02A
+
+The default deployment model is the teleop fine-tune iteration 31000. Its model
+path, SHA256 and size are specified in `config/actor_pico_morphmimic.json`.
+Model weights and export/experiment reports are supplied separately; reports
+are not source-controlled deployment inputs.
+The model metadata enables `virtual_box_and_coupled_motor_v1`: virtual ankle
+references are projected into the coupled motor workspace before reference
+velocities are computed. Measured feedback is unchanged. Older models without
+this metadata retain their existing reference path. This guard is identical
+for native and legacy command trials. The candidate GMR configuration also
+narrows ankle IK ranges; fixed NPZ playback does not use GMR.
+The same launcher manages the camera relay and PICO view switching. MorphMimic
+also uses the shared head-following defaults (40 ms filter, no independent
+slew-rate cap); the physical head joint limits still apply.
+
+`morphmimic` uses 1600 inputs (10 × 93 proprioception + 10 × 67 reference)
+and 28 outputs, including native A/B ankles. Observation/goal normalizers are
+baked into the exported ONNX. The reference includes the waist anchor and its
+absolute height; standing references use the training robot's nominal root
+height. Feedback remains virtual and is converted by the same IK/Jacobian
+used in training. There is no SDK modification.
+
+Export and training-input parity checks belong to the training repository.
+Supply an ONNX containing the `morphmimic.tracking_contract.v1` metadata,
+update the model path/SHA256/size in `config/actor_pico_morphmimic.json`, and
+reseal the delivery manifests. Training export reports are external evidence.
+The deployment checks the supplied model's contract and runs offline inference:
+
+```bash
+python scripts/prepare_external_ankle_config.py --input /path/to/asample.yaml \
+  --output /path/to/asample-native-ab.yaml --space motor_theta
+python scripts/bootstrap_actor_s100.py --policy morphmimic --model /path/to/policy.onnx
+bash scripts/start_actor_pico.sh morphmimic check --steps 100
+```
+
+SONIC's serial-ankle checkpoint cannot become a native A/B policy by changing
+a flag. Supply a real closed-loop motor-theta export and update its pinned
+model identity. The three native decoders are covered by offline tests; this
+does not constitute physical robot validation.
+
 ## Data path and calibration
 
 ```text
@@ -187,7 +279,7 @@ export. The direct commands below also work in the original snapshot or an
 environment where the SDK has already been installed at `venv/`.
 
 ```bash
-cd /host/vita_p123_20261015_sdkmain_opt021
+cd /host/wbc-teleop-tools
 OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 PYTHONDONTWRITEBYTECODE=1 \
   python3 tests/test_actor_pico.py -v
 
@@ -199,6 +291,196 @@ OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 PYTHONDONTWRITEBYTECODE=1 \
   python3 scripts/actor_pico.py replay --input /tmp/actor_pico_input.npz \
   --steps 100 --record-observations
 ```
+
+### Fixed NPZ reference playback
+
+`scripts/start_actor_motion.sh` plays the same named robot-reference clip with
+`sonic`, `supermimic`, or `morphmimic`. The selected policy constructs its own
+observation, history and future goals, including virtual-to-motor ankle
+conversion. This is a reference source, not a recorded observation/action player.
+Live observations always use current SDK robot feedback.
+
+Put the clip at `reference/fixed_motion.npz`, or edit
+[`config/actor_motion.json`](config/actor_motion.json). Relative clip paths are
+resolved against the repository root, not the shell's current directory.
+The clip is external deployment data and is not included in Git. Import an
+original NPZ explicitly selected with `--clip` from a dataset archive. This verifies its SHA256SUMS entry and copies it byte for byte to the
+fixed path, without modifying the archive or starting services:
+
+```bash
+python3 scripts/import_actor_motion.py --archive /path/to/dataset.tar.gz --clip clips/example.npz
+# Select another clip explicitly; --replace refuses to run while this repo's operator lock is held.
+python3 scripts/import_actor_motion.py --archive /path/to/dataset.tar.gz \
+  --clip clips/another.npz --replace
+```
+
+The import receipt is `reference/fixed_motion.import.json`. Import does not
+establish that a clip is runnable; use the selected policy's `check` next.
+
+```bash
+# Validate the whole file and run up to 100 inference steps on synthetic stand
+# feedback. No robot connection, Pico receiver, GMR or camera service is started.
+bash scripts/start_actor_motion.sh supermimic check --steps 100 --record-observations
+
+# S100 only: uses the existing device-bound local startup profile and requests
+# motion. FIXED_STAND -> policy stand preparation -> clip lead-in -> one pass
+# -> final-pose reference hold -> checked CANCEL/PASSIVE. STOP/Ctrl-C also exits.
+bash scripts/start_actor_motion.sh supermimic --record-observations
+bash scripts/start_actor_motion.sh morphmimic --record-observations
+bash scripts/start_actor_motion.sh sonic --record-observations
+
+# Optional configuration override; the policy remains an explicit selection.
+bash scripts/start_actor_motion.sh supermimic check --motion-config /path/to/clip.json
+```
+
+The NPZ schema is common to all three policies:
+
+| Field | Shape | Meaning |
+|---|---|---|
+| `joint_names` | `[J]` strings | Unique named robot joints; must include every selected policy joint |
+| `joint_pos` | `[N,J]` | Joint angles in radians; ankles are **virtual pitch/roll**, never A/B motor angles |
+| `body_pos_w` | `[N,B,3]` | Body positions in metres, right-handed Z-up world |
+| `body_quat_w` | `[N,B,4]` | Unit quaternions in **wxyz** order |
+| `fps` | scalar | Source sampling frequency in Hz |
+
+`root_body_index` in the configuration explicitly selects the pelvis/free-root
+column in the body arrays (default `0`); it must not select a waist/head anchor.
+SDK-format clips may instead use `base_pos_w [N,3]`, `base_quat_w [N,4]` and
+scalar `framerate`. Both root layouts may coexist only when the base arrays
+exactly equal the selected body arrays. Conflicting or incomplete aliases are
+rejected. When `body_names`/`root_body` are present, the selected column must
+match the named root. If both frame-rate fields exist, their values must agree.
+The supplied dataset has 40 named joints: the 28 policy reference joints and
+12 Achilles mechanism joints. Its `control_space=motor_theta` describes the
+actuators; named ankle pitch/roll reference columns remain virtual coordinates.
+The separately named A/B columns are not substituted into those references. Optional scalar `joint_space` must equal
+`virtual_pitch_roll`. Stored `joint_vel`/body velocities are not used: each
+policy derives reference velocities using its own existing training-compatible
+rule. A nonzero extra `waist_roll_joint` is rejected because the 28-DOF policy
+cannot represent it; other ignored joint names are listed in the receipt.
+
+The loader rejects malformed/nonfinite arrays, missing or duplicate names,
+non-unit quaternions, and virtual joint references outside the deployment
+profile beyond `limit_projection_max_rad`. The shipped motion configuration
+explicitly allows at most `0.0001 rad` of reference-boundary projection; absent
+this setting the loader permits only `0.000001 rad`. Larger settings are
+rejected. This accommodates the dataset's ankle boundary difference of about
+`0.000082 rad` and shoulder rounding of about `0.000005 rad`. Every corrected
+frame/joint, original value, final value and delta is recorded in
+`motion.limit_corrections`; the source NPZ/hash is unchanged. Command and
+firmware limits are not relaxed. Set this value to `0` for strict references.
+It resamples once to the policy's 50 Hz grid (linear positions, quaternion
+SLERP), removes the initial world XY origin while preserving relative movement
+and root height, and aligns initial yaw to the measured robot heading.
+References are neither GMR-retargeted nor filtered with Pico's OneEuro settings;
+future frames are available from disk, so no Pico playback delay is added.
+
+The existing measured-pose lead-in is reused for clip entry. MorphMimic's
+absolute reference root height also blends from its nominal stand height.
+The policy's action/history state remains continuous across stand and playback.
+Only a bounded, model-specific reference window is processed per tick, so
+runtime cost does not grow with the length of the clip. Reference time advances
+one frame per successful command publication; skipped/duplicate/stale feedback
+does not fast-forward the clip or cause a catch-up command burst. The logged
+`motion_tick`/`motion_time_s` are therefore separate from elapsed wall time.
+
+`end_hold_s` (default `1.0`) holds the final **reference** while policy inference
+continues, then uses the existing checked exit. Playback does not loop. The
+existing `--seconds` limit, if supplied, includes stand preparation and can
+end the trial earlier. Neck joints use the fixed policy profile, not Pico head
+tracking. This entry starts no Pico/camera services; independently running
+services are not stopped. Robot identity, configuration checks, command bounds,
+feedback freshness, exclusive operator lock and EXTERNAL ownership checks are
+the same as the Pico entry.
+
+Each run logs the file/config SHA256, source/target rates, joint mapping and
+reference windows. `sha256` in `actor_motion.json` can pin an approved clip;
+`null` accepts the selected file and records its hash. `check` uses synthetic
+stand feedback and is **not** closed-loop simulation or hardware validation.
+Recorded `supermimic_observations.npz` files are a different schema and cannot
+be played by this entry. Tests in `tests/test_actor_motion.py` cover all three
+real ONNX policies and simulated live lifecycle/fault paths; they do not prove
+physical stability of a chosen clip.
+
+#### Controlled ankle command-path A/B trial
+
+Use the **same motor-theta model** (SuperMimic or MorphMimic, or a SONIC export
+whose contract explicitly says motor-theta), NPZ/hash, gains, reference settings
+and robot build. Keep video and other background workloads in the same state.
+A virtual-angle SONIC model cannot be used as the native half of this test.
+
+| Trial | `--ankle-command-space` / EXTERNAL `ankle_command_space` | EXTERNAL `ankle_virtual_pd_intent` |
+|---|---|---|
+| Native | `motor_theta` | `false` |
+| Legacy conversion | `virtual_pitch_roll` | `false` |
+
+In both trials observations/references use the same virtual-to-motor conversion
+and the same ONNX. Only the output path changes. Native sends A/B targets and
+motor gains; legacy converts them to virtual pitch/roll, then firmware converts
+back and applies motor PD. Legacy virtual clipping/FK residuals may change the
+result; they are part of the behavior being tested. Keep
+`ankle_clamp_feedforward` identical between trials. The legacy path additionally
+checks that the firmware's fixed motor gains equal the model gains.
+
+Prepare candidate YAMLs from the SAME effective robot configuration; these
+commands only create files, never install them or restart locomotion:
+
+```bash
+python3 scripts/prepare_external_ankle_config.py --input /path/to/effective.yaml \
+  --output /path/to/native.yaml --space motor_theta --virtual-pd-intent false
+python3 scripts/prepare_external_ankle_config.py --input /path/to/effective.yaml \
+  --output /path/to/legacy.yaml --space virtual_pitch_roll --virtual-pd-intent false
+
+# Both are offline and can be run before changing any robot configuration.
+bash scripts/start_actor_motion.sh morphmimic check --steps 1000 \
+  --ankle-command-space motor_theta
+bash scripts/start_actor_motion.sh morphmimic check --steps 1000 \
+  --ankle-command-space virtual_pitch_roll
+```
+
+EXTERNAL command space is a process-level robot setting, not a remote mode
+switch. Between live trials, stop the policy, install/select the corresponding
+reviewed firmware YAML, restart locomotion with the robot supported, and refresh
+the device-bound profile against the **running effective YAML**:
+
+```bash
+python3 scripts/configure_actor_s100.py --robot-id 10.100.23.173 \
+  --robot-config /absolute/path/to/running-effective.yaml --replace
+```
+
+Only after that configuration matches the desired trial, start the corresponding
+command manually (run these as separate trials, never concurrently):
+
+```bash
+bash scripts/start_actor_motion.sh morphmimic --ankle-command-space motor_theta \
+  --record-observations --log outputs/motion_native.jsonl
+bash scripts/start_actor_motion.sh morphmimic --ankle-command-space virtual_pitch_roll \
+  --record-observations --log outputs/motion_legacy.jsonl
+python3 scripts/compare_actor_motion.py outputs/motion_native.jsonl \
+  outputs/motion_legacy.jsonl --output outputs/motion_ankle_comparison.json
+```
+
+The CLI override changes only the in-memory actor command profile; it does not
+edit policy JSON or robot YAML. Mismatched configurations fail before motion.
+The SDK cannot verify the running firmware mode remotely: a matching YAML path
+alone is not evidence that locomotion restarted with it.
+
+The comparison refuses different model/reference hashes, actor settings, root
+selection, reference corrections, or robot YAML content beyond command space.
+It aligns on original clip frame indices (excluding lead-in/end hold), checks
+reference equality, and reports measured virtual ankle/joint RMSE, root tilt,
+compute timing, skipped ticks, coverage and starting-pose differences. Partial
+runs are identified. Logs without a confirmed exit are rejected; retain fault
+logs for separate diagnosis rather than interpreting them as completed trials.
+These metrics describe separate closed-loop trials; they do not prove causation.
+Repeat each condition (for example native/legacy/legacy/native) before drawing
+conclusions about the ankle path.
+
+Start with `L1_01_weight_shift_small`. The deep-bend diagnostic exceeds the
+existing tilt protection and is not a live acceptance clip. `L3_06_crouch_adjust`
+starts crouched/tilted and requires a separately validated entry. Dataset
+sim2sim results used iter12500; they do not validate another installed model.
+
 
 The regression tests compare the SDK Body31 observation builder against the
 independent C++ golden observations inherited from `humanoid-sdk-tracking`.
@@ -234,7 +516,11 @@ chest-frame offset, then projected onto the robot's yaw/pitch gaze direction.
 Whole-body turns cancel, and head roll is not reproduced by the two-axis neck.
 This calibration affects only the neck; body GMR calibration is unchanged.
 
-The head uses the latest timestamped body snapshot, independently of the
+Live head control uses a separate shared snapshot updated directly by the
+Pico reader, without waiting for a GMR solve or its output queue. Its pose,
+integer nanosecond timestamp and reader receipt time are copied atomically;
+a busy slot keeps the previous sample and its original age. The body policy
+still uses the matching GMR result and timestamp. The head is independent of the
 200/220 ms body reference window (and SuperMimic playback margin). It therefore
 has a different reference time from the body; it follows relative articulation,
 not absolute world gaze. An exponential filter (time constant 0.04 s) smooths
@@ -248,12 +534,17 @@ intersected with actual RobotInfo limits. Positive pitch tilts forward/down in
 the URDF frame. The existing fixed-joint KP/KD (20/1) are preserved.
 
 Standby smoothly returns the neck to zero. The first live tick starts from
-measured neck position. Past `pico_hold_age_s` (0.25 s), neck position freezes
-along with the body reference; fresh input resumes following. Past
-`pico_max_age_s` (0.6 s), the existing live fault path cancels EXTERNAL.
+measured neck position. When the head reader sample exceeds `pico_hold_age_s`
+(0.25 s), neck position freezes; fresh input resumes following. Body reference
+hold uses the GMR sample's own age, so a delayed solve does not freeze a fresh
+head sample. Either input exceeding `pico_max_age_s` (0.6 s) still reaches the
+existing live fault path and cancels EXTERNAL.
 Missing/invalid head data also fails the trial. Calibration/filter/slew state
 advances only after a successful live publication. Logs include `head_control`
-diagnostics and the final combined `body_targets`/`sent_body_targets`.
+diagnostics (including the actual head sample's timestamp, reader sequence,
+receipt clock and chest/head quaternions) and the final combined
+`body_targets`/`sent_body_targets`. Replay/shadow without an independent reader
+snapshot use the supplied frame, identified as `gmr_snapshot` in diagnostics.
 
 Replay and shadow also compute head targets; neither sends commands. Set
 `head_control.enabled` to `false` in the selected actor JSON to restore the
@@ -355,9 +646,10 @@ motion directly without a typed `MOVE` prompt. Reliable support, clear
 movement/pinch zones, an attendant and usable E-stop remain required.
 The sequence is:
 
-1. Wait the configured PASSIVE or QUIET_PASSIVE damping duration plus two
-   seconds on continuous fresh feedback (currently 42 s / 6 s on the selected
-   board). SDK `action_phase=IDLE` is the EXTERNAL session phase, not damping
+1. Wait the configured PASSIVE or QUIET_PASSIVE damping duration from the
+   first fresh observation. The updated A-sample YAMLs use 4 seconds for both;
+   no extra two-second delay is added. An older 40-second YAML still waits 40
+   seconds. The firmware continues to gate FIXED_STAND admission. SDK `action_phase=IDLE` is the EXTERNAL session phase, not damping
    completion. A retired keyframe can clear the action name; that alone does
    not count as FIXED_STAND readiness.
 2. Request FIXED_STAND once, and require actual active FIXED_STAND plus healthy,
@@ -381,8 +673,9 @@ The sequence is:
    speed and 0.3--3 s duration. This matches the supplied tracking profile's
    `stand_on_activate` / online-reference design; it does not first drive an
    independent open-loop trajectory to the training pose. Raw measured q is
-   not clipped to model output limits; model targets remain clamped to the
-   trained/physical intersection. Check each command against RobotInfo ranges, state freshness,
+   not clipped to model output limits. All three actors preserve affine
+   policy targets without a second position-range clip.
+   Check the applicable command fields against RobotInfo ranges, state freshness,
    ownership/status and body tilt. Schedule at 50 Hz, record overruns and skip
    missed ticks rather than publishing a burst of accumulated commands.
 5. Start the isolated Pico receiver automatically while ONNX stand continues.
@@ -429,8 +722,13 @@ numeric/symbolic error codes and state ID (for example `STALL=13`), so a motor
 fault is distinguishable from delayed delivery.
 For a diagnostic capture, set `VITA_PICO_CAPTURE_DIR` to an output directory.
 The reader then records each distinct frame it observes (24x7 poses, a local
-frame sequence and paired monotonic/realtime stamps) on a bounded asynchronous
-writer. Its summary reports written and dropped frames; this is reader first
+frame sequence and paired monotonic/realtime stamps) through a bounded queue to
+a separate writer process. Array-to-list conversion, JSON encoding and disk
+writes run outside the GMR interpreter. The header records `writer_pid`; normal
+shutdown drains accepted frames and verifies the final written count after
+flushing the file. Queue overflow drops capture frames without blocking the
+reader; overflow, writer failure or a shutdown timeout reports an incomplete
+capture. Its summary reports written and dropped frames; this is reader first
 visibility, not SDK callback or network arrival. Raw network timing requires
 a separate packet capture. Each GMR source row also retains that reader
 identity, solver start/end monotonic and thread-CPU clocks, wall/CPU durations,
@@ -645,6 +943,11 @@ already increased counter as its baseline. Logging records requested commands, s
 input state IDs; publication alone is not proof of actuator execution.
 
 Every attempted entry exits through SDK CANCEL and requires PASSIVE/IDLE.
+The launcher creates a separate private client-mode Zenoh session for the
+short-lived firmware CLI used by FIXED_STAND and startup cancellation. It
+connects through the existing router with the same namespace/authentication;
+the SDK feedback and continuous control session remains in peer mode. A failed
+or timed-out motion request is never retried automatically.
 An incomplete exit is reported with the actual available status. **PASSIVE
 can let loaded limbs fall**; keep support through exit. EXTERNAL has no automatic
 expiry: the application duration is not a server lease, and a killed/crashed
@@ -728,104 +1031,26 @@ It closes the loop in MuJoCo with the deployed ONNX. The `legacy` variant
 reproduces the robot's per-segment pitch std, >1 Hz pitch power, roll std and
 action step RMS. This is simulation, not hardware validation.
 
-### TODO: GMR timing under full control load
+### GMR performance checks
 
-Status: root cause calibrated and receiver/thread changes verified on S100
-on 2026-10-30. Full control-load acceptance remains open.
-
-The earlier 33–36 ms online versus 2.7 ms x86 comparison did not isolate
-input-thread contention. CPU 5 placement, repeated full-snapshot copies and
-SDK/reader/GMR sharing a core all increased latency in controlled tests.
-Putting the whole worker on a single core made live reception slower. The
-reader now waits 2 ms on duplicate packets; SDK/readers retain CPU 0–4 while
-only the GMR calling thread narrows to CPU 1. OpenBLAS stays single-threaded.
-
-The [on-robot verification receipt](deploy/actor_s100/gmr_benchmark_20261030.json)
-records the same 1000 frozen inputs with real Pico reception, trigger reader,
-50 Hz queue draining and raw GMR logging, at unchanged 1.5 GHz:
-
-| Receiver configuration | Mean GMR ms | P99 GMR ms | Mean thread CPU ms |
-| --- | ---: | ---: | ---: |
-| 0.1 ms duplicate polling, unrestricted threads | 21.167 | 47.763 | 13.079 |
-| 2 ms duplicate polling, receiver CPU 0–4 / GMR CPU 1 | 12.834 | 29.212 | 9.798 |
-
-Mean and P99 improved 39.37% and 38.84%; all 1000 GMR qpos outputs have the
-same SHA-256. IK iterations, filters and weights were identical. This is a
-read-only performance comparison, not an EXTERNAL motion trial. The prior
-short calibration at 2 GHz is not a production frequency change.
-
-To reproduce, connect Pico Full body/Send for each run; neither command opens
-a robot controller. Reports refuse to overwrite an existing file:
+Measure timing on the target hardware using separately saved reports. Historical
+receipts are not deployment inputs; offline replay does not validate live Pico
+reception, healthy joint feedback or EXTERNAL motion.
 
 ```bash
 venv/bin/python scripts/bench_pico_gmr_live.py --baseline --frames 1000 --output /tmp/gmr_baseline.json
 venv/bin/python scripts/bench_pico_gmr_live.py --frames 1000 --output /tmp/gmr_configured.json
-```
-
-The offline-only `scripts/bench_pico_gmr.py` remains available and now selects
-the native SDK backend on ARM. Capture headers report both `worker_affinity`
-and `gmr_affinity`, plus the duplicate poll interval. Session regressions,
-including stale-hold freezing and late-sample clock behavior, are included
-in `verify_actor_delivery.py --host-inference --supermimic-model ...`.
-
-Remaining: mean GMR below 10 ms and P99 below 20 ms at 1.5 GHz are **not yet
-achieved** in this measurement. Validate sustained timing with the full
-control/inference/logging load and physical Pico A/B. If further CPU work is
-needed, profile the Python/NumPy task-objective assembly (about 41% of GMR
-CPU in the calibration); DAQP itself was about 5%. Historical logs lack
-per-frame GMR thread CPU/placement, so their entire delay cannot be attributed
-retroactively to one cause.
-
-### Full-compute shadow replay and alternating trials
-
-The [full-load replay receipt](deploy/actor_s100/full_load_replay_20261030.json)
-retains 25 trials of 1000 frozen GMR inputs and 18,821 native inference ticks
-from 2026-10-30. Pico was unavailable and the real right-wrist pitch feedback
-reported TIMEOUT (8), so these measurements use recorded robot feedback and
-a 90 Hz replay SDK shim. They do not validate live Pico reception, healthy
-real-time joint feedback or EXTERNAL motion.
-
-The committed runner reproduces the 13-trial placement matrix: N is the
-read-only subscription/queue/log baseline; A adds 50 Hz policy compute with
-unrestricted control threads; B restricts control to CPU 2–4 with GMR on
-CPU 1; C uses the same control mask with GMR allowed on CPU 0–1. Each trial
-uses a fresh process and records actual masks, frequency, temperature,
-wall/thread CPU time, full observations and skipped ticks. It uses only
-`PullStateSource`, rejects control publishers, and never sends actions.
-
-On the installed S100 checkout, use the deployment venv/model and the private
-peer configuration prepared by the documented state-check/shadow startup:
-
-```bash
 venv/bin/python scripts/bench_pico_full_load.py \
   --pico replay --feedback recorded --frames 1000 \
   --sequence NABABABACACAC --output /tmp/gmr_full_load_new
 ```
 
-The output directory must be empty. `--pico live` tests actual reception;
-`--feedback live` requires healthy real feedback and does not fall back to
-recordings. The runner retains one receiver service across trials to avoid
-headset reconnects, and closes its owned processes on completion or failure.
-Input starts **before** control affinity is narrowed: applying `taskset` to
-the entire launcher would also restrict the input child's inherited mask.
-
-| Replay condition | Trials | Pooled mean GMR ms | Pooled P99 GMR ms |
-| --- | ---: | ---: | ---: |
-| A: unrestricted control, GMR CPU 1 | 6 | 17.880 | 36.782 |
-| B: control CPU 2–4, GMR CPU 1 | 9 | 12.675 | 24.628 |
-| C: control CPU 2–4, GMR CPU 0–1 | 3 | 14.037 | 27.218 |
-
-All 25,000 GMR qpos hashes matched and the shadow loops had no skipped ticks
-or compute cycles over 20 ms. The receipt also preserves six **experimental**
-native-objective trials: the second prototype reached pooled 10.118 ms mean
-and 19.464 ms P99, but only one of its three runs met both targets. Its native
-code, build scripts and binaries are excluded from this delivery, and D/E
-are not supported runner conditions. Large logs and prototype sources remain
-in the separately checksummed archive identified by the receipt.
-
-Production live now uses layout B through `pico_worker.control_cpus` (see
-above). It has not yet been timed with live Pico reception and live feedback,
-and stable timing acceptance remains open.
+The live GMR commands need Pico Full body/Send; they do not open a robot
+controller. The full-load runner uses read-only feedback and never publishes
+actions. Its output directory must be empty. `--pico live` tests actual reception;
+`--feedback live` requires healthy feedback without falling back to recordings.
+Compare recorded CPU placement, frequency, temperature, skipped ticks and GMR
+latencies under the intended workload before accepting a deployment.
 
 ### TODO: robot42 hardware and deployment follow-ups
 
@@ -835,7 +1060,7 @@ missing joint friction) are in trackerlab-supermimic
 `docs/vita02a_robot42_followups.md`.
 
 1. **Robot A/B of `pico_stream`.** Read-only receiver performance A/B is now
-   recorded above; EXTERNAL motion A/B remains pending. In frozen
+   measured with the commands above; EXTERNAL motion A/B remains pending. In frozen
    session simulation, action step RMS drops about 32% and the
    per-segment sway (pitch std, >1 Hz pitch power) is unchanged. Run the same
    motions with this config, then freeze the new session with
@@ -882,7 +1107,8 @@ output so rejected frames can be replayed without robot control:
 python3 scripts/replay_actor_candidate.py --backend ort --input /path/to/live.jsonl
 ```
 
-The replay checks observation/action/command parity and reports target deltas
+The replay restores the recorded ankle command space (legacy captures default
+to virtual pitch/roll), checks observation/action/command parity and reports target deltas
 as diagnostics. Live RobotInfo validation remains a separate hardware check. Earlier logs lacking this record cannot reconstruct the original
 IMU/reference exactly. Actual live publish records include measured Body31 q/dq,
 HIP orientation/gyro and firmware applied session/sequence evidence.
@@ -906,15 +1132,17 @@ withdrawn: neither is part of the reviewed C++ tracking contract. Target
 deltas and measured tilt remain diagnostic data, never replacements for real
 observations or evidence that a command is safe by themselves.
 
-C++ parity was checked at the deployed robot revision c9b4e80c: policy
+C++ parity was previously checked at robot revision c9b4e80c: policy
 DecodeAndClampVtHumanAction applies the trained/profile range intersection,
 BuildMotorFrameFromPolicyQ writes the result and ankle clamp feedforward,
 and EXTERNAL ValidateFrameLocked checks the actual BodyCapabilityRegistry
-fields/ranges. The parallel adapter owns its motor-space caps and entry blend.
+fields/ranges. That historical target-clipping/feedforward behavior is
+superseded by the affine targets described above; robot firmware must be
+updated to match. The parallel adapter owns its effort caps and entry blend.
 No uniform policy-output delta threshold is applied by these paths. The
 profile's stream.max_step_rad=2.0 rejects glitches in incoming Pico reference
 frames; it is not a policy-output bound and is not substituted for one.
-Hardware limits, finite-value checks, gains, ankle feedforward/adapter caps,
+Physical travel limits, finite-value checks, gains, adapter effort caps,
 watchdog/interpolation, ownership and checked exit remain in place. Removing
 an extra Python gate restores this contract; hardware stability still requires
 an attended motion trial.

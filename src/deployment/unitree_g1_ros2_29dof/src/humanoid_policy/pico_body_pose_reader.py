@@ -7,57 +7,115 @@ import math
 import json
 import os
 import queue
+import multiprocessing
+import signal
 from pathlib import Path
 
 import numpy as np
 
 
+def _write_frames(path, samples, result):
+    """JSON conversion and file I/O run outside the reader/GMR interpreter."""
+    written, error = 0, None
+    try:
+        # Ctrl-C belongs to the caller, which stops the reader then drains us.
+        signal.signal(signal.SIGINT, signal.SIG_IGN)
+        # Do not inherit a real-time policy if a caller has opted into one.
+        os.sched_setscheduler(0, os.SCHED_OTHER, os.sched_param(0))
+        with path.open('x', buffering=1024*1024) as stream:
+            stream.write(json.dumps(dict(record_type='header', writer_pid=os.getpid(),
+                clock='Python reader first visibility; not kernel or SDK callback arrival'))+'\n')
+            while True:
+                sample = samples.get()
+                if isinstance(sample, int):
+                    dropped = sample  # Ordered end marker follows all accepted frames.
+                    break
+                row = {k:(v.tolist() if isinstance(v, np.ndarray) else v)
+                       for k,v in sample.items()}
+                stream.write(json.dumps(dict(record_type='pico_reader_frame', **row),
+                                        allow_nan=False, separators=(',', ':'))+'\n')
+                written += 1
+            stream.write(json.dumps(dict(record_type='summary', written=written,
+                                         dropped=dropped))+'\n')
+            stream.flush()
+            os.fsync(stream.fileno())
+    except BaseException as exc:
+        error = repr(exc)
+    finally:
+        result.send((written, error))
+        result.close()
+
+
 class PicoFrameLog:
-    """Optional bounded capture of reader-visible frames, outside the reader loop."""
-    def __init__(self, directory):
+    """Optional bounded process capture; append never waits for disk or JSON."""
+    def __init__(self, directory, *, capacity=2048):
+        if type(capacity) is not int or capacity < 1:
+            raise ValueError('Pico capture capacity must be a positive integer')
         path = Path(directory)
         path.mkdir(parents=True, exist_ok=True)
         self.path = path / f'pico_reader_{os.getpid()}_{time.time_ns()}.jsonl'
-        self.queue = queue.Queue(maxsize=2048)
-        self.stop = threading.Event()
+        context = multiprocessing.get_context('spawn')
+        self.queue = context.Queue(maxsize=capacity)
+        self.result, writer_result = context.Pipe(duplex=False)
         self.dropped = self.written = 0
+        self.accepted = 0
         self.error = None
-        self.thread = threading.Thread(target=self._write, name='pico-frame-log', daemon=True)
-        self.thread.start()
+        self.closed = False
+        self.process = context.Process(target=_write_frames,
+            args=(self.path, self.queue, writer_result), name='pico-frame-log', daemon=True)
+        self.process.start()
+        writer_result.close()
 
     def append(self, sample):
+        if self.closed:
+            raise RuntimeError('Pico frame capture is closed')
+        if not self.process.is_alive():
+            self.dropped += 1
+            self.error = 'Pico frame writer exited before close'
+            return
         try:
+            # The reader publishes immutable arrays; the queue feeder only
+            # pickles them. All tolist/JSON work belongs to the child process.
             self.queue.put_nowait(sample)
+            self.accepted += 1
         except queue.Full:
             self.dropped += 1
 
-    def _write(self):
-        try:
-            with self.path.open('x', buffering=1024*1024) as stream:
-                stream.write(json.dumps(dict(record_type='header',
-                    clock='Python reader first visibility; not kernel or SDK callback arrival'))+'\n')
-                while not self.stop.is_set() or not self.queue.empty():
-                    try:
-                        sample = self.queue.get(timeout=.05)
-                    except queue.Empty:
-                        continue
-                    row = {k:(v.tolist() if isinstance(v, np.ndarray) else v)
-                           for k,v in sample.items()}
-                    stream.write(json.dumps(dict(record_type='pico_reader_frame', **row),
-                                            allow_nan=False, separators=(',', ':'))+'\n')
-                    self.written += 1
-                stream.write(json.dumps(dict(record_type='summary', written=self.written,
-                                             dropped=self.dropped))+'\n')
-        except BaseException as error:
-            self.error = repr(error)
-
     def close(self):
-        self.stop.set()
-        self.thread.join(timeout=3.)
+        if self.closed:
+            return
+        self.closed = True
+        deadline = time.monotonic()+3.
+        try:
+            if self.process.is_alive():
+                self.queue.put(self.dropped, timeout=max(0., deadline-time.monotonic()))
+                self.process.join(timeout=max(0., deadline-time.monotonic()))
+            if self.process.is_alive():
+                self.error = 'Pico frame writer did not drain within 3s'
+            elif self.result.poll():
+                self.written, error = self.result.recv()
+                self.error = error or self.error
+                if self.written != self.accepted and self.error is None:
+                    self.error = f'Pico capture count mismatch: {self.written}/{self.accepted}'
+            else:
+                self.error = self.error or 'Pico frame writer exited without acknowledgement'
+        except (queue.Full, EOFError, OSError) as exc:
+            self.error = repr(exc)
+        finally:
+            if self.process.is_alive():
+                self.process.terminate()
+                self.process.join(timeout=1.)
+                if self.process.is_alive():
+                    self.process.kill()
+                    self.process.join(timeout=1.)
+            self.queue.close()
+            self.queue.cancel_join_thread()
+            self.result.close()
 
 
 class PicoBodyPoseReader:
-    def __init__(self, *, logger, sdk=None, duplicate_poll_interval_s=0.0001) -> None:
+    def __init__(self, *, logger, sdk=None, duplicate_poll_interval_s=0.0001,
+                 on_frame=None) -> None:
         if (isinstance(duplicate_poll_interval_s, bool)
                 or not isinstance(duplicate_poll_interval_s, (int, float))
                 or not math.isfinite(duplicate_poll_interval_s)
@@ -85,6 +143,7 @@ class PicoBodyPoseReader:
         self._sdk_initialized = False
         self._frame_sequence = 0
         self._capture = None
+        self._on_frame = on_frame
 
     def _run(self) -> None:
         while not self._stop_event.is_set():
@@ -119,7 +178,7 @@ class PicoBodyPoseReader:
                 self._frame_sequence += 1
                 realtime_ns, monotonic_ns = time.time_ns(), time.monotonic_ns()
                 self._latest = {
-                    "body_poses": np.ascontiguousarray(body),
+                    "body_poses": np.array(body, copy=True, order='C'),
                     "timestamp_realtime": realtime_ns*1e-9,
                     "timestamp_monotonic": monotonic_ns*1e-9,
                     "reader_realtime_ns": realtime_ns,
@@ -129,6 +188,8 @@ class PicoBodyPoseReader:
                     "dt": float(dt),
                     "fps": float(self._fps_ema),
                 }
+                if self._on_frame is not None:
+                    self._on_frame(self._latest)
                 if self._capture is not None:
                     self._capture.append(self._latest)
             except Exception as exc:
@@ -163,9 +224,9 @@ class PicoBodyPoseReader:
             self._thread = None
         if self._capture is not None:
             self._capture.close()
-            if self._capture.error or self._capture.dropped or self._capture.thread.is_alive():
+            if self._capture.error or self._capture.dropped or self._capture.process.is_alive():
                 self.logger.error(f'[Pico] frame capture incomplete: error={self._capture.error}, '
-                                  f'dropped={self._capture.dropped}, writer_alive={self._capture.thread.is_alive()}')
+                                  f'dropped={self._capture.dropped}, writer_alive={self._capture.process.is_alive()}')
             self._capture = None
         if self._sdk_initialized:
             close = getattr(self.sdk, "close", None)

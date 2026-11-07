@@ -37,11 +37,14 @@ def motor_theta(runtime):
 
 def robot_config(runtime=None):
     """A-sample effective config; EXTERNAL ankle mode as the runtime's model needs."""
-    config = dict(parallel_ankle=dict(pd=dict(strategy='virtual_pd', kp_motor=20., kd_motor=1.),
+    from deployment.vita_s100_aorta_30dof.actor_parallel_ankle import command_space
+    config = dict(parallel_ankle=dict(pd=dict(strategy='virtual_pd', kp_motor=20., kd_motor=1.,
+                                           kp_motor_max=600., kd_motor_max=60.),
                 geometry=dict(lx=.05, ly=.02175, z_top=.31, z_bot=.235),
-                caps=dict(theta_min=-.95975, theta_max=.61075),
+                caps=dict(theta_min=-.95975, theta_max=.61075, qd_motor_max=12.25, tau_motor_max=50.),
                 virtual_limits=dict(pitch=[-.751, .414], roll=[-.43625, .43625])),
         actions=dict(EXTERNAL=dict(generator='builtin::external', params=dict(
+            ankle_command_space=command_space(runtime.policy) if runtime is not None else 'virtual_pitch_roll',
             ankle_virtual_pd_intent=not (runtime is not None and motor_theta(runtime)), command_timeout_ms=1000,
             recover_valid_frames=1, interpolation=dict(min_period_ms=2, max_period_ms=100),
             safe_hold=dict(kp=[10.]*42, kd=[1.]*42)))))
@@ -50,7 +53,14 @@ def robot_config(runtime=None):
     for name in ('PASSIVE','QUIET_PASSIVE'):
         config['actions'][name] = dict(generator='builtin::keyframe', params=dict(
             kp=0.,keyframes=[dict(timestamp=0,positions=[0.]*42,kd=5.),
-                            dict(timestamp=2,positions=[0.]*42,kd=0.)]))
+                            dict(timestamp=4,positions=[0.]*42,kd=0.)]))
+    if runtime is not None:
+        from deployment.vita_s100_aorta_30dof.actor_parallel_ankle import command_space
+        space = command_space(runtime.policy)
+        config['actions']['EXTERNAL']['params']['ankle_command_space'] = space
+        if space == 'motor_theta':
+            config['parallel_ankle']['caps'].update(qd_motor_max=12.25, tau_motor_max=50.)
+            config['parallel_ankle']['pd'].update(kp_motor_max=600., kd_motor_max=60.)
     return config
 
 
@@ -152,7 +162,14 @@ class Loopback:
         q = np.zeros(31, np.float32)
         q[self.runtime.policy.mapping] = self.runtime.model.contract.default
         # Simulated robot follows targets only to exercise feedback plumbing.
-        if self.commands: q[:] = [j.q for j in self.commands[-1].joints]
+        if self.commands:
+            q[:] = [j.q for j in self.commands[-1].joints]
+            from deployment.vita_s100_aorta_30dof.actor_parallel_ankle import command_space
+            if command_space(self.runtime.policy) == 'motor_theta':
+                # Feedback is virtual. Unbounded A/B PD setpoints are not
+                # physical poses; this plumbing mock holds the ankle pose.
+                slots = self.runtime.model.contract.ankle.slots
+                q[self.runtime.policy.mapping[slots]] = self.runtime.model.contract.default[slots]
         imu = np.zeros((1, 13), np.float32); imu[0, 0] = 1
         state = BodyStateArrays(state_id=stamp, q=q, dq=np.zeros(31, np.float32),
             tau_est=np.zeros(31, np.float32), joint_stamps_us=np.full((31, 3), stamp, np.uint64),
@@ -378,6 +395,23 @@ class LiveTests(unittest.TestCase):
         stages=[r['stage'] for r in self.rows if 'stage' in r]
         self.assertEqual(stages[-1],'pico_tracking')
 
+    def test_fresh_head_does_not_bypass_expired_body_reference(self):
+        worker,command=self.manual_trial()
+        original=worker.snapshot
+        def snapshot():
+            value=original()
+            if value['state']=='ready':
+                value['head_snapshot']=dict(raw_body_poses=value['raw_body_poses'],
+                    pico_timestamp_ns=value['pico_timestamp_ns'],
+                    received_monotonic=self.clock.monotonic(),source='pico_reader')
+                if len(self.transport.commands)>160:
+                    value['received_monotonic']=self.clock.monotonic()-.601
+            return value
+        with patch.object(worker,'snapshot',snapshot),self.assertRaisesRegex(TimeoutError,'reference worker snapshot'):
+            self.run_trial(manual_pico=worker,poll_command=command)
+        self.assertTrue(any(r.get('stage')=='pico_tracking' for r in self.rows))
+        self.assert_cancelled()
+
     def test_holomotion_600ms_budget_accepts_300ms_old_reference_and_sparse_frames(self):
         worker,command=self.manual_trial()
         original=worker.snapshot
@@ -575,7 +609,7 @@ class LiveTests(unittest.TestCase):
         cli=importlib.util.module_from_spec(spec);spec.loader.exec_module(cli)
         profile=Path(self.tmp.name)/'peer.json5';profile.touch(mode=0o600);profile.write_text('{mode:"peer"}')
         from deployment.vita_s100_aorta_30dof.actor_pico_stream import WorkerSettings
-        runtime=NS(root=Path(self.tmp.name),model=NS(backend='sdk',contract=self.runtime.model.contract),
+        runtime=NS(root=Path(self.tmp.name),policy=self.runtime.policy,model=NS(backend='sdk',contract=self.runtime.model.contract),
                    config=dict(body_profile=self.runtime.config['body_profile']),worker=WorkerSettings())
         self.args.stand_only=True;self.args.manual_pico=False;self.args.group='default'
         with (patch.dict(os.environ,ZENOH_SESSION_CONFIG_URI=str(profile)),
@@ -601,7 +635,7 @@ class LiveTests(unittest.TestCase):
         cli=importlib.util.module_from_spec(spec);spec.loader.exec_module(cli)
         profile=Path(self.tmp.name)/'peer.json5';profile.touch(mode=0o600);profile.write_text('{mode:"peer"}')
         from deployment.vita_s100_aorta_30dof.actor_pico_stream import WorkerSettings
-        runtime=NS(root=Path(self.tmp.name),model=NS(backend='sdk',contract=self.runtime.model.contract),
+        runtime=NS(root=Path(self.tmp.name),policy=self.runtime.policy,model=NS(backend='sdk',contract=self.runtime.model.contract),
                    config=dict(body_profile=self.runtime.config['body_profile']),
                    worker=WorkerSettings(3,.002,(0,1,2,3,4),(1,),(2,3,4)))
         self.args.stand_only=False;self.args.manual_pico=False;self.args.group='default'
@@ -933,7 +967,7 @@ class LiveTests(unittest.TestCase):
             self.config.write_text(json.dumps(root))
             return result
         with patch.object(self.runtime,'infer_motion',changed):
-            with self.assertRaisesRegex(ValueError, 'ankle_virtual_pd_intent'): self.run_trial()
+            with self.assertRaisesRegex(ValueError, 'ankle_virtual_pd_intent|motor PD'): self.run_trial()
         self.assertEqual(self.transport.requests, [])
 
     def test_full_body_compensation_command_is_preserved(self):
@@ -997,7 +1031,7 @@ class LiveTests(unittest.TestCase):
         params = config['actions']['EXTERNAL']['params']
         params['ankle_virtual_pd_intent'] = not params['ankle_virtual_pd_intent']
         self.config.write_text(json.dumps(config))
-        with self.assertRaisesRegex(ValueError, 'ankle_virtual_pd_intent'): self.run_trial()
+        with self.assertRaisesRegex(ValueError, 'ankle_virtual_pd_intent|motor PD'): self.run_trial()
         self.assertEqual((self.transport.requests, self.transport.commands), ([], []))
 
     def test_measured_pose_has_small_margin_but_commands_use_exact_ranges(self):
@@ -1010,7 +1044,12 @@ class LiveTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'outside'): env.check_measured_pose(replace(state, q=q))
         cmd, _ = self.runtime.policy.decode(np.zeros(28))
         joints = list(cmd.joints); joints[0] = replace(joints[0], q=4.01)
-        with self.assertRaisesRegex(ValueError, 'outside'): env.check(replace(cmd, joints=tuple(joints)))
+        changed = replace(cmd, joints=tuple(joints))
+        if getattr(self.runtime.policy, 'clip_target_positions', True) is False:
+            env.check(changed)
+            with self.assertRaisesRegex(ValueError, 'outside'): env.check(changed, virtual=True)
+        else:
+            with self.assertRaisesRegex(ValueError, 'outside'): env.check(changed)
 
     def test_command_outside_effective_hardware_limits_is_rejected(self):
         params, _ = load_robot_config(self.config)
@@ -1018,6 +1057,9 @@ class LiveTests(unittest.TestCase):
         cmd, _ = self.runtime.policy.decode(np.zeros(28))
         for key, value in [('q', 99.), ('dq', 99.), ('tau', 999.), ('kp', 999.), ('kd', 999.)]:
             joints = list(cmd.joints); joints[0] = replace(joints[0], **{key:value})
+            if key == 'q' and getattr(self.runtime.policy, 'clip_target_positions', True) is False:
+                env.check(replace(cmd, joints=tuple(joints)))
+                continue
             with self.assertRaisesRegex(ValueError, 'outside'): env.check(replace(cmd, joints=tuple(joints)))
 
     def capability_reply(self, index, **changes):
@@ -1070,6 +1112,9 @@ class LiveTests(unittest.TestCase):
         env.check(command)
         for change in (dict(q=9.), dict(tau=float('nan')), dict(kp=-1.)):
             joints = list(command.joints); joints[4] = replace(joints[4], **change)
+            if 'q' in change and getattr(self.runtime.policy, 'clip_target_positions', True) is False:
+                env.check(replace(command, joints=tuple(joints)))
+                continue
             with self.assertRaises(ValueError): env.check(replace(command, joints=tuple(joints)))
 
     def test_reference_advances_one_frame_per_published_step_despite_wallclock_jitter(self):
@@ -1502,7 +1547,7 @@ class LiveTests(unittest.TestCase):
             command,obs,row=original(*a,**kw)
             joints=list(command.joints)
             if any(r.get('record_type')=='fixed_stand_confirmed' for r in self.rows):
-                joints[0]=replace(joints[0],q=99.)
+                joints[0]=replace(joints[0],dq=99.)
             return replace(command,joints=tuple(joints)),obs,row
         with patch.object(self.runtime,'infer_motion_command',jumping):
             with self.assertRaisesRegex(ValueError,'outside'):self.auto_trial()
@@ -1728,7 +1773,7 @@ class LocalStartTests(unittest.TestCase):
         self.assertIn('Select the actor policy explicitly',refused('check','--steps','1'))
         self.assertIn('Conflicting',refused('sonic','--policy','supermimic'))
         self.assertIn("Unknown policy 'g1'",refused('--policy','g1'))
-        for policy in ('sonic','supermimic'):
+        for policy in ('sonic','supermimic','morphmimic'):
             args=launch(policy)
             self.assertEqual(args[1:4],['live','--policy',policy])
             for flag in ('--auto-start','--wait-pico','--manual-pico','--confirm-motion','--local-start'):
@@ -1752,7 +1797,7 @@ class LocalStartTests(unittest.TestCase):
         self.assertNotIn('--no-camera',args)
         # Interactive menu: a number selects; an empty answer starts nothing.
         import pty
-        for answer,expected in ((b'2\n','supermimic'),(b'1\n','sonic'),(b'\n',None)):
+        for answer,expected in ((b'2\n','supermimic'),(b'1\n','sonic'),(b'3\n','morphmimic'),(b'\n',None)):
             output.unlink(missing_ok=True)
             master,slave=pty.openpty()
             try:
@@ -1812,9 +1857,10 @@ class LocalStartTests(unittest.TestCase):
         spec=importlib.util.spec_from_file_location('actor_cli_duration_test',ROOT/'scripts/actor_pico.py')
         cli=importlib.util.module_from_spec(spec);spec.loader.exec_module(cli)
         self.cfg['seconds']=0;self.save();defaults=self.load()
-        runtime=NS(config={'artifacts':{'model':{}},'retargeting':{'implementation':'motion_stream_bridge_gmr_vita02a'}},reference=NS(delay=.2),
-                retarget=NS(accelerated=True),
+        runtime=NS(config={'artifacts':{'model':{}},'body_profile':{},'retargeting':{'implementation':'motion_stream_bridge_gmr_vita02a'}},reference=NS(delay=.2),
+                retarget=NS(accelerated=True), reference_source='pico', head=None,
                 model=NS(contract=NS(input_dim=1520)))
+        runtime.policy=NS(contract=runtime.model.contract,profile={'ankle_command_space':'policy'})
         for tail,expected in [([],0),(['--seconds','5'],5),(['--seconds','600'],600)]:
             captured=[]
             def live(runtime,args,write):

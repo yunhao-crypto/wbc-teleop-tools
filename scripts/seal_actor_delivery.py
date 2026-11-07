@@ -21,7 +21,7 @@ def main():
     root = ROOT
     actor_path = root/'ACTOR-PICO-MANIFEST.json'
     actor = json.loads(actor_path.read_text())
-    configs = {'sonic': 'config/actor_pico.json', 'supermimic': 'config/actor_pico_supermimic.json'}
+    configs = {'sonic': 'config/actor_pico.json', 'supermimic': 'config/actor_pico_supermimic.json', 'morphmimic': 'config/actor_pico_morphmimic.json'}
     external = []
     for policy, config in configs.items():
         model = json.loads((root/config).read_text())['artifacts']['model']
@@ -44,7 +44,7 @@ def main():
             actor['files'].append(dict(path=name))
     additional = ['scripts/configure_actor_s100.py', 'tests/test_actor_local_provision.py',
                   'src/deployment/vita_s100_aorta_30dof/actor_pico_head.py',
-                  'tests/test_actor_pico_head.py',
+                  'tests/test_actor_pico_head.py', 'tests/test_actor_firmware_session.py',
                   'src/deployment/vita_s100_aorta_30dof/actor_pico_scheduling.py',
                   'src/deployment/vita_s100_aorta_30dof/actor_pico_gmr.py',
                   'tests/fixtures/actor_pico/bridge_gmr_golden.npz',
@@ -58,11 +58,17 @@ def main():
                   'src/deployment/vita_s100_aorta_30dof/actor_pico_session_replay.py',
                   'scripts/freeze_pico_session.py', 'scripts/replay_pico_session.py', 'scripts/bench_pico_gmr.py',
                   'scripts/bench_pico_gmr_live.py',
-                  'deploy/actor_s100/gmr_benchmark_20261030.json',
                   'scripts/bench_pico_full_load.py', 'tests/test_actor_pico_full_load.py',
-                  'deploy/actor_s100/full_load_replay_20261030.json',
                   'tests/test_actor_pico_session.py',
                   'tests/fixtures/actor_pico/robot42_pico_session_20261029.npz']
+    additional += ['config/actor_pico_morphmimic.json',
+                   'src/deployment/vita_s100_aorta_30dof/actor_morphmimic.py',
+                   'scripts/prepare_external_ankle_config.py', 'tests/test_native_ankle_commands.py']
+    additional += ['config/actor_motion.json', 'scripts/start_actor_motion.sh',
+                   'src/deployment/vita_s100_aorta_30dof/actor_motion.py', 'tests/test_actor_motion.py',
+                   'scripts/import_actor_motion.py', 'scripts/compare_actor_motion.py',
+                   'tests/test_actor_motion_tools.py']
+    additional += ['tests/test_morph_reference_feasibility.py']
     additional += ['scripts/pico_camera_bridge.py', 'scripts/check_pico_camera_stream.py',
                    'scripts/pico_session_services.py', 'tests/test_pico_session_services.py',
                    'scripts/prepare_pico_camera_viewer.py', 'scripts/build_pico_camera_viewer.sh',
@@ -87,7 +93,8 @@ def main():
     if models & set(names):
         raise RuntimeError('Remove the external models from the Git index before sealing')
     required = ['artifacts/output_envelopes.motion.urdf',
-                'config/actor_pico.json', 'config/actor_pico_supermimic.json', 'config/sdk021-wheel-guard.json',
+                'config/actor_pico.json', 'config/actor_pico_supermimic.json', 'config/actor_pico_morphmimic.json',
+                'src/deployment/vita_s100_aorta_30dof/actor_morphmimic.py', 'config/sdk021-wheel-guard.json',
                 'scripts/bootstrap_actor_s100.py', 'scripts/configure_actor_s100.py', 'scripts/start_actor_pico.sh',
                 'src/deployment/vita_s100_aorta_30dof/actor_pico_live.py',
                 'src/deployment/vita_s100_aorta_30dof/actor_pico_head.py',
@@ -126,7 +133,7 @@ def main():
     missing = set(required)-set(names)
     if missing:
         raise RuntimeError('Stage these required delivery files first: '+', '.join(sorted(missing)))
-    record = dict(schema='vita_actor_s100_delivery_v1', version='2026.11.03-actor22-pico-camera-session',
+    record = dict(schema='vita_actor_s100_delivery_v1', version='2026.11.04-actor23-native-ab-pico-camera',
                   target=dict(os='Linux', architecture='aarch64', python='3.10', glibc_min='2.35'),
                   scope='offline/shadow checks and explicitly armed supported EXTERNAL trials; hardware not_measured',
                   required_inputs=required, external_resources=external, archives=archives,

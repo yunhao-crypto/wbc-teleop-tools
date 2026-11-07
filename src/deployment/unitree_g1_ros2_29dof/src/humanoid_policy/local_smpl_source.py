@@ -16,10 +16,12 @@ class LocalPicoSmplSource:
         max_source_age: float = 0.6,
         sdk=None,
         duplicate_poll_interval_s: float = 0.0001,
+        on_frame=None,
     ) -> None:
         self.logger = logger
         self.reader = PicoBodyPoseReader(logger=logger, sdk=sdk,
-                                        duplicate_poll_interval_s=duplicate_poll_interval_s)
+                                        duplicate_poll_interval_s=duplicate_poll_interval_s,
+                                        on_frame=on_frame)
         self.max_source_age = float(max_source_age)
         self.frame_index = 0
         self.last_sample = None

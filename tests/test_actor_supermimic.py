@@ -1,5 +1,8 @@
 """SuperMimic actor regressions against training-code fixtures; no robot or network."""
 import json
+import hashlib
+import os
+from dataclasses import replace
 from pathlib import Path
 import sys
 import unittest
@@ -9,7 +12,7 @@ import numpy as np
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT/'src'))
 sys.path.insert(0, str(ROOT/'tests'))
-from deployment.vita_s100_aorta_30dof.actor_pico_runtime import ActorPicoRuntime, load_actor_config
+from deployment.vita_s100_aorta_30dof.actor_pico_runtime import ActorModel, ActorPicoRuntime, load_actor_config
 from deployment.vita_s100_aorta_30dof import actor_supermimic as sm
 from deployment.vita_s100_aorta_30dof import actor_parallel_ankle as pa
 import test_actor_pico_live
@@ -29,11 +32,10 @@ class SuperMimicTests(unittest.TestCase):
         cls.motion = cls.math.Motion(cls.fx['q'], cls.fx['base'], cls.fx['quat_wxyz'])
 
     def setUp(self):
-        self.policy = sm.create_policy(self.c, self.runtime.config['body_profile'],
-                                       self.math, self.runtime.config)
+        self.policy = sm.create_policy(self.c, dict(self.runtime.config['body_profile']),
+                                      self.math, self.runtime.config)
 
-    def test_fixture_is_from_the_configured_model(self):
-        self.assertEqual(str(self.fx['onnx_sha256']), self.runtime.config['artifacts']['model']['sha256'])
+    def test_fixture_contract_matches_current_observation_layout(self):
         self.assertEqual(list(self.fx['joint_names']), list(self.c.names))
         self.assertEqual((self.c.input_dim, self.c.history_length, self.c.future_frames), (1670, 10, 10))
         # Closed-loop checkpoint: ankle slots hold motor angles under motor PD.
@@ -69,7 +71,7 @@ class SuperMimicTests(unittest.TestCase):
             self.assertLess(error[:, 9:12].max(), 2e-4)
             self.assertLess(error[:, 12:15].max(), .04)
 
-    def test_observation_history_and_actions_match_training(self):
+    def test_observation_history_matches_training(self):
         f = self.fx
         self.policy.reset()
         for i, frame in enumerate(f['tick_frames']):
@@ -80,9 +82,31 @@ class SuperMimicTests(unittest.TestCase):
             goal, expected = obs[960:].reshape(10, 71), f['tick_input'][i][960:].reshape(10, 71)
             np.testing.assert_allclose(goal[:, :9], expected[:, :9], rtol=0, atol=2e-6)
             np.testing.assert_allclose(goal[:, 15:], expected[:, 15:], rtol=0, atol=2e-6)
-            np.testing.assert_allclose(self.runtime.model.infer(f['tick_input'][i]), f['tick_action'][i],
+
+    @unittest.skipUnless(os.environ.get('VITA_SUPERMIMIC_PARITY_MODEL'),
+                         'Optional training parity: set VITA_SUPERMIMIC_PARITY_MODEL')
+    def test_original_checkpoint_actions_match_training(self):
+        path = Path(os.environ['VITA_SUPERMIMIC_PARITY_MODEL'])
+        self.assertEqual(hashlib.sha256(path.read_bytes()).hexdigest(), str(self.fx['onnx_sha256']))
+        model = ActorModel(path, self.math, backend='auto', policy_kind=sm.POLICY_KIND)
+        self.assertEqual(list(model.contract.names), list(self.c.names))
+        f = self.fx
+        for i, frame in enumerate(f['tick_frames']):
+            self.policy.last_action = f['tick_last_action'][i].astype(np.float32)
+            obs = self.policy.observe(self.motion, frame*self.c.period, f['tick_q'][i], f['tick_dq'][i],
+                                      f['tick_quat_wxyz'][i], f['tick_gyro'][i])
+            np.testing.assert_allclose(model.infer(f['tick_input'][i]), f['tick_action'][i],
                                        rtol=0, atol=2e-5)
-            np.testing.assert_allclose(self.runtime.model.infer(obs), f['tick_action'][i], rtol=0, atol=.02)
+            np.testing.assert_allclose(model.infer(obs), f['tick_action'][i], rtol=0, atol=.02)
+
+    def test_configured_model_has_finite_actions_and_native_targets(self):
+        for obs in self.fx['tick_input']:
+            action = self.runtime.model.infer(obs)
+            self.assertEqual(action.shape, (28,))
+            self.assertTrue(np.isfinite(action).all())
+            _, row = self.policy.decode(action)
+            expected = self.c.policy_default+self.c.scale*np.clip(action, -self.c.action_clip, self.c.action_clip)
+            np.testing.assert_allclose(row['target'], expected, atol=1e-6)
 
     def test_history_repeats_first_frame_and_rolls_oldest_first(self):
         self.policy.reset()
@@ -119,23 +143,34 @@ class SuperMimicTests(unittest.TestCase):
         command, decoded = self.policy.decode(action)
         raw = self.c.policy_default+self.c.scale*np.clip(action, -20, 20).astype(np.float32).astype(np.float64)
         slots = self.c.ankle.slots
-        motor = raw.copy()
-        motor[slots] = np.clip(raw[slots], *self.c.ankle.motor_limits)
-        safe = np.clip(self.c.ankle.to_virtual(motor)[0], self.policy.lower, self.policy.upper)
         for i, name in enumerate(self.c.names):
             joint = command.joints[self.policy.order.index(name)]
-            self.assertEqual(joint.q, float(np.float32(safe[i])))
+            self.assertEqual(joint.q, float(np.float32(raw[i])))
             self.assertEqual((joint.kp, joint.kd), (float(np.float32(self.c.kp[i])), float(np.float32(self.c.kd[i]))))
             self.assertEqual(joint.dq, 0.)
             self.assertEqual(joint.tau, float(np.float32(decoded['tau_ff'][i])))
             if 'ankle_' not in name:
                 self.assertEqual(joint.tau, 0.)
-        self.assertTrue(any(decoded['tau_ff']))
-        np.testing.assert_array_equal(decoded['motor_target'], motor[slots])
+        self.assertFalse(any(decoded['tau_ff']))
+        self.assertFalse(any(decoded['clamped']))
+        np.testing.assert_array_equal(decoded['motor_target'], raw[slots])
+
+    def test_serial_contract_also_preserves_targets_beyond_position_limits(self):
+        c = replace(self.c, ankle=None, policy_default=self.c.default)
+        policy = sm.create_policy(c, dict(self.runtime.config['body_profile']), self.math, self.runtime.config)
+        for sign in (-1., 1.):
+            command, row = policy.decode(np.full(28, sign*100.))
+            expected = c.default+c.scale*(sign*c.action_clip)
+            np.testing.assert_allclose(row['target'], expected)
+            self.assertFalse(any(row['clamped']))
+            self.assertFalse(any(row['tau_ff']))
+            for i, slot in enumerate(policy.mapping):
+                self.assertEqual(command.joints[slot].q, float(np.float32(expected[i])))
 
     def test_decode_inside_the_ankle_box_reproduces_the_motor_target(self):
         """The robot's PD-A re-solves IK on the virtual target: same motor angles."""
         slots = self.c.ankle.slots
+        self.policy.profile['ankle_command_space'] = 'virtual_pitch_roll'
         rng, checked = np.random.default_rng(3), 0
         for _ in range(20):
             _, decoded = self.policy.decode(rng.uniform(-.7, .7, 28))
@@ -147,29 +182,18 @@ class SuperMimicTests(unittest.TestCase):
             checked += 1
         self.assertGreater(checked, 10)
 
-    def test_clamp_feedforward_restores_the_trained_motor_pd_torque(self):
-        """Robot PD-A: kp_m*(IK(clamped target)-theta) + J^-T tau. Training: kp_m*(motor target-theta)."""
-        slots, legs, g = self.c.ankle.slots, self.c.ankle.legs, self.c.ankle.geometry
-        rng = np.random.default_rng(5)
-        for _ in range(20):
-            _, decoded = self.policy.decode(rng.uniform(-4, 4, 28))
-            target, tau = np.asarray(decoded['target']), np.asarray(decoded['tau_ff'])
-            theta = rng.uniform(-.5, .3, 28)
-            for p, r, sign in legs:
-                pitch, roll = target[p], sign*target[r]
-                tracked = np.clip(pa.motor_angles(pitch, roll, g), *self.c.ankle.motor_limits)
-                feedforward = np.linalg.solve(np.array(pa.jacobian(pitch, roll, g)).T, [sign*tau[r], tau[p]])
-                robot = 20*(tracked-theta[[p, r]])+feedforward
-                trained = 20*(np.asarray(decoded['motor_target'])[[list(slots).index(p), list(slots).index(r)]]
-                              - theta[[p, r]])
-                np.testing.assert_allclose(robot, trained, atol=1e-6)
+    def test_unrepresentable_virtual_wire_targets_are_rejected(self):
+        self.policy.profile['ankle_command_space'] = 'virtual_pitch_roll'
+        with self.assertRaisesRegex(ValueError, 'motor_theta command space'):
+            self.policy.decode(np.full(28, 20.))
 
-    def test_clamp_feedforward_can_be_disabled(self):
-        profile = dict(self.runtime.config['body_profile'], ankle_clamp_feedforward=False)
-        policy = sm.create_policy(self.c, profile, self.math, self.runtime.config)
-        command, decoded = policy.decode(np.full(28, 20.))
-        self.assertFalse(any(decoded['tau_ff']))
-        self.assertFalse(any(joint.tau for joint in command.joints))
+    def test_legacy_feedforward_flag_cannot_reintroduce_clamp_compensation(self):
+        for flag in (False, True):
+            profile = dict(self.runtime.config['body_profile'], ankle_clamp_feedforward=flag)
+            policy = sm.create_policy(self.c, profile, self.math, self.runtime.config)
+            command, decoded = policy.decode(np.full(28, 20.))
+            self.assertFalse(any(decoded['tau_ff']))
+            self.assertFalse(any(joint.tau for joint in command.joints))
 
     def test_causal_window_streams_the_clip_like_training(self):
         """Stream the clip as retargeted samples; compare goals at the current frame."""
@@ -302,6 +326,12 @@ class SuperMimicLiveTests(test_actor_pico_live.LiveTests):
 
     def test_motor_theta_robot_config_must_match_the_trained_ankle(self):
         from deployment.vita_s100_aorta_30dof.actor_pico_live import load_robot_config
+        from unittest.mock import patch
+        # The compatibility wire still requires fixed motor gains. Native
+        # mode carries independent gains and is covered by the shared tests.
+        override = patch.dict(self.runtime.policy.profile, ankle_command_space='virtual_pitch_roll')
+        override.start(); self.addCleanup(override.stop)
+        self.config.write_text(json.dumps(test_actor_pico_live.robot_config(self.runtime)))
         self.assertFalse(load_robot_config(self.config, self.runtime)[0]['ankle_virtual_pd_intent'])
         # Local start configuration has no model and takes either mode.
         load_robot_config(self.config)

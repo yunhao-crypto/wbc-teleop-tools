@@ -16,6 +16,8 @@ import time
 
 import numpy as np
 
+from .actor_parallel_ankle import command_space
+
 STATE_AGE = .1
 STATUS_AGE = .5
 TARGET_PERIOD = .020
@@ -80,9 +82,10 @@ def load_robot_config(path, runtime=None):
     This is not discovery of the running process's selected configuration.
     The attendant must verify that selection in the interactive confirmation.
     With a runtime, the EXTERNAL ankle mode must match its model: virtual
-    pitch/roll actors need virtual PD; motor_theta actors need PD-A with the
-    trained motor gains, motor limits and virtual box. Without one (local
-    start configuration) either boolean is accepted.
+    pitch/roll actors need virtual PD. Motor-theta actors select either native
+    motor commands or the legacy virtual-target motor-PD adapter. Match the
+    command space before using its limits. Without a runtime, validate the YAML
+    structure only (local start configuration).
     """
     import yaml
     path = Path(path)
@@ -100,12 +103,20 @@ def load_robot_config(path, runtime=None):
         motor_theta = runtime is not None and getattr(runtime.model.contract, 'ankle', None) is not None
         if type(intent) is not bool:
             raise ValueError('EXTERNAL ankle_virtual_pd_intent must be a boolean')
+        space = params.get('ankle_command_space', 'virtual_pitch_roll')
+        if space not in ('virtual_pitch_roll', 'motor_theta'):
+            raise ValueError('Invalid EXTERNAL ankle_command_space')
+        if runtime is not None and space != command_space(runtime.policy):
+            raise ValueError('Model deployment/EXTERNAL ankle_command_space mismatch')
+        if space == 'motor_theta' and (intent or (runtime is not None and not motor_theta)):
+            raise ValueError('motor_theta requires a motor-angle policy and '
+                             'ankle_virtual_pd_intent=false (motor PD)')
         if motor_theta:
-            check_motor_theta_ankle(ankle, intent, runtime)
+            check_motor_theta_ankle(ankle, intent, runtime, native=space == 'motor_theta')
         elif runtime is not None and (ankle['pd']['strategy'] != 'virtual_pd' or intent is not True):
             raise ValueError('Requires virtual_pd and EXTERNAL ankle_virtual_pd_intent=true; no config is changed')
         unknown = set(params)-{'command_timeout_ms', 'recover_valid_frames',
-                              'interpolation', 'safe_hold', 'ankle_virtual_pd_intent'}
+                              'interpolation', 'safe_hold', 'ankle_virtual_pd_intent', 'ankle_command_space'}
         if unknown:
             raise ValueError('Unsupported EXTERNAL params: '+', '.join(sorted(unknown)))
         timeout = params['command_timeout_ms']
@@ -134,18 +145,23 @@ def load_robot_config(path, runtime=None):
                 raise ValueError('Model/robot ankle geometry differs: '+key)
     except (KeyError, TypeError) as error:
         raise ValueError('Incomplete effective A-sample robot configuration') from error
-    return params, dict(path=str(path), sha256=hashlib.sha256(payload).hexdigest())
+    # Compare trial YAMLs without exposing their contents: only the wire-space
+    # selector may differ in a controlled ankle-path A/B trial.
+    comparable = json.loads(json.dumps(root))
+    comparable['actions']['EXTERNAL']['params'].pop('ankle_command_space', None)
+    return params, dict(path=str(path), sha256=hashlib.sha256(payload).hexdigest(),
+        ankle_path_comparison_sha256=hashlib.sha256(json.dumps(comparable, sort_keys=True).encode()).hexdigest())
 
 
-def check_motor_theta_ankle(ankle, intent, runtime):
-    """PD-A must track the IK of the actor's virtual targets with the trained motor PD."""
+def check_motor_theta_ankle(ankle, intent, runtime, native=False):
+    """Validate native motor caps, or the compatibility IK/fixed-gain contract."""
     contract, profile = runtime.model.contract, runtime.config['body_profile']
     if intent is not False:
         raise ValueError('motor_theta actor requires EXTERNAL ankle_virtual_pd_intent=false (motor PD); '
                          'no config is changed')
     slots = contract.ankle.slots
     gains = [(float(ankle['pd']['kp_motor']), float(ankle['pd']['kd_motor']))]
-    if {(float(contract.kp[i]), float(contract.kd[i])) for i in slots} != set(gains):
+    if not native and {(float(contract.kp[i]), float(contract.kd[i])) for i in slots} != set(gains):
         raise ValueError(f'Robot ankle motor gains {gains[0]} differ from the trained motor PD')
     caps = (float(ankle['caps']['theta_min']), float(ankle['caps']['theta_max']))
     if not np.allclose(caps, contract.ankle.motor_limits, rtol=0, atol=1e-9):
@@ -153,7 +169,31 @@ def check_motor_theta_ankle(ankle, intent, runtime):
     for name, value in contract.ankle.geometry.items():
         if not math.isclose(ankle['geometry'][name], value, rel_tol=0, abs_tol=1e-9):
             raise ValueError('Model/robot ankle geometry differs: '+name)
-    # The actor's clamp feedforward assumes the robot clamps to this same box.
+    if native:
+        caps = ankle['caps']
+        pd = ankle['pd']
+        ranges = [tuple(contract.ankle.motor_limits),
+                  (-float(caps['qd_motor_max']), float(caps['qd_motor_max'])),
+                  (-float(caps['tau_motor_max']), float(caps['tau_motor_max'])),
+                  (0., float(pd['kp_motor_max'])), (0., float(pd['kd_motor_max']))]
+        if any(not np.isfinite(r).all() or r[0] >= r[1] for r in ranges):
+            raise ValueError('Invalid native motor limits')
+        if any(not 0 <= contract.kp[i] <= ranges[3][1] or
+               not 0 <= contract.kd[i] <= ranges[4][1] for i in slots):
+            raise ValueError('Model gains exceed native motor limits')
+        if not 0 <= gains[0][0] <= ranges[3][1] or not 0 <= gains[0][1] <= ranges[4][1]:
+            raise ValueError('Native motor hold gains exceed limits')
+        # BodyCmd fields and firmware MotorAnkleRange are float32. Compare
+        # against the same representable bounds, without a numerical margin.
+        with np.errstate(over='ignore', invalid='ignore'):
+            wire_ranges = np.asarray(ranges, dtype=np.float32)
+        if (not np.isfinite(wire_ranges).all()
+                or np.any(wire_ranges[:, 0] >= wire_ranges[:, 1])):
+            raise ValueError('Native motor limits cannot be represented as float32')
+        runtime.policy.native_motor_ranges = [tuple(map(float, row)) for row in wire_ranges]
+        runtime.policy.native_hold_gains = gains[0]
+        return
+    # Validate the legacy virtual wire's geometry/range contract.
     for axis in ('pitch', 'roll'):
         box = [float(x) for x in ankle['virtual_limits'][axis]]
         for side in ('left', 'right'):
@@ -176,13 +216,22 @@ class CommandEnvelope:
         if self.body.roster_version != 1:
             raise ValueError('Expected body roster_version=1')
         runtime.policy.bind_body_info(self.body)
+        # Policy setpoints encode PD effort and may exceed physical travel.
+        # Position ranges still validate measured/startup poses; other command
+        # fields retain their advertised limits during policy execution.
+        self.unbounded_target_joints = (set(runtime.model.contract.names)
+            if getattr(runtime.policy, 'clip_target_positions', True) is False else set())
         self.limits = []
         self.delegated_joints = []
+        self.measured_q_ranges = []
+        self.virtual_limits = []
         ankles = {'left_ankle_pitch_joint', 'left_ankle_roll_joint',
                   'right_ankle_pitch_joint', 'right_ankle_roll_joint'}
         for index, (name, cap) in enumerate(zip(self.body.joint_names, self.body.joints)):
+            self.measured_q_ranges.append((cap.q_min, cap.q_max) if cap.populated else None)
             if not cap.populated:
                 self.limits.append(None)
+                self.virtual_limits.append(None)
                 continue
             if cap.is_mock or cap.slot_role != 1:
                 raise ValueError('Physical ACTIVE body actuator required: '+name)
@@ -200,10 +249,17 @@ class CommandEnvelope:
             if any(not np.isfinite(bounds).all() or bounds[0] >= bounds[1]
                    for bounds in ranges if bounds is not None):
                 raise ValueError('Invalid advertised command ranges: '+name)
+            self.virtual_limits.append(list(ranges))
+            native = name in ankles and command_space(runtime.policy) == 'motor_theta'
+            if native:
+                if not hasattr(runtime.policy, 'native_motor_ranges'):
+                    raise ValueError('Native motor mode requires effective robot config validation')
+                ranges = runtime.policy.native_motor_ranges
             for key, value_range in (('kp', ranges[3]), ('kd', ranges[4])):
                 values = params['safe_hold'][key]
                 slot = index if len(values) == 31 else BODY_TO_LEGACY[index]
-                value = values[slot]
+                value = (runtime.policy.native_hold_gains[0 if key == 'kp' else 1]
+                         if native else values[slot])
                 if (not math.isfinite(value) or value <= 0 or (value_range is not None
                         and not value_range[0] <= value <= value_range[1])):
                     raise ValueError('safe_hold gain unavailable/out of bounds: '+name)
@@ -219,15 +275,16 @@ class CommandEnvelope:
     def check_measured_pose(self, state):
         # Observations are measurements, not decoded policy targets. Match the
         # SDK example: straight knees may be below the model's output bounds.
-        command = replace(self.profile_command, joints=tuple(
-            replace(j, q=float(state.q[i])) if self.limits[i] else j
-            for i, j in enumerate(self.profile_command.joints)))
-        self.check(command, q_margin=MEASURED_Q_MARGIN)
+        for i, bounds in enumerate(self.measured_q_ranges):
+            if bounds is not None and (not math.isfinite(state.q[i]) or
+                    not bounds[0]-MEASURED_Q_MARGIN <= state.q[i] <= bounds[1]+MEASURED_Q_MARGIN):
+                raise ValueError('Measured virtual joint outside bounds: '+self.body.joint_names[i])
 
-    def check(self, command, q_margin=0.):
+    def check(self, command, q_margin=0., *, virtual=False):
         if len(command.joints) != 31:
             raise ValueError('Command must contain exactly 31 slots')
-        for name, joint, ranges in zip(self.body.joint_names, command.joints, self.limits):
+        limits = self.virtual_limits if virtual else self.limits
+        for name, joint, ranges in zip(self.body.joint_names, command.joints, limits):
             values = [getattr(joint, key) for key in ('q', 'dq', 'tau', 'kp', 'kd')]
             if not np.isfinite(values).all():
                 raise ValueError('Nonfinite body command: '+name)
@@ -238,6 +295,8 @@ class CommandEnvelope:
             if joint.kp < 0 or joint.kd < 0:
                 raise ValueError('Negative body command gain: '+name)
             for key, value, bounds in zip(('q', 'dq', 'tau', 'kp', 'kd'), values, ranges):
+                if key == 'q' and not virtual and name in self.unbounded_target_joints:
+                    continue
                 if bounds is None:
                     continue  # Validated by the firmware's parallel ankle adapter.
                 low, high = bounds
@@ -446,7 +505,7 @@ def record_period_overrun(write, phase_name, elapsed, actions_sent, **details):
 
 def run_live(runtime, args, write, controller, pico, stop, service_alive,
              clock=time, manual_pico=None, poll_command=lambda:None,
-             request_action=None):
+             request_action=None, motion_source=None):
     """One trial only. Every attempted entry is followed by checked CANCEL.
 
     Fake I/O in unit tests exercises this same runner; actual transport and
@@ -455,6 +514,8 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
     if not math.isfinite(args.seconds) or args.seconds < 0:
         raise ValueError('Live duration must be finite and nonnegative; 0 means until STOP')
     params, receipt = load_robot_config(args.robot_config, runtime)
+    if motion_source is not None:
+        write(dict(record_type='robot_configuration', robot_config=receipt, actions_sent=0))
     envelope = CommandEnvelope(runtime, controller.get_robot_info(args.startup_timeout), params)
     pico_max_age = runtime.config['pico_max_age_s']
     auto = bool(getattr(args, 'auto_start', False))
@@ -468,8 +529,10 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
                                          cancel_startup, FirmwareActions)
         startup = StartupPlan(runtime, envelope, args.robot_config)
     manual = bool(getattr(args, 'manual_pico', False))
-    requires_pico = not args.stand_only and not manual
-    if auto and (not manual or args.stand_only):
+    if motion_source is not None and (manual or wait_pico or auto_pico or args.stand_only):
+        raise ValueError('File motion cannot combine Pico following or stand-only mode')
+    requires_pico = motion_source is None and not args.stand_only and not manual
+    if auto and ((not manual and motion_source is None) or args.stand_only):
         raise ValueError('One-click startup requires manual Pico mode')
     # Firmware retires completed keyframes, leaving current_action empty. Auto
     # explicitly requests FIXED_STAND and verifies measured targets afterward;
@@ -481,7 +544,7 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
         raise ValueError('Manual Pico mode requires an idle capture worker')
     runtime.reset_inputs()
     # Warm actual inference before taking ownership; erase its action history.
-    runtime.infer_motion(runtime.math.Motion.hold(runtime.model.contract.default),
+    runtime.infer_motion(runtime.hold_motion(),
         q=runtime.model.contract.default, dq=np.zeros(28), root=[1, 0, 0, 0], gyro=np.zeros(3))
     runtime.reset_inputs()
     preflight_deadline = clock.monotonic()+args.startup_timeout
@@ -514,7 +577,7 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
                 command, obs, row = pico_reference_command(runtime, inputs.snapshot, started,
                     q=q, dq=dq, root=root, gyro=gyro)
             else:
-                motion = runtime.math.Motion.hold(runtime.model.contract.default)
+                motion = runtime.hold_motion()
                 motion = motion.lead_in(q, root, runtime.config['body_profile']['lead_in'])
                 command, obs, row = runtime.infer_motion_command(motion,
                     q=q, dq=dq, root=root, gyro=gyro, yaw_offset=runtime.math.yaw(root))
@@ -533,15 +596,19 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
         policy=runtime.policy_name, model=runtime.config['artifacts']['model'], config=receipt,
         stand_only=args.stand_only, seconds=args.seconds,
         manual_pico=manual, auto_start=auto, entry_policy='policy-online',
+        reference_source='npz' if motion_source is not None else 'pico',
+        motion=motion_source.metadata if motion_source is not None else None,
         wait_pico=wait_pico, auto_pico=auto_pico,
         startup_plan=startup.review if auto else None,
         default_pose=dict(zip(runtime.model.contract.names, runtime.model.contract.default.tolist())),
         kp=dict(zip(runtime.model.contract.names, runtime.model.contract.kp.tolist())),
         kd=dict(zip(runtime.model.contract.names, runtime.model.contract.kd.tolist())),
-        fixed_joints=runtime.config['body_profile']['fixed_joints'], reference_delay_s=runtime.reference.delay,
-        human_height_m=runtime.config['retargeting']['human_height_m'],
-        pico_stream=runtime.config.get('pico_stream'), pico_worker=runtime.config.get('pico_worker'),
-        head_control=runtime.config.get('head_control'))), flush=True)
+        fixed_joints=runtime.config['body_profile']['fixed_joints'],
+        reference_delay_s=runtime.reference.delay if motion_source is None else 0.,
+        human_height_m=runtime.config['retargeting']['human_height_m'] if motion_source is None else None,
+        pico_stream=runtime.config.get('pico_stream') if motion_source is None else None,
+        pico_worker=runtime.config.get('pico_worker'),
+        head_control=runtime.config.get('head_control') if runtime.head is not None else None)), flush=True)
     print('ACTOR_START: motion requested; '+
           ('running until STOP/Ctrl-C or fault' if args.seconds == 0 else f'duration limit {args.seconds:g}s')+
           '; exit requests CANCEL -> PASSIVE. Keep support and E-stop available.',flush=True)
@@ -576,7 +643,7 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
             # earlier passive snapshot, and still before requesting EXTERNAL.
             runtime.reset_inputs()
             begin = clock.monotonic()
-            lead = runtime.math.Motion.hold(runtime.model.contract.default).lead_in(
+            lead = runtime.hold_motion().lead_in(
                 q, root, runtime.config['body_profile']['lead_in'])
             command, obs, row = runtime.infer_motion_command(lead,q=q,dq=dq,root=root,gyro=gyro,
                                                             yaw_offset=runtime.math.yaw(root))
@@ -624,7 +691,7 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
             startup.check_hardware_pose(envelope,state)
         if not auto:
             envelope.check_measured_pose(state)
-        lead = runtime.math.Motion.hold(runtime.model.contract.default).lead_in(
+        lead = runtime.hold_motion().lead_in(
             q, root, runtime.config['body_profile']['lead_in'])
         offset = runtime.math.yaw(root)
         preparation = max(3., (len(lead.q)-1)*runtime.model.contract.period)
@@ -633,14 +700,16 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
         policy_tick = 0
         stand_tick = 0
         tracking = False
-        if runtime.head is not None and not args.stand_only:
+        motion_complete = False
+        if runtime.head is not None and not args.stand_only and motion_source is None:
             print('PICO_HEAD: look straight ahead relative to your chest when enabling following; '
                   'this pose becomes head neutral.', flush=True)
         last_inferred_identity = None
         last_inferred_receipt_ns = None
         report['duplicate_body_ticks'] = 0
         if auto:
-            print('POLICY_LEAD_IN: ONNX runs from measured-pose reference toward model stand; awaiting Pico',flush=True)
+            print('POLICY_LEAD_IN: ONNX runs from measured-pose reference toward model stand; '+
+                  ('then fixed NPZ playback' if motion_source is not None else 'awaiting Pico'),flush=True)
         if manual:
             print('PICO_BUTTONS: release both triggers, then squeeze both past 0.7 to toggle '
                   'following/ONNX stand. STOP or Ctrl-C cancels.',flush=True)
@@ -673,6 +742,10 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
             return following
 
         while not stop.is_set() and clock.monotonic() < end:
+            if motion_source is not None:
+                poll_command()  # Terminal STOP/EOF sets the same cancellation event.
+                if stop.is_set():
+                    break
             if requires_pico and not service_alive():
                 raise RuntimeError('Pico service exited')
             clock.sleep(max(0., deadline-clock.monotonic()))
@@ -765,7 +838,7 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
                     manual_reference(runtime,snapshot,clock.monotonic())
                     tracking = False
                     auto_pico = False
-                    lead = runtime.math.Motion.hold(runtime.model.contract.default).lead_in(
+                    lead = runtime.hold_motion().lead_in(
                         q,root,runtime.config['body_profile']['lead_in'])
                     offset = runtime.math.yaw(root)
                     stand_tick = 0
@@ -800,7 +873,21 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
                         write(dict(record_type='tracking_started',actions_sent=sent_count,
                                    reference_yaw_offset=tracking_yaw))
             published_action = runtime.policy.last_action.copy()
-            if manual and tracking:
+            if motion_source is not None and elapsed >= preparation:
+                if not tracking:
+                    motion_source.begin(q, root)
+                    tracking = True
+                    write(dict(record_type='motion_started', actions_sent=sent_count,
+                        motion=motion_source.metadata, lead_frames=motion_source.lead_frames,
+                        total_ticks=motion_source.total_ticks, policy_history_reset=False))
+                    print('MOTION_PLAYING: one pass, live robot feedback; STOP/Ctrl-C cancels.',flush=True)
+                if motion_source.finished:
+                    motion_complete = True
+                    break
+                reference_frame = motion_source.tick
+                reference_time = reference_frame*runtime.model.contract.period
+                command, obs, row = motion_source.infer(q=q, dq=dq, root=root, gyro=gyro)
+            elif manual and tracking:
                 command, obs, row = pico_reference_command(runtime, snapshot, clock.monotonic(),
                     q=q, dq=dq, root=root, gyro=gyro, yaw_offset=tracking_yaw)
             elif requires_pico and elapsed >= preparation:
@@ -824,7 +911,7 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
             pending_action = runtime.policy.last_action.copy()
             runtime.policy.last_action = published_action
             command, pending_head = runtime.apply_head(command, row, now=clock.monotonic(),
-                measured_q=state.q, tracking=tracking,
+                measured_q=state.q, tracking=tracking and motion_source is None,
                 snapshot=(snapshot if manual else inputs.snapshot) if tracking else None)
             envelope.check(command)
             compute_end = clock.monotonic()
@@ -866,15 +953,18 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
             policy_tick += 1
             if not tracking:
                 stand_tick += 1
+            elif motion_source is not None:
+                motion_source.advance()
             report['actions_sent'] = sent_count
             if auto and not report['onnx_control_enabled']:
-                print('ONNX_READY: policy commands started; both Pico triggers toggle following',flush=True)
+                print('ONNX_READY: policy commands started; '+('NPZ playback follows stand preparation'
+                      if motion_source is not None else 'both Pico triggers toggle following'),flush=True)
             report['onnx_control_enabled'] = True
             write(dict(row, actions_sent=sent_count, control_handles_created=1,
-                stage='pico_tracking' if tracking else 'prepare_stand',
+                stage=('motion_tracking' if motion_source is not None else 'pico_tracking') if tracking else 'prepare_stand',
                 policy_tick=policy_tick-1,
-                reference_time_s=0. if tracking else reference_time,
-                reference_frame=0 if tracking else reference_frame,
+                reference_time_s=0. if tracking and motion_source is None else reference_time,
+                reference_frame=0 if tracking and motion_source is None else reference_frame,
                 state_id=int(state.state_id), source_state_us=int(state.ts_state_real_us),
                 feedback_timing=dict(at_read=state_age_at_read, before_publish=state_age_before_publish,
                     publication_us=int(state.ts_state_pub_us),
@@ -890,14 +980,17 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
                 compute_ms=(compute_end-cycle)*1000,
                 sent_body_targets=[dict(q=j.q, dq=j.dq, tau=j.tau, kp=j.kp, kd=j.kd) for j in sent.joints]), obs)
             if sent_count % 50 == 0:
-                stage = 'pico_tracking' if tracking else 'stand'
+                stage = ('motion_tracking' if motion_source is not None else 'pico_tracking') if tracking else 'stand'
                 print(f'ACTOR_LIVE steps={sent_count} stage={stage}', flush=True)
             complete = clock.monotonic()
             record_period_overrun(write,'complete_cycle',complete-cycle,sent_count)
             deadline = advance(deadline)
         report['stopped_by_signal'] = stop.is_set()
         report['elapsed_s'] = clock.monotonic()-start
-        report['stop_reason'] = 'operator_stop' if stop.is_set() else 'duration_elapsed'
+        report['stop_reason'] = 'operator_stop' if stop.is_set() else 'motion_complete' if motion_complete else 'duration_elapsed'
+        if motion_source is not None:
+            report['motion'] = motion_source.metadata
+            report['motion_ticks'] = motion_source.tick
         write(dict(record_type='stop_requested',reason=report['stop_reason'],
             elapsed_s=report['elapsed_s'],duration_limit_s=args.seconds,actions_sent=sent_count))
         print(f"ACTOR_STOP: {report['stop_reason']}, elapsed={report['elapsed_s']:.2f}s; CANCEL -> PASSIVE",flush=True)

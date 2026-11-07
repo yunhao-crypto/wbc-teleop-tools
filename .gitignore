@@ -79,3 +79,6 @@ __pycache__/
 !/deploy/actor_s100/runtime/*.tar.gz
 !/tests/fixtures/actor_pico/pico_replay.npz
 !/tests/fixtures/actor_pico/bridge_gmr_golden.npz
+
+# Model weights, export reports and checkpoint receipts are supplied separately.
+/artifacts/morphmimic/

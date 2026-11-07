@@ -1,7 +1,7 @@
 """Actor inference through SDK 0.2.1 math; no transport or publication.
 
 ``policy`` selects a pinned configuration: the SONIC/GR00T G1 actor or the
-SuperMimic actor. Both share retargeting, feedback validation and Body31 decode.
+SuperMimic/MorphMimic actors. They share feedback validation and Body31 decode.
 """
 import hashlib
 import importlib
@@ -14,6 +14,7 @@ import time
 
 import numpy as np
 
+from .actor_morphmimic import MorphMimicContract, POLICY_KIND as MORPHMIMIC_KIND
 from .actor_groot_ankle import contract_from_metadata as groot_contract
 from .actor_pico_gmr import create_retargeter
 from .actor_pico_head import PicoHeadControl, head_settings
@@ -21,7 +22,7 @@ from .actor_pico_stream import stream_settings, worker_settings
 from .actor_supermimic import (POLICY_KIND as SUPERMIMIC_KIND, NativeModel, SuperMimicContract,
                                create_policy, create_reference, reference_window)
 
-POLICY_CONFIGS = {'sonic': 'config/actor_pico.json', 'supermimic': 'config/actor_pico_supermimic.json'}
+POLICY_CONFIGS = {'sonic': 'config/actor_pico.json', 'supermimic': 'config/actor_pico_supermimic.json', 'morphmimic': 'config/actor_pico_morphmimic.json'}
 
 
 def digest(path):
@@ -40,9 +41,9 @@ def load_actor_config(root, policy='sonic'):
     if config['schema'] != 'vita_actor_pico_shadow_v1':
         raise ValueError('Unsupported actor/Pico configuration')
     if config.get('policy_kind', 'groot_vita02a_tracking') != {
-            'sonic': 'groot_vita02a_tracking', 'supermimic': SUPERMIMIC_KIND}[policy]:
+            'sonic': 'groot_vita02a_tracking', 'supermimic': SUPERMIMIC_KIND, 'morphmimic': MORPHMIMIC_KIND}[policy]:
         raise ValueError('Actor configuration does not match the selected policy')
-    if policy == 'supermimic':
+    if policy in ('supermimic', 'morphmimic'):
         reference_window(config)
     if not np.isfinite(config['pico_max_age_s']) or config['pico_max_age_s'] <= 0:
         raise ValueError('Invalid Pico maximum data age')
@@ -50,7 +51,7 @@ def load_actor_config(root, policy='sonic'):
     if (isinstance(hold, bool) or not isinstance(hold, (int, float)) or not np.isfinite(hold)
             or not 0 < hold < config['pico_max_age_s']):
         raise ValueError('Pico reference hold age must be positive and below pico_max_age_s')
-    if stream_settings(config) is not None and policy != 'supermimic':
+    if stream_settings(config) is not None and policy not in ('supermimic', 'morphmimic'):
         raise ValueError('pico_stream playback is only implemented for the SuperMimic reference')
     worker_settings(config)
     head_settings(config)
@@ -85,7 +86,8 @@ class ActorModel:
             backend = 'sdk' if platform.machine() == 'aarch64' else 'ort'
         self.backend = backend
         # The GR00T ankle control space comes only from the ONNX metadata.
-        parse = (SuperMimicContract.from_metadata if policy_kind == SUPERMIMIC_KIND
+        parse = (functools.partial(MorphMimicContract.from_metadata, math_api) if policy_kind == MORPHMIMIC_KIND else
+                 SuperMimicContract.from_metadata if policy_kind == SUPERMIMIC_KIND
                  else functools.partial(groot_contract, math_api))
         if backend == 'sdk':
             self.model = NativeModel(path, math_api, threads=threads, parse=parse)
@@ -125,10 +127,18 @@ class ActorModel:
 
 
 class ActorPicoRuntime:
-    def __init__(self, root, *, backend='auto', threads=1, human_height=None, policy='sonic'):
+    def __init__(self, root, *, backend='auto', threads=1, human_height=None, policy='sonic',
+                 reference_source='pico', ankle_command_space=None):
+        if reference_source not in ('pico', 'npz'):
+            raise ValueError('Unknown actor reference source')
+        self.reference_source = reference_source
         self.root = Path(root).resolve()
         self.policy_name = policy
         self.config = load_actor_config(root, policy)
+        if ankle_command_space is not None:
+            if reference_source != 'npz' or ankle_command_space not in ('motor_theta', 'virtual_pitch_roll'):
+                raise ValueError('Explicit ankle command-space selection requires NPZ playback')
+            self.config['body_profile']['ankle_command_space'] = ankle_command_space
         if human_height is not None:
             self.config['retargeting']['human_height_m'] = float(human_height)
         self.stream = stream_settings(self.config)
@@ -138,14 +148,24 @@ class ActorPicoRuntime:
                                 self.math, backend=backend, threads=threads,
                                 policy_kind=self.config.get('policy_kind', 'groot_vita02a_tracking'))
         self.policy = create_policy(self.model.contract, self.config['body_profile'], self.math, self.config)
+        from .actor_parallel_ankle import command_space
+        command_space(self.policy)  # Reject native commands with a virtual-angle model immediately.
         settings = head_settings(self.config)
         self.head = None
-        if settings is not None:
+        if settings is not None and reference_source == 'pico':
             gmr_config = json.loads((self.root/self.config['artifacts']['gmr_source_4']['path']).read_text())
             offset = gmr_config['ik_match_table1']['waist_pitch_link'][4]
             self.head = PicoHeadControl(settings, offset, period=self.model.contract.period,
                 hold_age=self.config['pico_hold_age_s'], maximum_age=self.config['pico_max_age_s'])
         self.reset_inputs()
+
+    def hold_motion(self):
+        """Stand reference; MorphMimic goals include absolute anchor height."""
+        c = self.model.contract
+        motion = self.math.Motion.hold(c.default)
+        if isinstance(c, MorphMimicContract):
+            motion.base[:, 2] = c.nominal_root_height
+        return motion
 
     def reset_inputs(self):
         """Discard shadow history, calibration and references before a new trial."""
@@ -157,7 +177,8 @@ class ActorPicoRuntime:
     def reset_reference(self):
         """Reset only Pico calibration/reference; preserve running policy history."""
         self.reference = create_reference(self.model.contract, self.math, self.config)
-        self.retarget = create_retargeter(self.root, self.config, self.model.contract, self.math)
+        self.retarget = (create_retargeter(self.root, self.config, self.model.contract, self.math)
+                         if self.reference_source == 'pico' else None)
         self.last_residual = None
         self.last_retarget_ms = None
         self.reference_yaw_offset = None
@@ -213,6 +234,10 @@ class ActorPicoRuntime:
     def apply_head(self, command, row, *, now, measured_q=None, snapshot=None, tracking=False):
         if self.head is None:
             return command, None
+        # Body policy/reference timestamps stay tied to their GMR result.
+        # Only the neck uses the independently refreshed reader snapshot.
+        if snapshot is not None:
+            snapshot = snapshot.get('head_snapshot', snapshot)
         command, diagnostics, candidate = self.head.preview(command, self.policy.order,
             now=now, measured_q=measured_q, snapshot=snapshot, tracking=tracking)
         row['head_control'] = diagnostics

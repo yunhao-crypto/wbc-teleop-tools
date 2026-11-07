@@ -1,8 +1,8 @@
 """Vita02A parallel-ankle kinematics for motor_theta policies.
 
 Closed-loop policies observe and command the two Achilles motor angles in the
-ankle pitch/roll slots, while Body31 state, references and commands carry
-virtual pitch/roll. ``motor_angles`` and ``jacobian`` port
+ankle pitch/roll slots. Body31 feedback and references remain virtual pitch/roll;
+command slots follow the explicitly matched EXTERNAL ankle_command_space. ``motor_angles`` and ``jacobian`` port
 ``gear_sonic.utils.parallel_ankle`` (the training map, also used by
 vita-robot's ``GrootMotorThetaAnkleMap``); ``forward`` inverts the map with
 Newton iterations like the vita-robot ankle adapter.
@@ -129,6 +129,45 @@ class MotorThetaAnkle:
                 row[p], row[r] = motor_angles(row[p], sign*row[r], self.geometry)
         return q
 
+    def project_reference(self, q):
+        """Project virtual references into the deployment box AND motor workspace.
+
+        Only references are projected: measured feedback is never falsified.
+        Return a copy and a per-frame changed flag. Differentiate the returned
+        virtual trajectory before applying velocity_to_policy, not the input.
+        The radial fallback follows the connected neutral-pose workspace.
+        """
+        result = np.array(q, dtype=np.float64, copy=True)
+        if not np.isfinite(result).all():
+            raise ValueError('non-finite ankle reference')
+        original = result.copy()
+        lo, hi = self.motor_limits
+        def feasible(pitch, roll):
+            theta = motor_angles(pitch, roll, self.geometry)
+            # IK uses clamped asin/discriminants; independently check rod closure.
+            for (y, height), angle in zip(_links(self.geometry), theta):
+                anchor = np.asarray(_foot(pitch, roll, -self.geometry['lx'], y, 0.))
+                crank = np.array([-self.geometry['lx']*math.cos(angle), y,
+                                  height+self.geometry['lx']*math.sin(angle)])
+                if abs(np.linalg.norm(anchor-crank)-height) > 1e-7:
+                    return False
+            return min(theta) >= lo+1e-7 and max(theta) <= hi-1e-7
+        for row in result.reshape(-1, result.shape[-1]):
+            for p, r, sign in self.legs:
+                pitch = float(np.clip(row[p], -.751, .414))
+                roll = sign*float(np.clip(row[r], -.43625, .43625))
+                if not feasible(pitch, roll):
+                    left, right = 0., 1.
+                    for _ in range(30):
+                        mid = (left+right)/2
+                        if feasible(mid*pitch, mid*roll):
+                            left = mid
+                        else:
+                            right = mid
+                    pitch, roll = left*pitch, left*roll
+                row[p], row[r] = pitch, sign*roll
+        return result, np.any(np.abs(result-original) > 1e-10, axis=-1)
+
     def velocity_to_policy(self, q, qd):
         """Virtual ankle rates to motor rates through the Jacobian at ``q``."""
         q, qd = np.asarray(q, dtype=np.float64), np.array(qd, dtype=np.float64)
@@ -167,16 +206,28 @@ class MotorThetaAnkle:
         return q, residual
 
 
+def command_space(policy):
+    """Wire coordinate contract, independent of the policy observation space."""
+    value = policy.profile.get('ankle_command_space', 'virtual_pitch_roll')
+    if value == 'policy':
+        value = 'motor_theta' if getattr(policy.contract, 'ankle', None) is not None else 'virtual_pitch_roll'
+    if value not in ('motor_theta', 'virtual_pitch_roll'):
+        raise ValueError('ankle_command_space must be policy, motor_theta or virtual_pitch_roll')
+    if value == 'motor_theta' and getattr(policy.contract, 'ankle', None) is None:
+        raise ValueError('native motor commands require a motor_theta model contract')
+    return value
+
+
 def decode_motor_theta(policy, math_api, raw_action, **timing):
     """Body31 command of a motor_theta policy (SDK ``WbcTrackingPolicy`` subclass).
 
-    Motor-angle targets are mapped back to virtual pitch/roll through the
-    forward kinematics, because Body31 EXTERNAL takes only virtual targets.
-    The robot's motor PD (EXTERNAL ``ankle_virtual_pd_intent=false``) re-solves
-    the same IK, which reproduces the trained motor PD inside the virtual
-    ankle box. Outside it the robot clamps the virtual target first; with
-    ``ankle_clamp_feedforward`` the motor PD torque that clamp removes is sent
-    back as virtual ankle torque.
+    Preserve the affine PD setpoints, including targets outside position
+    limits. Metadata limits describe physical travel, not target bounds.
+    Native mode sends A/B targets and motor gains directly. In compatibility
+    mode, motor targets are mapped back to virtual pitch/roll through FK.
+    Compatibility mode requires representable targets and a robot adapter
+    that re-solves IK without position clipping. No clamp compensation is
+    added; native A/B commands support the full action range.
     """
     c = policy.contract
     action = np.asarray(raw_action, dtype=np.float64)
@@ -184,30 +235,30 @@ def decode_motor_theta(policy, math_api, raw_action, **timing):
         raise ValueError('model output must have 28 finite actions')
     policy.last_action = np.clip(action, -c.action_clip, c.action_clip).astype(np.float32)
     raw_q = c.policy_default+c.scale*policy.last_action.astype(np.float64)
-    # Motor angles stop at the policy's motor travel, as in the vita-robot
-    # passthrough; the robot clamps the virtual pose to its ankle box.
+    # PD setpoints may exceed travel; physical limits belong to the plant.
     motor_q = raw_q.copy()
     slots = c.ankle.slots
-    motor_q[slots] = np.clip(raw_q[slots], c.policy_lower[slots], c.policy_upper[slots])
-    virtual_q, residual = c.ankle.to_virtual(motor_q)
-    target = np.clip(virtual_q, policy.lower, policy.upper)
+    native = command_space(policy) == 'motor_theta'
     tau = np.zeros(28)
-    if policy.profile['ankle_clamp_feedforward']:
-        # Motor angles the robot will track: IK of the clamped virtual
-        # target, then its motor-limit clamp (vita-robot PD-A).
-        tracked = np.clip(c.ankle.to_policy(target)[slots], *c.ankle.motor_limits)
-        missing = np.zeros(28)
-        missing[slots] = c.kp[slots]*(motor_q[slots]-tracked)
-        tau[slots] = c.ankle.torque_to_virtual(target, missing)[slots]
+    residual = None
+    if native:
+        # q/kp/kd stay in A/B space. Virtual limits and virtual clamp torque
+        # compensation do not belong to this wire contract.
+        target = motor_q.copy()
+    else:
+        virtual_q, residual = c.ankle.to_virtual(motor_q)
+        if residual > 1e-8:
+            raise ValueError('Unrepresentable motor target on virtual wire; use motor_theta command space')
+        target = virtual_q
+    clamped = np.zeros(28, dtype=bool)
     motors = [math_api.BodyJointCmd() for _ in range(31)]
     for p, slot in enumerate(policy.mapping):
         motors[slot] = math_api.BodyJointCmd(float(np.float32(target[p])), 0., float(np.float32(tau[p])),
                                              float(np.float32(c.kp[p])), float(np.float32(c.kd[p])))
     for name, fixed in policy.profile['fixed_joints'].items():
         motors[policy.order.index(name)] = math_api.BodyJointCmd(fixed['q'], 0., 0., fixed['kp'], fixed['kd'])
-    clamped = target != virtual_q
-    clamped[slots] |= motor_q[slots] != raw_q[slots]
     return math_api.BodyCmd(joints=tuple(motors), **timing), {
+        'ankle_command_space': command_space(policy),
         'action': policy.last_action.tolist(), 'raw_target': raw_q.tolist(),
         'motor_target': motor_q[slots].tolist(), 'ankle_fk_residual': residual,
         'target': target.tolist(), 'tau_ff': tau.tolist(), 'clamped': clamped.tolist(),

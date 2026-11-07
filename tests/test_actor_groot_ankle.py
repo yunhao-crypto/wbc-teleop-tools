@@ -55,9 +55,10 @@ def metadata(raw):
     return {ga.CONTRACT_KEY: json.dumps(raw)}
 
 
-def install_motor_theta(runtime):
+def install_motor_theta(runtime, command_space='virtual_pitch_roll'):
     """Point a runtime at a motor_theta contract on the delivered network weights."""
     runtime.model.contract = ga.contract_from_metadata(runtime.math, metadata(motor_theta_contract()))
+    runtime.config['body_profile']['ankle_command_space']=command_space
     runtime.policy = ga.create_policy(runtime.model.contract, runtime.config['body_profile'], runtime.math)
     runtime.reset_inputs()
 
@@ -66,7 +67,8 @@ class GrootAnkleTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.runtime = ActorPicoRuntime(ROOT, backend='auto')
-        cls.math, cls.profile = cls.runtime.math, cls.runtime.config['body_profile']
+        cls.math, cls.profile = cls.runtime.math, dict(cls.runtime.config['body_profile'],
+                                                     ankle_command_space='virtual_pitch_roll')
         cls.raw = motor_theta_contract()
         cls.c = ga.contract_from_metadata(cls.math, metadata(cls.raw))
         # The same export read as if every slot were a serial joint: the policy-space reference.
@@ -79,10 +81,49 @@ class GrootAnkleTests(unittest.TestCase):
         quat = np.stack([np.cos(yaw/2), np.zeros(n), np.zeros(n), np.sin(yaw/2)], axis=1)
         return self.math.Motion(q, np.cumsum(np.full((n, 3), .01), axis=0), quat)
 
-    def test_delivered_virtual_model_keeps_the_sdk_contract_and_policy(self):
-        self.assertIs(type(self.runtime.model.contract), self.math.Contract)
-        self.assertIs(type(self.runtime.policy), self.math.WbcTrackingPolicy)
-        self.assertIs(type(ga.contract_from_metadata(self.math, metadata(serial_contract()))), self.math.Contract)
+    def test_default_sonic_is_pinned_9700_native_motor_policy(self):
+        model = self.runtime.config['artifacts']['model']
+        self.assertEqual(model['sha256'], '2bc0ca6f0bddef1ba040a19a771181da68f5b7d2138d1e87913072def089135d')
+        self.assertEqual(model['source_name'], 'model_step_009700_longrun_closed_loop_g1.onnx')
+        self.assertEqual(pa.command_space(self.runtime.policy), 'motor_theta')
+        self.assertEqual(self.runtime.model.contract.action_clip, 20.)
+        self.assertFalse(self.runtime.policy.clip_target_positions)
+        self.assertFalse(self.runtime.config['body_profile']['ankle_clamp_feedforward'])
+
+    def test_virtual_contract_keeps_sdk_layout_with_affine_pd_policy(self):
+        # Keep this independent of the locally deployed (motor-theta) model.
+        contract = ga.contract_from_metadata(self.math, metadata(serial_contract()))
+        self.assertIs(type(contract), self.math.Contract)
+        policy = ga.create_policy(contract, self.profile, self.math)
+        self.assertIsInstance(policy, self.math.WbcTrackingPolicy)
+        self.assertFalse(policy.clip_target_positions)
+
+    def test_virtual_policy_does_not_require_clamp_compensation(self):
+        contract = ga.contract_from_metadata(self.math, metadata(serial_contract()))
+        for value in (False, None, True):
+            policy = ga.create_policy(contract, dict(self.profile, ankle_clamp_feedforward=value), self.math)
+            self.assertFalse(policy.clip_target_positions)
+        ga.create_policy(self.c, dict(self.profile, ankle_clamp_feedforward=False), self.math)
+
+    def test_virtual_affine_targets_preserve_policy_pd_torque(self):
+        contract = ga.contract_from_metadata(self.math, metadata(serial_contract()))
+        policy = ga.create_policy(contract, dict(self.profile, ankle_clamp_feedforward=True), self.math)
+        rng = np.random.default_rng(57400)
+        for sign in (-1., 1.):
+            action = np.zeros(28)
+            action[policy.ankles] = sign * contract.action_clip
+            command, decoded = policy.decode(action)
+            q = rng.uniform(policy.lower, policy.upper)
+            dq = rng.normal(size=28)
+            raw_target = contract.default + contract.scale * np.float32(action).astype(float)
+            for i in policy.ankles:
+                joint = command.joints[policy.mapping[i]]
+                self.assertAlmostEqual(joint.q, raw_target[i], delta=1e-6)
+                self.assertEqual(joint.tau, 0.)
+                actual = joint.kp * (joint.q - q[i]) - joint.kd * dq[i]
+                expected = contract.kp[i] * (raw_target[i] - q[i]) - contract.kd[i] * dq[i]
+                self.assertAlmostEqual(actual, expected, delta=5e-5)
+            np.testing.assert_array_equal(decoded['tau_ff'], np.zeros(28))
 
     def test_motor_theta_metadata_selects_motor_space(self):
         c, slots = self.c, self.c.ankle.slots
@@ -148,9 +189,47 @@ class GrootAnkleTests(unittest.TestCase):
         for p, slot in enumerate(ours.mapping):
             self.assertAlmostEqual(command.joints[slot].q, target[p], places=6)
             self.assertEqual((command.joints[slot].kp, command.joints[slot].kd), (float(c.kp[p]), float(c.kd[p])))
-        # Motor targets stop at the exported soft limits.
-        _, decoded = ours.decode(np.full(28, 20.))
-        np.testing.assert_allclose(decoded['motor_target'], SOFT_LIMITS[1])
+        # A virtual wire cannot represent arbitrary motor PD setpoints. It
+        # must reject an unreachable request instead of silently projecting it.
+        with self.assertRaisesRegex(ValueError, 'motor_theta command space'):
+            ours.decode(np.full(28, 20.))
+
+    def test_serial_decode_preserves_pd_targets_beyond_position_limits(self):
+        policy = ga.create_policy(self.serial, self.profile, self.math)
+        for sign in (-1., 1.):
+            command, row = policy.decode(np.full(28, sign*100.))
+            expected = self.serial.default+self.serial.scale*(sign*self.serial.action_clip)
+            np.testing.assert_array_equal(policy.last_action, sign*self.serial.action_clip)
+            np.testing.assert_allclose(row['target'], expected)
+            self.assertFalse(any(row['clamped']))
+            self.assertFalse(any(row['tau_ff']))
+            self.assertTrue(np.any((expected < policy.lower) | (expected > policy.upper)))
+            for i, slot in enumerate(policy.mapping):
+                self.assertEqual(command.joints[slot].q, float(np.float32(expected[i])))
+
+    def test_motor_decode_ignores_soft_hard_and_profile_target_bounds(self):
+        profile = dict(self.profile, ankle_command_space='motor_theta')
+        policy = ga.create_policy(self.c, profile, self.math)
+        for sign in (-1., 1.):
+            command, row = policy.decode(np.full(28, sign*100.))
+            expected = self.c.policy_default+self.c.scale*(sign*self.c.action_clip)
+            np.testing.assert_allclose(row['target'], expected)
+            np.testing.assert_allclose(row['motor_target'], expected[self.c.ankle.slots])
+            self.assertFalse(any(row['clamped']))
+            self.assertFalse(any(row['tau_ff']))
+            for i, slot in enumerate(policy.mapping):
+                self.assertEqual(command.joints[slot].q, float(np.float32(expected[i])))
+
+    def test_virtual_wire_preserves_representable_motor_targets_above_soft_limits(self):
+        policy = ga.create_policy(self.c, self.profile, self.math)
+        action = np.zeros(28)
+        slots = self.c.ankle.slots
+        action[slots] = (.6-self.c.policy_default[slots])/self.c.scale[slots]
+        _, row = policy.decode(action)
+        np.testing.assert_allclose(row['motor_target'], .6, atol=1e-7)
+        np.testing.assert_allclose(self.c.ankle.to_policy(row['target'])[slots], .6, atol=1e-7)
+        self.assertFalse(any(row['clamped']))
+        self.assertFalse(any(row['tau_ff']))
 
     @unittest.skipUnless(__import__('importlib').util.find_spec('onnx'), 'onnx is needed to rewrite metadata')
     def test_runtime_model_picks_the_control_space_from_the_onnx(self):
@@ -181,10 +260,14 @@ class AnkleTypeReportTests(unittest.TestCase):
         entry = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(entry)
         runtime = ActorPicoRuntime(ROOT, backend='ort')
+        runtime.model.contract = ga.contract_from_metadata(runtime.math, metadata(serial_contract()))
+        runtime.policy = ga.create_policy(runtime.model.contract, runtime.config['body_profile'], runtime.math)
         self.assertEqual(entry.ankle_type(runtime), dict(ankle_control_space='virtual_pitch_roll',
+                                                         required_ankle_command_space='virtual_pitch_roll',
                                                          required_ankle_virtual_pd_intent=True))
         install_motor_theta(runtime)
         self.assertEqual(entry.ankle_type(runtime), dict(ankle_control_space='motor_theta',
+                                                         required_ankle_command_space='virtual_pitch_roll',
                                                          required_ankle_virtual_pd_intent=False))
 
 
@@ -194,7 +277,7 @@ class GrootMotorThetaLiveTests(test_actor_pico_live.LiveTests):
     @classmethod
     def setUpClass(cls):
         cls.runtime = ActorPicoRuntime(ROOT, backend='ort')
-        install_motor_theta(cls.runtime)
+        install_motor_theta(cls.runtime, command_space='motor_theta')
 
     def test_complete_candidate_replay_and_feedback_evidence(self):
         """In-process replay: replay_actor_candidate.py rebuilds the pinned (virtual) model."""
@@ -202,7 +285,7 @@ class GrootMotorThetaLiveTests(test_actor_pico_live.LiveTests):
         self.auto_trial()
         candidate = next(r for r in self.rows if r.get('record_type') == 'prepared_policy_candidate')
         runtime = ActorPicoRuntime(ROOT, backend='ort')
-        install_motor_theta(runtime)
+        install_motor_theta(runtime, command_space='motor_theta')
         state, ref = candidate['input_state'], candidate['reference']
         command, obs, row = runtime.infer_motion_command(
             runtime.math.Motion(ref['q'], ref['base'], ref['quat']), q=state['q'], dq=state['dq'],

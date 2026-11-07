@@ -51,7 +51,8 @@ def stats(rows,key):
     return dict(mean=float(x.mean()),p50=float(np.median(x)),p95=float(np.percentile(x,95)),
                 p99=float(np.percentile(x,99)),max=float(x.max()))
 
-def capture_shared(root,config,contract,commands,output,stop,controls,progress,fixture_path,frames,receiver_pid,out,pico_mode):
+def capture_shared(root,config,contract,commands,output,stop,controls,progress,fixture_path,frames,receiver_pid,out,pico_mode,
+                   head_pose=None):
     import numpy as np
     from deployment.vita_s100_aorta_30dof import actor_pico_worker as worker
     from deployment.vita_s100_aorta_30dof.actor_pico_session_replay import SessionFixture
@@ -101,11 +102,11 @@ def capture_shared(root,config,contract,commands,output,stop,controls,progress,f
                     return True,1_700_000_000_000_000_000+tick*11_111_111,fixture.frame_body[0].astype(np.float64).tolist()
                 def get_controller_trigger_snapshot(self):
                     return True,1_700_000_000_000_000_000+int((time.monotonic()-self.started)*90)*11_111_111,0.,0.,0.
-            def replay_source(*,logger,maximum_age,duplicate_poll_interval_s):
+            def replay_source(*,logger,maximum_age,duplicate_poll_interval_s,on_frame=None):
                 return LocalPicoSmplSource(logger=logger,max_source_age=maximum_age,sdk=ReplaySDK(),
-                    duplicate_poll_interval_s=duplicate_poll_interval_s)
+                    duplicate_poll_interval_s=duplicate_poll_interval_s,on_frame=on_frame)
             resources.enter_context(patch.object(pico_input,'create_pico_source',side_effect=replay_source))
-        worker._capture(root,config,contract,None,None,commands,output,stop,controls)
+        worker._capture(root,config,contract,None,None,commands,output,stop,controls,head_pose)
     report=dict(frames=len(rows),expected_frames=frames,qpos_sha256=digest.hexdigest(),
         wall_ms=stats(rows,'retarget_ms'),cpu_ms=stats(rows,'retarget_cpu_ms'),
         steady_wall_ms=stats(rows[50:],'retarget_ms'),steady_cpu_ms=stats(rows[50:],'retarget_cpu_ms'),
@@ -136,7 +137,7 @@ def trial(options,label,index,receiver_pid):
     worker=PicoReferenceProcess(runtime)
     worker.process=ctx.Process(target=capture_shared,args=(str(ROOT),cfg,runtime.model.contract,
         worker.commands,worker.output,worker.stop,worker.controls,progress:=ctx.Value('i',0),
-        str(options.fixture),options.frames,receiver_pid,str(prefix)+'.gmr.json',options.pico))
+        str(options.fixture),options.frames,receiver_pid,str(prefix)+'.gmr.json',options.pico,worker.head_pose))
     original_mask=os.sched_getaffinity(0);original_scheduler=os.sched_getscheduler(0);original_priority=os.sched_getparam(0)
     rows=[];source=None;inferred=skipped=invalid_feedback=stale_feedback=0;before=hardware()
     try:

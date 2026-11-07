@@ -6,20 +6,20 @@
   "files": [
     {
       "path": "README_ACTOR_PICO.md",
-      "sha256": "c65bcd3662cb95ce371e22a955a345283d3dd32075ab86f1ca1c784cbccf237d",
-      "bytes": 54231,
+      "sha256": "bb3fb624a235b28eca517302b61f8c083d990a4d7767ff3038b8d87f50eccfcc",
+      "bytes": 68574,
       "mode": "0o644"
     },
     {
       "path": "config/actor_pico.json",
-      "sha256": "b46e90eacc65ce50a4168d57ca15edc0847e17ecdf1eba1edbfe187f8e015b7d",
-      "bytes": 7304,
+      "sha256": "67e8ebc64f338b6ae54f470c755ad34479a036079ad56618d98d5b39e5f11505",
+      "bytes": 7528,
       "mode": "0o644"
     },
     {
       "path": "scripts/actor_pico.py",
-      "sha256": "a8850fdbdf4183049a4ad9938393599d36523096ccf8ff196dda9131cb2d7e22",
-      "bytes": 24010,
+      "sha256": "c68472145ba5cf922231e4b7a4edd1f7c809169ede7697796eeea4d84b29dba9",
+      "bytes": 27811,
       "mode": "0o755"
     },
     {
@@ -30,8 +30,8 @@
     },
     {
       "path": "scripts/start_actor_pico.sh",
-      "sha256": "4ca49fbd3dab2d0ada8bc9483c9f5fa775e5686824d99cb77729f220b82df64c",
-      "bytes": 5416,
+      "sha256": "627df2decb2f482814149120cc5585ee802480a32f271db68582fb8054683f8c",
+      "bytes": 6075,
       "mode": "0o755"
     },
     {
@@ -42,8 +42,8 @@
     },
     {
       "path": "src/deployment/vita_s100_aorta_30dof/actor_pico_runtime.py",
-      "sha256": "1ab7940996efb48ae5126694398c1a849d1b88ac8daa3bf6a52278df92ed5550",
-      "bytes": 14263,
+      "sha256": "4062fc87b9dad18a8c8062e41cd19cb60ea2a257ea7e7ca673f128a12ac38694",
+      "bytes": 15963,
       "mode": "0o644"
     },
     {
@@ -72,26 +72,26 @@
     },
     {
       "path": "src/deployment/vita_s100_aorta_30dof/actor_pico_live.py",
-      "sha256": "fcbe098a9f6eba71991d370d864c54217012a4c5b7f386c9dc109238cffa43f9",
-      "bytes": 52261,
+      "sha256": "6e6b31f65428985473d174f1902176e93aa0963115932df9781f7b5d7a2d02b9",
+      "bytes": 58624,
       "mode": "0o644"
     },
     {
       "path": "tests/test_actor_pico_live.py",
-      "sha256": "2484bb5adda36ff0d0c1f60a86841a2f5a98a7eb8a20a74b12f05dc9312ce328",
-      "bytes": 103436,
+      "sha256": "4593055b28be16496301debef498b378638cba4329a85e2c3ef08b1a81b608f2",
+      "bytes": 106514,
       "mode": "0o644"
     },
     {
       "path": "src/deployment/vita_s100_aorta_30dof/actor_pico_worker.py",
-      "sha256": "4a45b43b9dba30f275ddda70ed6934b345db3ded7816c8a9eee590bc0ea8018e",
-      "bytes": 12101,
+      "sha256": "71ba7a515c983640b0bff533b78cb36d17b2d54de8e6361f387d11217e900757",
+      "bytes": 12731,
       "mode": "0o644"
     },
     {
       "path": "src/deployment/vita_s100_aorta_30dof/actor_pico_startup.py",
-      "sha256": "c2decfaf4d287ed02956c14841f2a341cad7678d52def8e9ab291373eccc1f91",
-      "bytes": 12958,
+      "sha256": "894f7037f0b840ad1bd6c90e06e8d21a7523c9ccf7b62de2b9e956da4cd22b32",
+      "bytes": 13396,
       "mode": "0o644"
     },
     {
@@ -102,8 +102,8 @@
     },
     {
       "path": "scripts/replay_actor_candidate.py",
-      "sha256": "86a97cad758c8a88b78b713343a2290ea93d070617dd6019c6845eae95397d05",
-      "bytes": 2633,
+      "sha256": "71c6583be1cbf413c2c8e5eb934645d26be565063aaa1a0c98680a5878b49186",
+      "bytes": 3124,
       "mode": "0o644"
     },
     {
@@ -126,8 +126,8 @@
     },
     {
       "path": "src/deployment/vita_s100_aorta_30dof/actor_pico_gmr.py",
-      "sha256": "cea92494c20e962c8a8173a3c8bae3cf7338750db846c03fa73ebe6e017af77b",
-      "bytes": 13757,
+      "sha256": "26d91efb9bdae9fd97a96a34a079cbeaa8f0d96c54a8abdab20ab5e88b8c6575",
+      "bytes": 15495,
       "mode": "0o644"
     },
     {
@@ -216,20 +216,20 @@
     },
     {
       "path": "config/actor_pico_supermimic.json",
-      "sha256": "6111d56d3f44dfa8caf6ffadde89f683c0d4d15ef7deaafdea53601e9aad47fc",
-      "bytes": 8609,
+      "sha256": "05ef51536655e0ed5f41957a20e1018a828f63e75b77185b7deb928c712eaa80",
+      "bytes": 8837,
       "mode": "0o644"
     },
     {
       "path": "src/deployment/vita_s100_aorta_30dof/actor_supermimic.py",
-      "sha256": "0c16f72d6f01cf0a8762ddafc58e31a52ee7d68456f1364cfbd68e27cb6e53ae",
-      "bytes": 21555,
+      "sha256": "042d966c5ce1c14f7836031fa8d0ad1dc5f2b9eae64de5e994f67b9470d102cd",
+      "bytes": 21744,
       "mode": "0o644"
     },
     {
       "path": "tests/test_actor_supermimic.py",
-      "sha256": "59d79619841bcb9eca64a67c95a7fb405a62ad07b993245d355a6c032515c544",
-      "bytes": 19239,
+      "sha256": "93ca418a15062a7d7decb752e8ef99a674daf4b30628fbf5c88625942fbab54a",
+      "bytes": 20916,
       "mode": "0o644"
     },
     {
@@ -287,15 +287,9 @@
       "mode": "0o644"
     },
     {
-      "path": "deploy/actor_s100/gmr_benchmark_20261030.json",
-      "sha256": "a3ea0a9d632e49d6e6963f57693914ef61b64e7006432024b899e01085543fc3",
-      "bytes": 3106,
-      "mode": "0o644"
-    },
-    {
       "path": "scripts/bench_pico_full_load.py",
-      "sha256": "4b44f348678c951c88309cbce0e995c5194626b25a46725e41c463f977c8ec62",
-      "bytes": 20294,
+      "sha256": "8e8298bd7860bec707ab76c7dc4b82a854fce1500d53f4bba02a9d582b134f43",
+      "bytes": 20388,
       "mode": "0o644"
     },
     {
@@ -305,39 +299,57 @@
       "mode": "0o644"
     },
     {
-      "path": "deploy/actor_s100/full_load_replay_20261030.json",
-      "sha256": "8be3eaf3d3c039df024221ad1a67e020abe643123370b477240e08754ce6dcfa",
-      "bytes": 10947,
-      "mode": "0o644"
-    },
-    {
       "path": "src/deployment/vita_s100_aorta_30dof/actor_parallel_ankle.py",
-      "sha256": "3ec1bf0465cd01a21a7185dd54722c17581887ec71f0e9779a41ed6794f5f545",
-      "bytes": 10251,
+      "sha256": "ccd6be98f37778c070741b17c1e958e99621a8dfc1bd8ece18e56f276e2d704c",
+      "bytes": 12853,
       "mode": "0o644"
     },
     {
       "path": "src/deployment/vita_s100_aorta_30dof/actor_groot_ankle.py",
-      "sha256": "895d1ccdcebaa9daba8e67a67e7bf0fddcd15a8ef5aff301f73bd9c63dd9a877",
-      "bytes": 5905,
+      "sha256": "2484b1e4b1c6b752347ebebb349919f9f252dd1e22fb6942f743ac60ad876542",
+      "bytes": 7508,
       "mode": "0o644"
     },
     {
       "path": "tests/test_actor_groot_ankle.py",
-      "sha256": "3b79eca44d44886010eeced1f97d4e6fd3d00fa00cdc1df1b734435331b34aad",
-      "bytes": 13052,
+      "sha256": "5c0ab2284ca07382d907297e2c3a6a8fbf3f5f4237c06047694bf535b573c801",
+      "bytes": 18492,
+      "mode": "0o644"
+    },
+    {
+      "path": "config/actor_pico_morphmimic.json",
+      "sha256": "1a336157979bc761d6bec31fb1c0218372cd24024b1a141b0ac4fc34a593e3d7",
+      "bytes": 8574,
+      "mode": "0o644"
+    },
+    {
+      "path": "src/deployment/vita_s100_aorta_30dof/actor_morphmimic.py",
+      "sha256": "b81945b9d76462dc15b4d8adcc398b89a6c42dcef2fac45e0d8f6ea09f9104c6",
+      "bytes": 6603,
+      "mode": "0o644"
+    },
+    {
+      "path": "scripts/prepare_external_ankle_config.py",
+      "sha256": "2e082d5294df10de20c81541273565e130d48919581ec715396e84c05a192971",
+      "bytes": 3170,
+      "mode": "0o644"
+    },
+    {
+      "path": "tests/test_native_ankle_commands.py",
+      "sha256": "1152d242b63625086c1c517b761b1fb402cd977b31efa4bb29f6159ca08a7d3f",
+      "bytes": 13940,
       "mode": "0o644"
     },
     {
       "path": "src/deployment/vita_s100_aorta_30dof/actor_pico_head.py",
-      "sha256": "d287ba9808561b795913f7833bff7ead86d5a74868f4f1121166cc1da656667e",
-      "bytes": 8969,
+      "sha256": "96b4189341942ca41c957cdf3e0852f1460307c87f4e4eb3c8a5e7c1392b95cc",
+      "bytes": 9311,
       "mode": "0o644"
     },
     {
       "path": "tests/test_actor_pico_head.py",
-      "sha256": "55659e831aa86ddb3895a3eb46ff2f497cf2c2a8447f7c2c75f82c730566aee2",
-      "bytes": 11288,
+      "sha256": "2df90b952895fb31cae186ad6b375dc14cc007a716c52860a99ce2662f0c1e4f",
+      "bytes": 12792,
       "mode": "0o644"
     },
     {
@@ -353,9 +365,27 @@
       "mode": "0o644"
     },
     {
+      "path": "scripts/pico_session_services.py",
+      "sha256": "7b0a5e8a67b17ccfc9c707839c0938ba3ec9e1bbd17753b0ed796fc508d1f4e3",
+      "bytes": 9344,
+      "mode": "0o644"
+    },
+    {
+      "path": "tests/test_pico_session_services.py",
+      "sha256": "8f63b5444e58672d2ebbe7aa808b5e4b303946552c961ae897a1df96a944857a",
+      "bytes": 10867,
+      "mode": "0o644"
+    },
+    {
       "path": "scripts/prepare_pico_camera_viewer.py",
       "sha256": "5a199e68ad4be7df6a1361a5383d6ffa308c46cd2c722b21d2a98a2f46f947a1",
       "bytes": 5311,
+      "mode": "0o644"
+    },
+    {
+      "path": "scripts/build_pico_camera_viewer.sh",
+      "sha256": "44f60b1f245f1568c4fd5f203fa50555b22fa88e72cf2ea8589ec5e8370d03d7",
+      "bytes": 1167,
       "mode": "0o644"
     },
     {
@@ -371,6 +401,18 @@
       "mode": "0o644"
     },
     {
+      "path": "tests/test_pico_viewer_prepare.py",
+      "sha256": "f52965062f05690c61d6f876dad5592d346ad1887526ed96dd792c8e5eceb990",
+      "bytes": 6802,
+      "mode": "0o644"
+    },
+    {
+      "path": "deploy/pico_viewer/README.md",
+      "sha256": "81e6cabd88bd118d273844674721acd81ea07ddfa35f7ac1a45016763807d0a7",
+      "bytes": 13912,
+      "mode": "0o644"
+    },
+    {
       "path": "deploy/pico_viewer/run_bridge.sh",
       "sha256": "c876680714a15e7df9740e292d3f022ba18e686286d7ac4818820d51e625412f",
       "bytes": 432,
@@ -383,9 +425,15 @@
       "mode": "0o644"
     },
     {
-      "path": "deploy/pico_viewer/README.md",
-      "sha256": "81e6cabd88bd118d273844674721acd81ea07ddfa35f7ac1a45016763807d0a7",
-      "bytes": 13912,
+      "path": "deploy/pico_viewer/Assets/Editor/VitaCameraBuilder.cs",
+      "sha256": "be78994c400789708e2f88f2a20284f9ff4eda89e0b6c8d753fd8b042d52fe8b",
+      "bytes": 4366,
+      "mode": "0o644"
+    },
+    {
+      "path": "deploy/pico_viewer/Assets/Editor/VitaCameraChecks.cs",
+      "sha256": "680fe03774a2d623f8f74f88fbb27f2c79b710f82adf550a0344fe1987320443",
+      "bytes": 2298,
       "mode": "0o644"
     },
     {
@@ -395,15 +443,15 @@
       "mode": "0o644"
     },
     {
-      "path": "deploy/pico_viewer/Assets/Plugins/Android/VitaCamera.androidlib/project.properties",
-      "sha256": "14d176d280b2e809a7f780aaed37c57f564fb2a235444b33a035f099dfdbdae5",
-      "bytes": 39,
-      "mode": "0o644"
-    },
-    {
       "path": "deploy/pico_viewer/Assets/Plugins/Android/VitaCamera.androidlib/build.gradle",
       "sha256": "7c50d5c8b66c4a3a675bd2fbcc59aa9680d507c6f983cb4eec73739bbc353dab",
       "bytes": 391,
+      "mode": "0o644"
+    },
+    {
+      "path": "deploy/pico_viewer/Assets/Plugins/Android/VitaCamera.androidlib/project.properties",
+      "sha256": "14d176d280b2e809a7f780aaed37c57f564fb2a235444b33a035f099dfdbdae5",
+      "bytes": 39,
       "mode": "0o644"
     },
     {
@@ -431,51 +479,9 @@
       "mode": "0o644"
     },
     {
-      "path": "deploy/pico_viewer/Assets/Editor/VitaCameraBuilder.cs",
-      "sha256": "be78994c400789708e2f88f2a20284f9ff4eda89e0b6c8d753fd8b042d52fe8b",
-      "bytes": 4366,
-      "mode": "0o644"
-    },
-    {
-      "path": "tests/pico_viewer/FourButtonChordTest.cs",
-      "sha256": "4edc3a242f210f57595bbb3df40e038ad9323c1e72e49cad8b726cdcc2472831",
-      "bytes": 2245,
-      "mode": "0o644"
-    },
-    {
-      "path": "tests/pico_viewer/VideoWireTest.java",
-      "sha256": "eb1f0effcd5a2dedd0662cb1c9a9039b0423f99dfd82f9ca2bac393a0755372b",
-      "bytes": 2344,
-      "mode": "0o644"
-    },
-    {
-      "path": "scripts/build_pico_camera_viewer.sh",
-      "sha256": "44f60b1f245f1568c4fd5f203fa50555b22fa88e72cf2ea8589ec5e8370d03d7",
-      "bytes": 1167,
-      "mode": "0o644"
-    },
-    {
-      "path": "tests/test_pico_viewer_prepare.py",
-      "sha256": "f52965062f05690c61d6f876dad5592d346ad1887526ed96dd792c8e5eceb990",
-      "bytes": 6802,
-      "mode": "0o644"
-    },
-    {
-      "path": "deploy/pico_viewer/Assets/Editor/VitaCameraChecks.cs",
-      "sha256": "680fe03774a2d623f8f74f88fbb27f2c79b710f82adf550a0344fe1987320443",
-      "bytes": 2298,
-      "mode": "0o644"
-    },
-    {
-      "path": "scripts/pico_session_services.py",
-      "sha256": "7b0a5e8a67b17ccfc9c707839c0938ba3ec9e1bbd17753b0ed796fc508d1f4e3",
-      "bytes": 9344,
-      "mode": "0o644"
-    },
-    {
-      "path": "tests/test_pico_session_services.py",
-      "sha256": "8f63b5444e58672d2ebbe7aa808b5e4b303946552c961ae897a1df96a944857a",
-      "bytes": 10867,
+      "path": "deploy/pico_viewer/releases/SHA256SUMS",
+      "sha256": "8bda5ebd2c71f59b76573a306ffb67cc9c2fb9ed02c22a13c3185e5b410980da",
+      "bytes": 99,
       "mode": "0o644"
     },
     {
@@ -491,9 +497,69 @@
       "mode": "0o644"
     },
     {
-      "path": "deploy/pico_viewer/releases/SHA256SUMS",
-      "sha256": "8bda5ebd2c71f59b76573a306ffb67cc9c2fb9ed02c22a13c3185e5b410980da",
-      "bytes": 99,
+      "path": "tests/pico_viewer/FourButtonChordTest.cs",
+      "sha256": "4edc3a242f210f57595bbb3df40e038ad9323c1e72e49cad8b726cdcc2472831",
+      "bytes": 2245,
+      "mode": "0o644"
+    },
+    {
+      "path": "tests/pico_viewer/VideoWireTest.java",
+      "sha256": "eb1f0effcd5a2dedd0662cb1c9a9039b0423f99dfd82f9ca2bac393a0755372b",
+      "bytes": 2344,
+      "mode": "0o644"
+    },
+    {
+      "path": "tests/test_actor_firmware_session.py",
+      "sha256": "9ea20e57ce6a855949a2b714e5293e9e561bf233840c41ffb8fc14706c17bdbb",
+      "bytes": 5385,
+      "mode": "0o644"
+    },
+    {
+      "path": "config/actor_motion.json",
+      "sha256": "302ff15c7cde2bd70f19132e11e3c9956a47749208167741c9115eb4ebdfb4f1",
+      "bytes": 180,
+      "mode": "0o644"
+    },
+    {
+      "path": "scripts/start_actor_motion.sh",
+      "sha256": "1699e3f17f698dfe5500b28d87d2fa7eeff6f1183620ccd75d9a0051ebbbdeb0",
+      "bytes": 1204,
+      "mode": "0o755"
+    },
+    {
+      "path": "src/deployment/vita_s100_aorta_30dof/actor_motion.py",
+      "sha256": "14e8851894e708f585d1e98b4aca9bf526101589a49ccff83b22a2d6941a4334",
+      "bytes": 12481,
+      "mode": "0o644"
+    },
+    {
+      "path": "tests/test_actor_motion.py",
+      "sha256": "e798c290cc49e1a5c1f6fa870160f9a651694f25d1c24289a22955bffbfa9eb2",
+      "bytes": 17176,
+      "mode": "0o644"
+    },
+    {
+      "path": "scripts/import_actor_motion.py",
+      "sha256": "a8f627b6989e488c6234fdcefd4cc2b3c39b72a61b7511ad02a0ac3fe64c69bd",
+      "bytes": 3641,
+      "mode": "0o755"
+    },
+    {
+      "path": "scripts/compare_actor_motion.py",
+      "sha256": "70891e9aab357859c35e8a674004f5e3addbc92e96c2667e73589563b3b4f6c4",
+      "bytes": 5882,
+      "mode": "0o755"
+    },
+    {
+      "path": "tests/test_actor_motion_tools.py",
+      "sha256": "6e88e736138af02a7ea79215a052df96adb4f41d4e33d5bd416f60e4ecf935ec",
+      "bytes": 5209,
+      "mode": "0o644"
+    },
+    {
+      "path": "tests/test_morph_reference_feasibility.py",
+      "sha256": "12649ea0759fd9711657668a14244cbe621d7d4d166441cbfc95102fbf22e0fe",
+      "bytes": 6009,
       "mode": "0o644"
     }
   ],
@@ -512,16 +578,22 @@
   "validation_sha256": "0f7cf126c0e5f404a4e4987f5b420a552fe7081c2e519625100a03f09244eb46",
   "external_resources": [
     {
-      "path": "artifacts/actor_g1/actor_g1.onnx",
-      "sha256": "a341391a346e050caf11c40c6989336c658c445e3e124f12dcbe292d91324474",
-      "bytes": 57652911,
+      "path": "artifacts/actor_g1/model_step_009700_longrun_closed_loop_g1.onnx",
+      "sha256": "2bc0ca6f0bddef1ba040a19a771181da68f5b7d2138d1e87913072def089135d",
+      "bytes": 57638926,
       "provision": "Supply separately using bootstrap_actor_s100.py --policy sonic --model"
     },
     {
-      "path": "artifacts/supermimic/supermimic_vita02a.onnx",
-      "sha256": "40896a887dadebf2af6419a7ed662ab9164c41a63f49de112fd643202ef7e63c",
-      "bytes": 36075606,
+      "path": "artifacts/supermimic/F_ckpt_038000_supermimic_vita02a.onnx",
+      "sha256": "48e139003f47e75552b4d84f88487cca3a8b7437d2be8ffbd354222e864e687e",
+      "bytes": 36078650,
       "provision": "Supply separately using bootstrap_actor_s100.py --policy supermimic --model"
+    },
+    {
+      "path": "artifacts/morphmimic/teleop_20261105/iter_0031000/policy.onnx",
+      "sha256": "77216ff87069dc8ec5b4b780de9e9f85232470ef936219736ffa6907f82f36ca",
+      "bytes": 35507011,
+      "provision": "Supply separately using bootstrap_actor_s100.py --policy morphmimic --model"
     }
   ]
 }

@@ -5,11 +5,12 @@ from typing import Any
 
 
 def create_pico_source(*, logger: Any, maximum_age: float,
-                       duplicate_poll_interval_s: float = 0.0001) -> Any:
+                       duplicate_poll_interval_s: float = 0.0001, on_frame=None) -> Any:
     from humanoid_policy.local_smpl_source import LocalPicoSmplSource
 
     return LocalPicoSmplSource(logger=logger, max_source_age=maximum_age,
-                               duplicate_poll_interval_s=duplicate_poll_interval_s)
+                               duplicate_poll_interval_s=duplicate_poll_interval_s,
+                               on_frame=on_frame)
 
 
 def store_latest_pico(source: Any, reference: Any) -> bool:

@@ -5,6 +5,7 @@ only action-request implementation; EXTERNAL remains owned by the real SDK.
 """
 from dataclasses import replace
 import math
+import os
 from pathlib import Path
 import subprocess
 import uuid
@@ -50,7 +51,7 @@ class StartupPlan:
         self.fixed = replace(template, joints=tuple(replace(j, q=float(q), dq=0., tau=0.,
             kp=float(kp), kd=float(kd)) for j,q,kp,kd in
             zip(template.joints, self.fixed_q, self.fixed_kp, self.fixed_kd)))
-        envelope.check(self.fixed)
+        envelope.check(self.fixed, virtual=True)
         for i, bounds in enumerate(envelope.limits):
             if bounds is not None and (self.fixed_kp[i] <= 0 or self.fixed_kd[i] <= 0):
                 raise ValueError('Startup FIXED_STAND must control each installed body joint')
@@ -63,7 +64,7 @@ class StartupPlan:
                     or np.any(np.diff(stamps) <= 0) or not 0 < stamps[-1] <= 90
                     or np.any(vector(frames[-1].get('kd', p.get('kd')), 'terminal damping') != 0)):
                 raise ValueError('Unknown PASSIVE/QUIET_PASSIVE damping completion contract')
-            self.damping[name] = float(stamps[-1])+2.  # Conservative full curve from first observation.
+            self.damping[name] = float(stamps[-1])  # Full curve from first observation; firmware still gates entry.
         self.review = dict(sequence=['wait_damping', 'FIXED_STAND',
                                      'EXTERNAL_policy_lead_in',
                                      'ONNX_stand', 'manual_Pico'],
@@ -78,7 +79,7 @@ class StartupPlan:
     def check_hardware_pose(self, envelope, state):
         envelope.check(replace(self.fixed, joints=tuple(replace(j,q=float(state.q[i]))
             if envelope.limits[i] is not None else j for i,j in enumerate(self.fixed.joints))),
-            q_margin=MEASURED_Q_MARGIN)
+            q_margin=MEASURED_Q_MARGIN, virtual=True)
 
 
 class FirmwareActions:
@@ -90,8 +91,15 @@ class FirmwareActions:
         cli = '/app/locomotion/humanoid_locomotion_cli'
         command = ([cli, 'request', '--mode', 'FIXED_STAND', '--req_id', 'actor-'+uuid.uuid4().hex]
                    if action == 'FIXED_STAND' else [cli, 'cancel'])
+        cli_env = None
+        config = os.environ.get('VITA_ACTOR_CLI_SESSION_CONFIG')
+        if config:
+            path = Path(config)
+            if not path.is_file() or path.stat().st_mode & 0o077:
+                raise ValueError('Firmware CLI session must be an existing private 0600 file')
+            cli_env = dict(os.environ, ZENOH_SESSION_CONFIG_URI=str(path))
         process = subprocess.Popen(command+['--timeout_ms', '5000'], stdout=subprocess.PIPE,
-                                   stderr=subprocess.STDOUT, text=True)
+                                   stderr=subprocess.STDOUT, text=True, env=cli_env)
         try:
             deadline = self.clock.monotonic()+6.
             while process.poll() is None:
