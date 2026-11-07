@@ -84,9 +84,10 @@ bash scripts/start_actor_pico.sh supermimic        # default local motion entry
 
 Offline parity: `tests/test_actor_supermimic.py` compares history and goal
 features with the training-side fixture. Golden actions are checked against
-that fixture's original ONNX (`artifacts/supermimic/supermimic_vita02a.onnx`,
-SHA256 pinned inside the fixture), supplied separately. The default F 38000
-model has a separate finite-output/native-target smoke test; its weights are
+that fixture's original ONNX only when `VITA_SUPERMIMIC_PARITY_MODEL` names
+an explicitly supplied file (SHA256 pinned inside the fixture). Without it,
+only the optional golden-action test is skipped; feature checks still run.
+The configured deployment model has a finite-output/native-target smoke test; its weights are
 not expected to reproduce a different checkpoint's golden actions. A trackerlab MuJoCo closed loop
 (`validate_vita_deployment_mujoco.py`) compares the training policy, this
 observation builder and the causal Pico window on the same clips. Neither is
@@ -188,22 +189,18 @@ absolute height; standing references use the training robot's nominal root
 height. Feedback remains virtual and is converted by the same IK/Jacobian
 used in training. There is no SDK modification.
 
-Export a checkpoint using MorphMimic's Python:
+Export and training-input parity checks belong to the training repository.
+Supply an ONNX containing the `morphmimic.tracking_contract.v1` metadata,
+update the model path/SHA256/size in `config/actor_pico_morphmimic.json`, and
+reseal the delivery manifests. Training export reports are external evidence.
+The deployment checks the supplied model's contract and runs offline inference:
 
 ```bash
-python scripts/export_morphmimic_vita02a.py --morph-repo /path/to/morphmimic \
-  --checkpoint /path/to/checkpoint.pt
 python scripts/prepare_external_ankle_config.py --input /path/to/asample.yaml \
   --output /path/to/asample-native-ab.yaml --space motor_theta
+python scripts/bootstrap_actor_s100.py --policy morphmimic --model /path/to/policy.onnx
 bash scripts/start_actor_pico.sh morphmimic check --steps 100
 ```
-
-The exporter pins model SHA256/size and writes a PyTorch/ONNX parity report.
-`scripts/check_morphmimic_vita02a.py --morph-repo ... --clip ...` independently
-compares deployment inputs with the training feature implementation. Models
-are external delivery resources: stage source/config changes and run
-`scripts/seal_actor_delivery.py` before packaging. The bootstrap installer
-accepts `--policy morphmimic --model /path/to/morphmimic_vita02a.onnx`.
 
 SONIC's serial-ankle checkpoint cannot become a native A/B policy by changing
 a flag. Supply a real closed-loop motor-theta export and update its pinned
@@ -307,15 +304,14 @@ Put the clip at `reference/fixed_motion.npz`, or edit
 [`config/actor_motion.json`](config/actor_motion.json). Relative clip paths are
 resolved against the repository root, not the shell's current directory.
 The clip is external deployment data and is not included in Git. Import an
-original NPZ from the supplied dataset archive (default: the L1 small weight
-shift). This verifies its SHA256SUMS entry and copies it byte for byte to the
+original NPZ explicitly selected with `--clip` from a dataset archive. This verifies its SHA256SUMS entry and copies it byte for byte to the
 fixed path, without modifying the archive or starting services:
 
 ```bash
-python3 scripts/import_actor_motion.py --archive /path/to/vita02a_dataset_tests_20261105.tar.gz
+python3 scripts/import_actor_motion.py --archive /path/to/dataset.tar.gz --clip clips/example.npz
 # Select another clip explicitly; --replace refuses to run while this repo's operator lock is held.
-python3 scripts/import_actor_motion.py --archive /path/to/vita02a_dataset_tests_20261105.tar.gz \
-  --clip L2/L2_03_weight_shift_knee.npz --replace
+python3 scripts/import_actor_motion.py --archive /path/to/dataset.tar.gz \
+  --clip clips/another.npz --replace
 ```
 
 The import receipt is `reference/fixed_motion.import.json`. Import does not
@@ -1035,104 +1031,26 @@ It closes the loop in MuJoCo with the deployed ONNX. The `legacy` variant
 reproduces the robot's per-segment pitch std, >1 Hz pitch power, roll std and
 action step RMS. This is simulation, not hardware validation.
 
-### TODO: GMR timing under full control load
+### GMR performance checks
 
-Status: root cause calibrated and receiver/thread changes verified on S100
-on 2026-10-30. Full control-load acceptance remains open.
-
-The earlier 33–36 ms online versus 2.7 ms x86 comparison did not isolate
-input-thread contention. CPU 5 placement, repeated full-snapshot copies and
-SDK/reader/GMR sharing a core all increased latency in controlled tests.
-Putting the whole worker on a single core made live reception slower. The
-reader now waits 2 ms on duplicate packets; SDK/readers retain CPU 0–4 while
-only the GMR calling thread narrows to CPU 1. OpenBLAS stays single-threaded.
-
-The [on-robot verification receipt](deploy/actor_s100/gmr_benchmark_20261030.json)
-records the same 1000 frozen inputs with real Pico reception, trigger reader,
-50 Hz queue draining and raw GMR logging, at unchanged 1.5 GHz:
-
-| Receiver configuration | Mean GMR ms | P99 GMR ms | Mean thread CPU ms |
-| --- | ---: | ---: | ---: |
-| 0.1 ms duplicate polling, unrestricted threads | 21.167 | 47.763 | 13.079 |
-| 2 ms duplicate polling, receiver CPU 0–4 / GMR CPU 1 | 12.834 | 29.212 | 9.798 |
-
-Mean and P99 improved 39.37% and 38.84%; all 1000 GMR qpos outputs have the
-same SHA-256. IK iterations, filters and weights were identical. This is a
-read-only performance comparison, not an EXTERNAL motion trial. The prior
-short calibration at 2 GHz is not a production frequency change.
-
-To reproduce, connect Pico Full body/Send for each run; neither command opens
-a robot controller. Reports refuse to overwrite an existing file:
+Measure timing on the target hardware using separately saved reports. Historical
+receipts are not deployment inputs; offline replay does not validate live Pico
+reception, healthy joint feedback or EXTERNAL motion.
 
 ```bash
 venv/bin/python scripts/bench_pico_gmr_live.py --baseline --frames 1000 --output /tmp/gmr_baseline.json
 venv/bin/python scripts/bench_pico_gmr_live.py --frames 1000 --output /tmp/gmr_configured.json
-```
-
-The offline-only `scripts/bench_pico_gmr.py` remains available and now selects
-the native SDK backend on ARM. Capture headers report both `worker_affinity`
-and `gmr_affinity`, plus the duplicate poll interval. Session regressions,
-including stale-hold freezing and late-sample clock behavior, are included
-in `verify_actor_delivery.py --host-inference --supermimic-model ...`.
-
-Remaining: mean GMR below 10 ms and P99 below 20 ms at 1.5 GHz are **not yet
-achieved** in this measurement. Validate sustained timing with the full
-control/inference/logging load and physical Pico A/B. If further CPU work is
-needed, profile the Python/NumPy task-objective assembly (about 41% of GMR
-CPU in the calibration); DAQP itself was about 5%. Historical logs lack
-per-frame GMR thread CPU/placement, so their entire delay cannot be attributed
-retroactively to one cause.
-
-### Full-compute shadow replay and alternating trials
-
-The [full-load replay receipt](deploy/actor_s100/full_load_replay_20261030.json)
-retains 25 trials of 1000 frozen GMR inputs and 18,821 native inference ticks
-from 2026-10-30. Pico was unavailable and the real right-wrist pitch feedback
-reported TIMEOUT (8), so these measurements use recorded robot feedback and
-a 90 Hz replay SDK shim. They do not validate live Pico reception, healthy
-real-time joint feedback or EXTERNAL motion.
-
-The committed runner reproduces the 13-trial placement matrix: N is the
-read-only subscription/queue/log baseline; A adds 50 Hz policy compute with
-unrestricted control threads; B restricts control to CPU 2–4 with GMR on
-CPU 1; C uses the same control mask with GMR allowed on CPU 0–1. Each trial
-uses a fresh process and records actual masks, frequency, temperature,
-wall/thread CPU time, full observations and skipped ticks. It uses only
-`PullStateSource`, rejects control publishers, and never sends actions.
-
-On the installed S100 checkout, use the deployment venv/model and the private
-peer configuration prepared by the documented state-check/shadow startup:
-
-```bash
 venv/bin/python scripts/bench_pico_full_load.py \
   --pico replay --feedback recorded --frames 1000 \
   --sequence NABABABACACAC --output /tmp/gmr_full_load_new
 ```
 
-The output directory must be empty. `--pico live` tests actual reception;
-`--feedback live` requires healthy real feedback and does not fall back to
-recordings. The runner retains one receiver service across trials to avoid
-headset reconnects, and closes its owned processes on completion or failure.
-Input starts **before** control affinity is narrowed: applying `taskset` to
-the entire launcher would also restrict the input child's inherited mask.
-
-| Replay condition | Trials | Pooled mean GMR ms | Pooled P99 GMR ms |
-| --- | ---: | ---: | ---: |
-| A: unrestricted control, GMR CPU 1 | 6 | 17.880 | 36.782 |
-| B: control CPU 2–4, GMR CPU 1 | 9 | 12.675 | 24.628 |
-| C: control CPU 2–4, GMR CPU 0–1 | 3 | 14.037 | 27.218 |
-
-All 25,000 GMR qpos hashes matched and the shadow loops had no skipped ticks
-or compute cycles over 20 ms. The receipt also preserves six **experimental**
-native-objective trials: the second prototype reached pooled 10.118 ms mean
-and 19.464 ms P99, but only one of its three runs met both targets. Its native
-code, build scripts and binaries are excluded from this delivery, and D/E
-are not supported runner conditions. Large logs and prototype sources remain
-in the separately checksummed archive identified by the receipt.
-
-Production live now uses layout B through `pico_worker.control_cpus` (see
-above). It has not yet been timed with live Pico reception and live feedback,
-and stable timing acceptance remains open.
+The live GMR commands need Pico Full body/Send; they do not open a robot
+controller. The full-load runner uses read-only feedback and never publishes
+actions. Its output directory must be empty. `--pico live` tests actual reception;
+`--feedback live` requires healthy feedback without falling back to recordings.
+Compare recorded CPU placement, frequency, temperature, skipped ticks and GMR
+latencies under the intended workload before accepting a deployment.
 
 ### TODO: robot42 hardware and deployment follow-ups
 
@@ -1142,7 +1060,7 @@ missing joint friction) are in trackerlab-supermimic
 `docs/vita02a_robot42_followups.md`.
 
 1. **Robot A/B of `pico_stream`.** Read-only receiver performance A/B is now
-   recorded above; EXTERNAL motion A/B remains pending. In frozen
+   measured with the commands above; EXTERNAL motion A/B remains pending. In frozen
    session simulation, action step RMS drops about 32% and the
    per-segment sway (pitch std, >1 Hz pitch power) is unchanged. Run the same
    motions with this config, then freeze the new session with

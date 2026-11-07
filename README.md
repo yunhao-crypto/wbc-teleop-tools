@@ -38,8 +38,8 @@ NPZ 包含具名虚拟关节角、根部位置/姿态和采样率；字段定义
 [固定 NPZ 播放说明](README_ACTOR_PICO.md#fixed-npz-reference-playback)。
 
 ```bash
-# 导入原始数据，默认选择 L1 小幅换重；校验哈希后放到固定路径
-python3 scripts/import_actor_motion.py --archive /path/to/vita02a_dataset_tests_20261105.tar.gz
+# 显式选择动作；校验哈希后放到固定路径
+python3 scripts/import_actor_motion.py --archive /path/to/dataset.tar.gz --clip clips/example.npz
 
 # 离线检查：不连接机器人，不启动 PICO/GMR/视频
 bash scripts/start_actor_motion.sh supermimic check --steps 100

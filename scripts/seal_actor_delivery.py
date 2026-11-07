@@ -58,14 +58,11 @@ def main():
                   'src/deployment/vita_s100_aorta_30dof/actor_pico_session_replay.py',
                   'scripts/freeze_pico_session.py', 'scripts/replay_pico_session.py', 'scripts/bench_pico_gmr.py',
                   'scripts/bench_pico_gmr_live.py',
-                  'deploy/actor_s100/gmr_benchmark_20261030.json',
                   'scripts/bench_pico_full_load.py', 'tests/test_actor_pico_full_load.py',
-                  'deploy/actor_s100/full_load_replay_20261030.json',
                   'tests/test_actor_pico_session.py',
                   'tests/fixtures/actor_pico/robot42_pico_session_20261029.npz']
     additional += ['config/actor_pico_morphmimic.json',
                    'src/deployment/vita_s100_aorta_30dof/actor_morphmimic.py',
-                   'scripts/export_morphmimic_vita02a.py', 'scripts/check_morphmimic_vita02a.py',
                    'scripts/prepare_external_ankle_config.py', 'tests/test_native_ankle_commands.py']
     additional += ['config/actor_motion.json', 'scripts/start_actor_motion.sh',
                    'src/deployment/vita_s100_aorta_30dof/actor_motion.py', 'tests/test_actor_motion.py',

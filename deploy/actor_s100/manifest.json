@@ -125,18 +125,18 @@
     },
     {
       "path": "ACTOR-PICO-MANIFEST.json",
-      "bytes": 21591,
-      "sha256": "ce04b24a53845a55ee95ae22bd34bd9df44645a0aa47a39cde0f1a2ab9361c23"
+      "bytes": 20794,
+      "sha256": "ca27b02142e5c147364e91d9a72a9bd8507cd51cf30e7e2a0baa11dac54095a3"
     },
     {
       "path": "README.md",
-      "bytes": 9474,
-      "sha256": "c50bc651a7cded38d7e2e5d4e05e922978854dfc98b76ccd2b05ff8731c4fa4e"
+      "bytes": 9445,
+      "sha256": "3ea27cd31d7d02ea7d05e96453af2389be14af6887f40c2b5ca2db09b8209a58"
     },
     {
       "path": "README_ACTOR_PICO.md",
-      "bytes": 73005,
-      "sha256": "aa1e7bd4a3da5ef99d75be8a0cb4713dcb41f04bc5cf9f9d731b1b037b70adee"
+      "bytes": 68574,
+      "sha256": "bb3fb624a235b28eca517302b61f8c083d990a4d7767ff3038b8d87f50eccfcc"
     },
     {
       "path": "artifacts/model_motion/pools_nk/manifest.json",
@@ -185,18 +185,18 @@
     },
     {
       "path": "config/actor_pico.json",
-      "bytes": 7534,
-      "sha256": "bcf0362476ab8701b3229e156bef1018c3ccf74214a9275d6ae41b81b5a04a64"
+      "bytes": 7528,
+      "sha256": "67e8ebc64f338b6ae54f470c755ad34479a036079ad56618d98d5b39e5f11505"
     },
     {
       "path": "config/actor_pico_morphmimic.json",
-      "bytes": 8572,
-      "sha256": "4d0aa68bbfab9d0271ba2940264250b3a35e01e7db5204480f24748999a33dc1"
+      "bytes": 8574,
+      "sha256": "1a336157979bc761d6bec31fb1c0218372cd24024b1a141b0ac4fc34a593e3d7"
     },
     {
       "path": "config/actor_pico_supermimic.json",
-      "bytes": 8848,
-      "sha256": "bf5084ce2057a3747f0f2004fdda47e21744206be1db8cfa3be43f4f464327fb"
+      "bytes": 8837,
+      "sha256": "05ef51536655e0ed5f41957a20e1018a828f63e75b77185b7deb928c712eaa80"
     },
     {
       "path": "config/motion_groups.json",
@@ -212,21 +212,6 @@
       "path": "deploy/actor_s100/README.md",
       "bytes": 10350,
       "sha256": "807dd2adb2d0998033e3475d3b07ee8cc74c0e585fe2682d335a0c799a201f06"
-    },
-    {
-      "path": "deploy/actor_s100/body_state_diagnosis_20261030.json",
-      "bytes": 9929,
-      "sha256": "62a13633e0d778a578d33b1afa9232db986e7a8e97df9a6c24d3c802570bbf76"
-    },
-    {
-      "path": "deploy/actor_s100/full_load_replay_20261030.json",
-      "bytes": 10947,
-      "sha256": "8be3eaf3d3c039df024221ad1a67e020abe643123370b477240e08754ce6dcfa"
-    },
-    {
-      "path": "deploy/actor_s100/gmr_benchmark_20261030.json",
-      "bytes": 3106,
-      "sha256": "a3ea0a9d632e49d6e6963f57693914ef61b64e7006432024b899e01085543fc3"
     },
     {
       "path": "deploy/actor_s100/requirements-host-check.txt",
@@ -569,11 +554,6 @@
       "sha256": "44f60b1f245f1568c4fd5f203fa50555b22fa88e72cf2ea8589ec5e8370d03d7"
     },
     {
-      "path": "scripts/check_morphmimic_vita02a.py",
-      "bytes": 4945,
-      "sha256": "d456770f34afe3935ab9d184282dcb50283ac389dbfcefea5954d035c7d12ac9"
-    },
-    {
       "path": "scripts/check_pico_camera_stream.py",
       "bytes": 4989,
       "sha256": "aa4c340bda681a23ae7280e38c28d7bc63fb3c62b0c6af641f628b7e2e233f2f"
@@ -592,26 +572,6 @@
       "path": "scripts/configure_actor_s100.py",
       "bytes": 1776,
       "sha256": "269a6e03892d6a4f88f79205b0f80a90d8547e8148a48a7486d06610060aab36"
-    },
-    {
-      "path": "scripts/decode_incident_cdr.py",
-      "bytes": 1661,
-      "sha256": "52a37072b3117fda774351f08bea78da6ca920ea2cf1c8f7d8d40b9561c6c975"
-    },
-    {
-      "path": "scripts/decode_incident_mcap.py",
-      "bytes": 2436,
-      "sha256": "ad640663589b7011fd082d3db73f0ce974c0c89c3a5cca6fb9cdbf9a7ebc25e3"
-    },
-    {
-      "path": "scripts/export_morphmimic_vita02a.py",
-      "bytes": 8099,
-      "sha256": "bebadf5878f9a684ece6afe65f39251d6f16386e245afab22f99022c867e3c36"
-    },
-    {
-      "path": "scripts/extract_incident_attitude.py",
-      "bytes": 2087,
-      "sha256": "63a552c99d2d54fa1fb66fdcd88abd3b24af999f543a9d2449851215c763fb94"
     },
     {
       "path": "scripts/fake_pico_host_protocol.py",
@@ -680,8 +640,8 @@
     },
     {
       "path": "scripts/import_actor_motion.py",
-      "bytes": 3640,
-      "sha256": "42b4cc3d0bf2faf207da2bf0c9dd1da1ed97cd2f6c346820c11fecd61810d466"
+      "bytes": 3641,
+      "sha256": "a8f627b6989e488c6234fdcefd4cc2b3c39b72a61b7511ad02a0ac3fe64c69bd"
     },
     {
       "path": "scripts/live_sdk_readonly_probe.py",
@@ -945,8 +905,8 @@
     },
     {
       "path": "scripts/seal_actor_delivery.py",
-      "bytes": 10336,
-      "sha256": "c999cab31414bc80bce0f31a71e884f511dcdd387de46f4ef504fc1d580fc33e"
+      "bytes": 10101,
+      "sha256": "f3e8306d790111c4932604af751cfdfa8d1384d211b5134bd423b9394ff27a0a"
     },
     {
       "path": "scripts/send_fake_pico_via_robot_ssh.py",
@@ -1009,21 +969,6 @@
       "sha256": "a70a43c6c59e984522d3dc5d24cd666c72eba1ba92f963868f696547037c8d54"
     },
     {
-      "path": "scripts/summarize_incident_decoded.py",
-      "bytes": 1020,
-      "sha256": "23355247f089aee824f1f816bd737a962420f742718d97d3db4c305dafa0e36e"
-    },
-    {
-      "path": "scripts/t063_no_action_probe.py",
-      "bytes": 8968,
-      "sha256": "78e18374fa0fed7958992fed5691b1e52c0bb83a1ae79fb362013d436fb816a4"
-    },
-    {
-      "path": "scripts/t063_prepare_checks.py",
-      "bytes": 2384,
-      "sha256": "509d9afa5842f3b4a44f3b905cba093e6a27505f5854c2d43576fe8b17d3bfca"
-    },
-    {
       "path": "scripts/validate_actor_stand_mujoco.py",
       "bytes": 5507,
       "sha256": "29170c78a47bdf52991ea5a0a3a95d6a0bd74c8b379442ea3bb0a9d92f4bffec"
@@ -1047,11 +992,6 @@
       "path": "scripts/xbox_bluetooth.sh",
       "bytes": 218,
       "sha256": "6c9ba01e76607c12329e51a1f92379dbe70307de32fa2b8f7b4baf488d488be4"
-    },
-    {
-      "path": "source_map.json",
-      "bytes": 50707,
-      "sha256": "7269122585e1bedf9d48cdda5dc3879b97af7eb458b62a2a77827689d86e28aa"
     },
     {
       "path": "src/deployment/common/__init__.py",
@@ -3690,8 +3630,8 @@
     },
     {
       "path": "tests/test_actor_supermimic.py",
-      "bytes": 20927,
-      "sha256": "00dc3dc1d6c6cb29cf3607e5a875dc0e9423e977740eaea51c0a9bf6cbb9afb8"
+      "bytes": 20916,
+      "sha256": "93ca418a15062a7d7decb752e8ef99a674daf4b30628fbf5c88625942fbab54a"
     },
     {
       "path": "tests/test_compose_actor_motion.py",

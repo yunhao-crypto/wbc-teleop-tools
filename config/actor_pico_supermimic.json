@@ -240,7 +240,7 @@
     "tracking_checkout_commit": "5eb34b2",
     "tracking_profile_source": "humanoid-sdk-tracking/examples/groot_tracking_asample.json",
     "tracking_profile_sha256": "7969af4d52d44e7a0ac4c6060a74300b233715c6a0430080c06c843629f2b1e7",
-    "model_source": "/host/onnx/F_ckpt_038000_supermimic_vita02a.onnx",
+    "model_source": "F_ckpt_038000_supermimic_vita02a.onnx",
     "retargeter": "Unmodified motion-stream-bridge Vita02A GMR, named-joint selection",
     "training_checkpoint": {
       "run": "F_init4k_sonic_align_4gpu_24h",

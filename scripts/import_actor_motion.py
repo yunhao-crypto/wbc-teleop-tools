@@ -10,7 +10,6 @@ import tempfile
 import os
 
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_CLIP = 'L1/L1_01_weight_shift_small.npz'
 
 
 def selected_bytes(archive, clip):
@@ -74,7 +73,7 @@ def install(archive, clip, root, replace=False):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--archive', type=Path, required=True)
-    parser.add_argument('--clip', default=DEFAULT_CLIP)
+    parser.add_argument('--clip', required=True, help='NPZ member path listed in the archive SHA256SUMS')
     parser.add_argument('--root', type=Path, default=ROOT)
     parser.add_argument('--replace', action='store_true')
     args = parser.parse_args()
