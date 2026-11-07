@@ -1,8 +1,0 @@
-{
-  "clip": "/data/yunhao.xia/morphmimic/outputs/vita02a_data/clips/2f/bones__2f62bcfdfe1ae4d3df77d504967a3847320a263beaffa779729f080be13b1532.npz",
-  "frames": 4,
-  "max_obs_error": 5.960464477539063e-08,
-  "max_goal_error": 2.4586915969848633e-06,
-  "onnx_decode_median_ms": 3.1022117473185062,
-  "onnx_decode_max_ms": 7.578262127935886
-}

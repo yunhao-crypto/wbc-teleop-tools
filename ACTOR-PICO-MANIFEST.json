@@ -6,8 +6,8 @@
   "files": [
     {
       "path": "README_ACTOR_PICO.md",
-      "sha256": "492e9009535d65cbb5527389fd4f6c255e4b8a6bfca6d41812c683e901874fdc",
-      "bytes": 72930,
+      "sha256": "aa1e7bd4a3da5ef99d75be8a0cb4713dcb41f04bc5cf9f9d731b1b037b70adee",
+      "bytes": 73005,
       "mode": "0o644"
     },
     {
@@ -578,12 +578,6 @@
       "path": "tests/test_actor_motion_tools.py",
       "sha256": "6e88e736138af02a7ea79215a052df96adb4f41d4e33d5bd416f60e4ecf935ec",
       "bytes": 5209,
-      "mode": "0o644"
-    },
-    {
-      "path": "artifacts/morphmimic/iter31000.deployment.json",
-      "sha256": "f674d68acafc5465fed34166591b0691e92eaaff09ab67925681ee28ed73dea4",
-      "bytes": 1570,
       "mode": "0o644"
     },
     {

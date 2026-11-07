@@ -80,7 +80,5 @@ __pycache__/
 !/tests/fixtures/actor_pico/pico_replay.npz
 !/tests/fixtures/actor_pico/bridge_gmr_golden.npz
 
-# Exported MorphMimic policy is provisioned separately; keep validation reports.
-/artifacts/morphmimic/*.onnx
-# Temporary training candidates and their per-checkpoint sidecars.
-/artifacts/morphmimic/teleop_*/
+# Model weights, export reports and checkpoint receipts are supplied separately.
+/artifacts/morphmimic/

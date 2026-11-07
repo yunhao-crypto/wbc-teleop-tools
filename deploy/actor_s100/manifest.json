@@ -120,13 +120,13 @@
     },
     {
       "path": ".gitignore",
-      "bytes": 1502,
-      "sha256": "b39f95394063acdd4fd09e52e9116cb2098816c866c784947a529252965419f8"
+      "bytes": 1397,
+      "sha256": "4fb4fc8a3fefd48674ff8ae700dd303fc57377c9347f56dd99dd199002b19223"
     },
     {
       "path": "ACTOR-PICO-MANIFEST.json",
-      "bytes": 21795,
-      "sha256": "99d181a160cf45a0aa3f00036502689ee4965cdc33c92580b429d10a908d9d70"
+      "bytes": 21591,
+      "sha256": "ce04b24a53845a55ee95ae22bd34bd9df44645a0aa47a39cde0f1a2ab9361c23"
     },
     {
       "path": "README.md",
@@ -135,48 +135,13 @@
     },
     {
       "path": "README_ACTOR_PICO.md",
-      "bytes": 72930,
-      "sha256": "492e9009535d65cbb5527389fd4f6c255e4b8a6bfca6d41812c683e901874fdc"
-    },
-    {
-      "path": "README_ACTOR_SEQUENCE.md",
-      "bytes": 2982,
-      "sha256": "6d63c5633f3414760e6ea17642c0f47d2a4d1a3d57176eb7980d4fd95393306a"
-    },
-    {
-      "path": "README_TRACKING_TRIALS.md",
-      "bytes": 5855,
-      "sha256": "03fddb06b08d87823447d1ff45529b632d97b1c2210c2cdfae588b2b1b6428ed"
+      "bytes": 73005,
+      "sha256": "aa1e7bd4a3da5ef99d75be8a0cb4713dcb41f04bc5cf9f9d731b1b037b70adee"
     },
     {
       "path": "artifacts/model_motion/pools_nk/manifest.json",
       "bytes": 1986,
       "sha256": "94d61b6000ec19a0ef443498dcfd33d227ebc649e0d96fc079115abd914adfff"
-    },
-    {
-      "path": "artifacts/morphmimic/input_parity.json",
-      "bytes": 341,
-      "sha256": "dc5af2a6e3dec038996c88b7b12954c2bfb480d351953cd0c6f4dbaadcc167cb"
-    },
-    {
-      "path": "artifacts/morphmimic/iter31000.deployment.json",
-      "bytes": 1570,
-      "sha256": "f674d68acafc5465fed34166591b0691e92eaaff09ab67925681ee28ed73dea4"
-    },
-    {
-      "path": "artifacts/morphmimic/iter34000.deployment.json",
-      "bytes": 4759,
-      "sha256": "4671b3a89f78ebca35eb3d4e95e95a57f770fa9f9cbd0fbd6fc23aabcd721986"
-    },
-    {
-      "path": "artifacts/morphmimic/morphmimic_vita02a.validation.json",
-      "bytes": 181,
-      "sha256": "05a50efb643be038115bf5cfa23466104546ea0c81ab01e87510a6e38516fce2"
-    },
-    {
-      "path": "artifacts/morphmimic/morphmimic_vita02a_iter34000.validation.json",
-      "bytes": 189,
-      "sha256": "a21a495d2e16ea2e7f694cd33a1f7753e67335d13f1e63fd96b6ffba9aad10f4"
     },
     {
       "path": "artifacts/output_envelopes.interface.json",
@@ -217,11 +182,6 @@
       "path": "config/actor_motion.json",
       "bytes": 180,
       "sha256": "302ff15c7cde2bd70f19132e11e3c9956a47749208167741c9115eb4ebdfb4f1"
-    },
-    {
-      "path": "config/actor_motion_sequence_sonic.json",
-      "bytes": 260,
-      "sha256": "588ba0c1eae72d186159fcf5d77f17800f2cbe3bebf4e1a45ca768b841626d49"
     },
     {
       "path": "config/actor_pico.json",
@@ -267,11 +227,6 @@
       "path": "deploy/actor_s100/gmr_benchmark_20261030.json",
       "bytes": 3106,
       "sha256": "a3ea0a9d632e49d6e6963f57693914ef61b64e7006432024b899e01085543fc3"
-    },
-    {
-      "path": "deploy/actor_s100/native_ab_validation_20261104.json",
-      "bytes": 1646,
-      "sha256": "b4cc6820623a16874a7fa2c59ab7b7d4a837bdb5febc20d2091c792c152f4173"
     },
     {
       "path": "deploy/actor_s100/requirements-host-check.txt",
@@ -989,14 +944,9 @@
       "sha256": "01ebfb7a0d70809179571772cf7dd5bd2aa20b10eba1406015726bab314eab99"
     },
     {
-      "path": "scripts/run_tracking_trial.sh",
-      "bytes": 1315,
-      "sha256": "093561aa4c3cfcc44d19462ce8a0d48fb8bf4c504a929cf5b94e2abf03263ee4"
-    },
-    {
       "path": "scripts/seal_actor_delivery.py",
-      "bytes": 10386,
-      "sha256": "e7f9ee4d4ea677d35e793f94553db0b6626e536466947f251193ec567cbc04da"
+      "bytes": 10336,
+      "sha256": "c999cab31414bc80bce0f31a71e884f511dcdd387de46f4ef504fc1d580fc33e"
     },
     {
       "path": "scripts/send_fake_pico_via_robot_ssh.py",
@@ -1027,11 +977,6 @@
       "path": "scripts/start_onboard_vita.sh",
       "bytes": 1669,
       "sha256": "c1d0fac5f607ac0b05832cf43f48a7982c3c4f2abb14358df21689488b5572a6"
-    },
-    {
-      "path": "scripts/start_sonic_motion_sequence.sh",
-      "bytes": 2251,
-      "sha256": "7f50a49c000b53a6e902babeedda2e91e5c1e02b9858835039fb3273077b678e"
     },
     {
       "path": "scripts/state_native_fuzz.cpp",
@@ -1079,36 +1024,6 @@
       "sha256": "509d9afa5842f3b4a44f3b905cba093e6a27505f5854c2d43576fe8b17d3bfca"
     },
     {
-      "path": "scripts/test_morphmimic_72000.sh",
-      "bytes": 167,
-      "sha256": "5b54119d548429d7ac8ef4ae49e41fdec9818ffa42fc0b6f90f14a942c98a92c"
-    },
-    {
-      "path": "scripts/test_sonic_16000.sh",
-      "bytes": 162,
-      "sha256": "564066311f8a45df23c0dbe895e9f48575e21ec05b2cbe63443d169af8c86d4c"
-    },
-    {
-      "path": "scripts/test_sonic_20000.sh",
-      "bytes": 162,
-      "sha256": "350ff853e36d9ff7048a555c6e60af385d5e6923eebd4cf326a49108cb129b16"
-    },
-    {
-      "path": "scripts/test_sonic_9700.sh",
-      "bytes": 794,
-      "sha256": "ae34079d22d2898faacd9ab981c893fd0b0084cd24449b88231ae1b8af67fe72"
-    },
-    {
-      "path": "scripts/test_supermimic_A31000.sh",
-      "bytes": 158,
-      "sha256": "e42b6a4b43039a59aea66446a6bafcb7703d63c35ba06e38fd49d01d8d8658ea"
-    },
-    {
-      "path": "scripts/test_supermimic_B25000.sh",
-      "bytes": 158,
-      "sha256": "75ec9bf3b87eaf0fec0954d2d2303445863a765d95ace9b319c639a574fd21a4"
-    },
-    {
       "path": "scripts/validate_actor_stand_mujoco.py",
       "bytes": 5507,
       "sha256": "29170c78a47bdf52991ea5a0a3a95d6a0bd74c8b379442ea3bb0a9d92f4bffec"
@@ -1117,11 +1032,6 @@
       "path": "scripts/verify_actor_delivery.py",
       "bytes": 10516,
       "sha256": "3ffd052e288090d666fed7c0d909675cffc33c5e1cbf858b0824a911b9e411ce"
-    },
-    {
-      "path": "scripts/verify_tracking_trial.py",
-      "bytes": 2670,
-      "sha256": "9a73ef49fca8e528476f381bf3510f02fff734d621245ec08e5c10adb5e01203"
     },
     {
       "path": "scripts/vita_wifi.sh",
@@ -3812,16 +3722,6 @@
       "path": "tests/test_pico_viewer_prepare.py",
       "bytes": 6802,
       "sha256": "f52965062f05690c61d6f876dad5592d346ad1887526ed96dd792c8e5eceb990"
-    },
-    {
-      "path": "tests/test_start_sonic_motion_sequence.py",
-      "bytes": 2966,
-      "sha256": "08e58e9c5f2213794d1339da0f16bf0b150e90d93562fd3d4fc5597b9b6b6561"
-    },
-    {
-      "path": "tests/test_tracking_trial_launcher.py",
-      "bytes": 4398,
-      "sha256": "bea4f45cd74f657232a5c70167d21ba212b374be7211aa1e3499da1b83d8ee74"
     },
     {
       "path": "tests/wifi_offline_test.py",

@@ -167,8 +167,10 @@ manifests and install it with
 change the robot YAML to the matching row above.
 ## MorphMimic Vita02A
 
-The pinned deployment model is the teleop fine-tune iteration 31000; its identity
-and supplied export validation are recorded in [the deployment receipt](artifacts/morphmimic/iter31000.deployment.json).
+The default deployment model is the teleop fine-tune iteration 31000. Its model
+path, SHA256 and size are specified in `config/actor_pico_morphmimic.json`.
+Model weights and export/experiment reports are supplied separately; reports
+are not source-controlled deployment inputs.
 The model metadata enables `virtual_box_and_coupled_motor_v1`: virtual ankle
 references are projected into the coupled motor workspace before reference
 velocities are computed. Measured feedback is unchanged. Older models without

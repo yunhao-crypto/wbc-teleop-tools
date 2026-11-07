@@ -1,6 +1,0 @@
-{
-  "onnx": "/data/yunhao.xia/wbc-teleop-tools/artifacts/morphmimic/morphmimic_vita02a.onnx",
-  "max_abs_onnx_error": 7.152557373046875e-06,
-  "iteration": 24500,
-  "samples": 12
-}
