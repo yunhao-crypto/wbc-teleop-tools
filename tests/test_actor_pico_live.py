@@ -51,6 +51,13 @@ def robot_config(runtime=None):
         config['actions'][name] = dict(generator='builtin::keyframe', params=dict(
             kp=0.,keyframes=[dict(timestamp=0,positions=[0.]*42,kd=5.),
                             dict(timestamp=4,positions=[0.]*42,kd=0.)]))
+    if runtime is not None:
+        from deployment.vita_s100_aorta_30dof.actor_parallel_ankle import command_space
+        space = command_space(runtime.policy)
+        config['actions']['EXTERNAL']['params']['ankle_command_space'] = space
+        if space == 'motor_theta':
+            config['parallel_ankle']['caps'].update(qd_motor_max=12.25, tau_motor_max=50.)
+            config['parallel_ankle']['pd'].update(kp_motor_max=600., kd_motor_max=60.)
     return config
 
 
@@ -149,7 +156,14 @@ class Loopback:
         q = np.zeros(31, np.float32)
         q[self.runtime.policy.mapping] = self.runtime.model.contract.default
         # Simulated robot follows targets only to exercise feedback plumbing.
-        if self.commands: q[:] = [j.q for j in self.commands[-1].joints]
+        if self.commands:
+            q[:] = [j.q for j in self.commands[-1].joints]
+            from deployment.vita_s100_aorta_30dof.actor_parallel_ankle import command_space
+            if command_space(self.runtime.policy) == 'motor_theta':
+                # Feedback is virtual. Unbounded A/B PD setpoints are not
+                # physical poses; this plumbing mock holds the ankle pose.
+                slots = self.runtime.model.contract.ankle.slots
+                q[self.runtime.policy.mapping[slots]] = self.runtime.model.contract.default[slots]
         imu = np.zeros((1, 13), np.float32); imu[0, 0] = 1
         state = BodyStateArrays(state_id=stamp, q=q, dq=np.zeros(31, np.float32),
             tau_est=np.zeros(31, np.float32), joint_stamps_us=np.full((31, 3), stamp, np.uint64),
@@ -512,7 +526,8 @@ class LiveTests(unittest.TestCase):
         profile=Path(self.tmp.name)/'peer.json5';profile.touch(mode=0o600);profile.write_text('{mode:"peer"}')
         from deployment.vita_s100_aorta_30dof.actor_pico_stream import WorkerSettings
         runtime=NS(root=Path(self.tmp.name),model=NS(backend='sdk',contract=self.runtime.model.contract),
-                   config=dict(body_profile=self.runtime.config['body_profile']),worker=WorkerSettings())
+                   config=dict(body_profile=self.runtime.config['body_profile']),policy=self.runtime.policy,
+                   worker=WorkerSettings())
         self.args.stand_only=True;self.args.manual_pico=False;self.args.group='default'
         with (patch.dict(os.environ,ZENOH_SESSION_CONFIG_URI=str(profile)),
               patch.object(cli.platform,'machine',return_value='aarch64'),
@@ -538,7 +553,7 @@ class LiveTests(unittest.TestCase):
         profile=Path(self.tmp.name)/'peer.json5';profile.touch(mode=0o600);profile.write_text('{mode:"peer"}')
         from deployment.vita_s100_aorta_30dof.actor_pico_stream import WorkerSettings
         runtime=NS(root=Path(self.tmp.name),model=NS(backend='sdk',contract=self.runtime.model.contract),
-                   config=dict(body_profile=self.runtime.config['body_profile']),
+                   config=dict(body_profile=self.runtime.config['body_profile']),policy=self.runtime.policy,
                    worker=WorkerSettings(3,.002,(0,1,2,3,4),(1,),(2,3,4)))
         self.args.stand_only=False;self.args.manual_pico=False;self.args.group='default'
         worker=Mock();events=[];rows=[]
@@ -946,7 +961,12 @@ class LiveTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'outside'): env.check_measured_pose(replace(state, q=q))
         cmd, _ = self.runtime.policy.decode(np.zeros(28))
         joints = list(cmd.joints); joints[0] = replace(joints[0], q=4.01)
-        with self.assertRaisesRegex(ValueError, 'outside'): env.check(replace(cmd, joints=tuple(joints)))
+        changed = replace(cmd, joints=tuple(joints))
+        if getattr(self.runtime.policy, 'clip_target_positions', True) is False:
+            env.check(changed)
+            with self.assertRaisesRegex(ValueError, 'outside'): env.check(changed, virtual=True)
+        else:
+            with self.assertRaisesRegex(ValueError, 'outside'): env.check(changed)
 
     def test_command_outside_effective_hardware_limits_is_rejected(self):
         params, _ = load_robot_config(self.config)
@@ -954,6 +974,9 @@ class LiveTests(unittest.TestCase):
         cmd, _ = self.runtime.policy.decode(np.zeros(28))
         for key, value in [('q', 99.), ('dq', 99.), ('tau', 999.), ('kp', 999.), ('kd', 999.)]:
             joints = list(cmd.joints); joints[0] = replace(joints[0], **{key:value})
+            if key == 'q' and getattr(self.runtime.policy, 'clip_target_positions', True) is False:
+                env.check(replace(cmd, joints=tuple(joints)))
+                continue
             with self.assertRaisesRegex(ValueError, 'outside'): env.check(replace(cmd, joints=tuple(joints)))
 
     def capability_reply(self, index, **changes):
@@ -1006,6 +1029,9 @@ class LiveTests(unittest.TestCase):
         env.check(command)
         for change in (dict(q=9.), dict(tau=float('nan')), dict(kp=-1.)):
             joints = list(command.joints); joints[4] = replace(joints[4], **change)
+            if 'q' in change and getattr(self.runtime.policy, 'clip_target_positions', True) is False:
+                env.check(replace(command, joints=tuple(joints)))
+                continue
             with self.assertRaises(ValueError): env.check(replace(command, joints=tuple(joints)))
 
     def test_reference_advances_one_frame_per_published_step_despite_wallclock_jitter(self):
@@ -1438,7 +1464,7 @@ class LiveTests(unittest.TestCase):
             command,obs,row=original(*a,**kw)
             joints=list(command.joints)
             if any(r.get('record_type')=='fixed_stand_confirmed' for r in self.rows):
-                joints[0]=replace(joints[0],q=99.)
+                joints[0]=replace(joints[0],dq=99.)
             return replace(command,joints=tuple(joints)),obs,row
         with patch.object(self.runtime,'infer_motion_command',jumping):
             with self.assertRaisesRegex(ValueError,'outside'):self.auto_trial()

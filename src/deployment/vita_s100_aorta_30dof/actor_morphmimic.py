@@ -9,7 +9,8 @@ import json
 
 import numpy as np
 
-from .actor_groot_ankle import GrootMotorThetaContract, contract_from_metadata as control_contract
+from .actor_groot_ankle import (GrootMotorThetaContract, contract_from_metadata as control_contract,
+                              serial_policy_class)
 from .actor_parallel_ankle import decode_motor_theta
 
 CONTRACT_KEY = 'morphmimic.tracking_contract.v1'
@@ -73,7 +74,7 @@ def anchor_pose(c, m, q, root_pos, root_quat):
 
 @functools.cache
 def policy_class(math_api):
-    class MorphMimicPolicy(math_api.WbcTrackingPolicy):
+    class MorphMimicPolicy(serial_policy_class(math_api)):
         def canonical(self, values):
             result = np.zeros((*np.asarray(values).shape[:-1], 29))
             result[..., self.contract.canonical_indices] = values

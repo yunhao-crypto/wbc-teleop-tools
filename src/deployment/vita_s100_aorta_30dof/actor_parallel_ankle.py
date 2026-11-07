@@ -221,13 +221,13 @@ def command_space(policy):
 def decode_motor_theta(policy, math_api, raw_action, **timing):
     """Body31 command of a motor_theta policy (SDK ``WbcTrackingPolicy`` subclass).
 
+    Preserve the affine PD setpoints, including targets outside position
+    limits. Metadata limits describe physical travel, not target bounds.
     Native mode sends A/B targets and motor gains directly. In compatibility
     mode, motor targets are mapped back to virtual pitch/roll through FK.
-    The robot's motor PD (EXTERNAL ``ankle_virtual_pd_intent=false``) re-solves
-    the same IK, which reproduces the trained motor PD inside the virtual
-    ankle box. Outside it the robot clamps the virtual target first; with
-    ``ankle_clamp_feedforward`` the motor PD torque that clamp removes is sent
-    back as virtual ankle torque.
+    Compatibility mode requires representable targets and a robot adapter
+    that re-solves IK without position clipping. No clamp compensation is
+    added; native A/B commands support the full action range.
     """
     c = policy.contract
     action = np.asarray(raw_action, dtype=np.float64)
@@ -235,33 +235,22 @@ def decode_motor_theta(policy, math_api, raw_action, **timing):
         raise ValueError('model output must have 28 finite actions')
     policy.last_action = np.clip(action, -c.action_clip, c.action_clip).astype(np.float32)
     raw_q = c.policy_default+c.scale*policy.last_action.astype(np.float64)
-    # Motor angles stop at the policy's motor travel, as in the vita-robot
-    # passthrough. Only the compatibility path also clamps a virtual pose.
+    # PD setpoints may exceed travel; physical limits belong to the plant.
     motor_q = raw_q.copy()
     slots = c.ankle.slots
-    motor_q[slots] = np.clip(raw_q[slots], c.policy_lower[slots], c.policy_upper[slots])
     native = command_space(policy) == 'motor_theta'
     tau = np.zeros(28)
     residual = None
     if native:
         # q/kp/kd stay in A/B space. Virtual limits and virtual clamp torque
         # compensation do not belong to this wire contract.
-        target = np.clip(motor_q, policy.lower, policy.upper)
-        target[slots] = motor_q[slots]
-        clamped = target != raw_q
+        target = motor_q.copy()
     else:
         virtual_q, residual = c.ankle.to_virtual(motor_q)
-        target = np.clip(virtual_q, policy.lower, policy.upper)
-        tau = np.zeros(28)
-        if policy.profile['ankle_clamp_feedforward']:
-            # Motor angles the robot will track: IK of the clamped virtual
-            # target, then its motor-limit clamp (vita-robot PD-A).
-            tracked = np.clip(c.ankle.to_policy(target)[slots], *c.ankle.motor_limits)
-            missing = np.zeros(28)
-            missing[slots] = c.kp[slots]*(motor_q[slots]-tracked)
-            tau[slots] = c.ankle.torque_to_virtual(target, missing)[slots]
-        clamped = target != virtual_q
-        clamped[slots] |= motor_q[slots] != raw_q[slots]
+        if residual > 1e-8:
+            raise ValueError('Unrepresentable motor target on virtual wire; use motor_theta command space')
+        target = virtual_q
+    clamped = np.zeros(28, dtype=bool)
     motors = [math_api.BodyJointCmd() for _ in range(31)]
     for p, slot in enumerate(policy.mapping):
         motors[slot] = math_api.BodyJointCmd(float(np.float32(target[p])), 0., float(np.float32(tau[p])),

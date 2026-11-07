@@ -73,14 +73,28 @@ class NativeAnkleTests(unittest.TestCase):
                 for name in ('left_wrist_pitch_joint','left_wrist_yaw_joint','right_wrist_pitch_joint','right_wrist_yaw_joint'):
                     i=c.names.index(name);self.assertEqual(policy.order[policy.mapping[i]],name)
 
-    def test_motor_limits_not_virtual_limits(self):
+    def test_all_three_clip_actions_without_clipping_position_targets(self):
         for policy in self.policies():
-            cmd,_=policy.decode(np.full(28,20.))
-            for i in policy.contract.ankle.slots:
-                self.assertAlmostEqual(cmd.joints[policy.mapping[i]].q,.61075,places=6)
-            cmd,_=policy.decode(np.full(28,-20.))
-            for i in policy.contract.ankle.slots:
-                self.assertAlmostEqual(cmd.joints[policy.mapping[i]].q,-.95975,places=6)
+            self.assertFalse(policy.clip_target_positions)
+            for sign in (-1., 1.):
+                with self.subTest(kind=policy.contract.policy_kind, sign=sign):
+                    c = policy.contract
+                    cmd, row = policy.decode(np.full(28, sign*100.))
+                    expected = c.policy_default+c.scale*(sign*c.action_clip)
+                    np.testing.assert_array_equal(policy.last_action, sign*c.action_clip)
+                    np.testing.assert_allclose(row['target'], expected)
+                    self.assertFalse(any(row['clamped']))
+                    self.assertFalse(any(row['tau_ff']))
+                    for i, slot in enumerate(policy.mapping):
+                        self.assertEqual(cmd.joints[slot].q, float(np.float32(expected[i])))
+                    lo, hi = c.ankle.motor_limits
+                    self.assertTrue(np.any((expected[c.ankle.slots] < lo) | (expected[c.ankle.slots] > hi)))
+
+    def test_all_three_reject_unrepresentable_virtual_wire_targets(self):
+        for policy in self.policies():
+            policy.profile['ankle_command_space'] = 'virtual_pitch_roll'
+            with self.assertRaisesRegex(ValueError, 'motor_theta command space'):
+                policy.decode(np.full(28, 100.))
 
     def test_legacy_wire_path_retains_fk(self):
         for policy in self.policies():
@@ -145,6 +159,25 @@ class NativeAnkleTests(unittest.TestCase):
                 action[slots]=(.55-policy.contract.policy_default[slots])/policy.contract.scale[slots]
                 command,_=policy.decode(action)
                 envelope.check(command)
+                if getattr(policy, 'clip_target_positions', True) is False:
+                    # Exercise the complete policy -> Body31 -> envelope path:
+                    # all controlled PD targets survive advertised q ranges.
+                    extreme, row = policy.decode(np.full(28, 100.))
+                    envelope.check(extreme)
+                    expected = policy.contract.policy_default+policy.contract.scale*policy.contract.action_clip
+                    for i, slot in enumerate(policy.mapping):
+                        self.assertEqual(extreme.joints[slot].q, float(np.float32(expected[i])))
+                    first = int(policy.mapping[0])
+                    for field, value in [('dq', 100.), ('tau', 1000.), ('kp', 1000.), ('kd', 1000.), ('q', float('nan'))]:
+                        joints = list(extreme.joints)
+                        joints[first] = replace(joints[first], **{field:value})
+                        with self.assertRaises(ValueError):
+                            envelope.check(replace(extreme, joints=tuple(joints)))
+                    fixed = policy.order.index(next(iter(policy.profile['fixed_joints'])))
+                    joints = list(extreme.joints)
+                    joints[fixed] = replace(joints[fixed], q=99.)
+                    with self.assertRaises(ValueError):
+                        envelope.check(replace(extreme, joints=tuple(joints)))
                 with self.assertRaises(ValueError):envelope.check(command,virtual=True)
                 measured=np.zeros(31);measured[policy.mapping[slots[0]]]=.55
                 with self.assertRaises(ValueError):envelope.check_measured_pose(SimpleNamespace(q=measured))
