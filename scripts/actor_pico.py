@@ -44,7 +44,9 @@ def ankle_type(runtime):
     motor = getattr(runtime.model.contract, 'ankle', None) is not None
     return dict(ankle_control_space='motor_theta' if motor else 'virtual_pitch_roll',
                 required_ankle_command_space=command_space(runtime.policy),
-                required_ankle_virtual_pd_intent=not motor)
+                required_ankle_virtual_pd_intent=not motor,
+                position_target_semantics=('affine_unclipped' if
+                    getattr(runtime.policy, 'clip_target_positions', True) is False else 'position_clipped'))
 
 
 def replay(runtime, args, write):

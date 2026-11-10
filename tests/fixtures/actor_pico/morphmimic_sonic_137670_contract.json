@@ -1,0 +1,577 @@
+{
+  "schema_version": 1,
+  "policy_kind": "morphmimic_vita02a_tracking",
+  "control": {
+    "action_clip": 20.0,
+    "action_dim": 28,
+    "action_scale": [
+      0.14957953295027204,
+      0.14957953295027204,
+      0.14957953295027204,
+      0.14957953295027204,
+      0.43857731389829635,
+      0.43857731389829635,
+      0.14957953295027204,
+      0.14957953295027204,
+      0.14957953295027204,
+      0.14957953295027204,
+      0.43857731389829635,
+      0.43857731389829635,
+      0.29629763758025607,
+      0.19583333333333333,
+      0.21686897183719556,
+      0.21686897183719556,
+      0.21686897183719556,
+      0.21686897183719556,
+      0.2692918198976216,
+      0.2692918198976216,
+      0.2692918198976216,
+      0.21686897183719556,
+      0.21686897183719556,
+      0.21686897183719556,
+      0.21686897183719556,
+      0.2692918198976216,
+      0.2692918198976216,
+      0.2692918198976216
+    ],
+    "actor_history_order": "term_major_oldest_first",
+    "actor_observation_terms": [
+      {
+        "frame_dim": 3,
+        "history_length": 10,
+        "name": "base_ang_vel"
+      },
+      {
+        "frame_dim": 28,
+        "history_length": 10,
+        "name": "joint_pos"
+      },
+      {
+        "frame_dim": 28,
+        "history_length": 10,
+        "name": "joint_vel"
+      },
+      {
+        "frame_dim": 28,
+        "history_length": 10,
+        "name": "actions"
+      },
+      {
+        "frame_dim": 3,
+        "history_length": 10,
+        "name": "gravity_dir"
+      }
+    ],
+    "ankle": {
+      "schema_version": 3,
+      "control_space": "motor_theta",
+      "robot_type": "vita02a_closed_loop",
+      "reference_conversion": "virtual_pitch_roll_to_motor_theta",
+      "geometry": {
+        "lx": 0.05,
+        "ly": 0.02175,
+        "z_top": 0.31,
+        "z_bot": 0.235
+      },
+      "motor_limits": [
+        -0.95975,
+        0.61075
+      ],
+      "roll_sign": {
+        "left": 1,
+        "right": -1
+      },
+      "slots": {
+        "left_ankle_pitch_joint": {
+          "joint": "left_A_achilles_joint",
+          "motor": "theta_top",
+          "side": "left"
+        },
+        "left_ankle_roll_joint": {
+          "joint": "left_B_achilles_joint",
+          "motor": "theta_bottom",
+          "side": "left"
+        },
+        "right_ankle_pitch_joint": {
+          "joint": "right_A_achilles_joint",
+          "motor": "theta_top",
+          "side": "right"
+        },
+        "right_ankle_roll_joint": {
+          "joint": "right_B_achilles_joint",
+          "motor": "theta_bottom",
+          "side": "right"
+        }
+      }
+    },
+    "decoder_name": "g1_dyn",
+    "default_joint_pos": [
+      -0.2,
+      0.088,
+      0.0,
+      0.4,
+      -0.23838967629694996,
+      -0.16190759459843465,
+      -0.2,
+      -0.088,
+      0.0,
+      0.4,
+      -0.23838967629694996,
+      -0.16190759459843465,
+      0.0,
+      0.0,
+      0.0,
+      0.4226,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      -0.4226,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    "encoder_name": "g1",
+    "future_reference": {
+      "dt": 0.02,
+      "num_frames": 10,
+      "orientation_representation": "rotation_matrix_6d",
+      "quaternion_order": "wxyz"
+    },
+    "input_dim": 1520,
+    "input_layout": "tokenizer_then_proprioception",
+    "joint_damping": [
+      12.768186124352187,
+      12.768186124352187,
+      12.768186124352187,
+      12.768186124352187,
+      1.0,
+      1.0,
+      12.768186124352187,
+      12.768186124352187,
+      12.768186124352187,
+      12.768186124352187,
+      1.0,
+      1.0,
+      3.786875784637137,
+      5.0,
+      4.403256263271454,
+      4.403256263271454,
+      4.403256263271454,
+      4.403256263271454,
+      1.7730387408618906,
+      1.7730387408618906,
+      1.7730387408618906,
+      4.403256263271454,
+      4.403256263271454,
+      4.403256263271454,
+      4.403256263271454,
+      1.7730387408618906,
+      1.7730387408618906,
+      1.7730387408618906
+    ],
+    "joint_names": [
+      "left_hip_pitch_joint",
+      "left_hip_roll_joint",
+      "left_hip_yaw_joint",
+      "left_knee_joint",
+      "left_ankle_pitch_joint",
+      "left_ankle_roll_joint",
+      "right_hip_pitch_joint",
+      "right_hip_roll_joint",
+      "right_hip_yaw_joint",
+      "right_knee_joint",
+      "right_ankle_pitch_joint",
+      "right_ankle_roll_joint",
+      "waist_yaw_joint",
+      "waist_pitch_joint",
+      "left_shoulder_pitch_joint",
+      "left_shoulder_roll_joint",
+      "left_shoulder_yaw_joint",
+      "left_elbow_joint",
+      "left_wrist_roll_joint",
+      "left_wrist_pitch_joint",
+      "left_wrist_yaw_joint",
+      "right_shoulder_pitch_joint",
+      "right_shoulder_roll_joint",
+      "right_shoulder_yaw_joint",
+      "right_elbow_joint",
+      "right_wrist_roll_joint",
+      "right_wrist_pitch_joint",
+      "right_wrist_yaw_joint"
+    ],
+    "joint_pos_limit_lower": [
+      -2.87979,
+      -0.436332,
+      -1.5708,
+      0.0,
+      -0.95975,
+      -0.95975,
+      -2.87979,
+      -2.18166,
+      -1.5708,
+      0.0,
+      -0.95975,
+      -0.95975,
+      -1.5708,
+      -0.523599,
+      -2.56563,
+      -0.235619,
+      -2.45829625,
+      -0.667414,
+      -2.32129,
+      -1.87099,
+      -0.912807,
+      -2.56563,
+      -2.27766,
+      -2.4281675,
+      -0.667414,
+      -2.32129,
+      -1.87099,
+      -1.70519
+    ],
+    "joint_pos_limit_upper": [
+      1.74533,
+      2.18166,
+      1.5708,
+      2.18166,
+      0.61075,
+      0.61075,
+      1.74533,
+      0.436332,
+      1.5708,
+      2.18166,
+      0.61075,
+      0.61075,
+      1.5708,
+      0.523599,
+      2.56563,
+      2.27766,
+      2.4281675,
+      2.42182,
+      2.32129,
+      1.96873,
+      1.70519,
+      2.56563,
+      0.235619,
+      2.45829625,
+      2.42182,
+      2.32129,
+      1.96873,
+      0.912807
+    ],
+    "joint_stiffness": [
+      200.5621986396598,
+      200.5621986396598,
+      200.5621986396598,
+      200.5621986396598,
+      20.0,
+      20.0,
+      200.5621986396598,
+      200.5621986396598,
+      200.5621986396598,
+      200.5621986396598,
+      20.0,
+      20.0,
+      59.484105725365566,
+      90.0,
+      69.16618764283423,
+      69.16618764283423,
+      69.16618764283423,
+      69.16618764283423,
+      27.850827414109062,
+      27.850827414109062,
+      27.850827414109062,
+      69.16618764283423,
+      69.16618764283423,
+      69.16618764283423,
+      69.16618764283423,
+      27.850827414109062,
+      27.850827414109062,
+      27.850827414109062
+    ],
+    "policy_dt": 0.02,
+    "policy_kind": "groot_vita02a_tracking",
+    "proprioception_dim": 900,
+    "robot_type": "vita02a_closed_loop",
+    "schema_version": 1,
+    "tokenizer_observations": [
+      {
+        "name": "command_multi_future_nonflat",
+        "shape": [
+          10,
+          56
+        ]
+      },
+      {
+        "name": "motion_anchor_ori_b_mf_nonflat",
+        "shape": [
+          10,
+          6
+        ]
+      }
+    ]
+  },
+  "canonical_indices": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    14,
+    15,
+    16,
+    17,
+    18,
+    19,
+    20,
+    21,
+    22,
+    23,
+    24,
+    25,
+    26,
+    27,
+    28
+  ],
+  "history_length": 10,
+  "input_dim": 1600,
+  "future_frames": 10,
+  "goal_anchor": "reference",
+  "velocity_rule": "virtual_gradient_then_motor_jacobian",
+  "anchor_chain": [
+    {
+      "joint": "waist_yaw_joint",
+      "pos": [
+        0.0003,
+        0.0,
+        0.041
+      ],
+      "quat": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "pivot": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "axis": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    {
+      "joint": "waist_pitch_joint",
+      "pos": [
+        0.0,
+        0.0,
+        0.0527
+      ],
+      "quat": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "pivot": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "axis": [
+        0.0,
+        1.0,
+        0.0
+      ]
+    }
+  ],
+  "nominal_root_height": 0.891088,
+  "robot_profile": "vita02a_sonic_v2",
+  "hardware_tested": false,
+  "hardware_certified": false,
+  "training_target_iteration": 1000000000,
+  "reference_shard_summary": [
+    {
+      "clips": 18547,
+      "frames": 13301808,
+      "subset_sha256": "b342e32fb6f533e5e8d4eace6cc519446cddba2daaeb35377b4e228cb0c88691"
+    },
+    {
+      "clips": 18546,
+      "frames": 13301805,
+      "subset_sha256": "c3bbc666daa35ef08fdc9dbf61038cdccb6e93a4a4e25d54250afc7d0eb3b32a"
+    },
+    {
+      "clips": 18546,
+      "frames": 13301805,
+      "subset_sha256": "75d7cb15d6030d43f2b3bcbf22cd44bbf99e06707e16b8e34242e92b3f534975"
+    },
+    {
+      "clips": 18546,
+      "frames": 13301804,
+      "subset_sha256": "f8448bdfe8221b52489c0ae90384d1d4c243068566480a1be80166b357479683"
+    },
+    {
+      "clips": 18546,
+      "frames": 13301824,
+      "subset_sha256": "44dffc258da2ab959da11aa56c5f5f80fb076abf7551217fbacbe76cb348ab8b"
+    },
+    {
+      "clips": 18547,
+      "frames": 13301810,
+      "subset_sha256": "04016654a67f9c901b0f92d13ae75d24bd84544700ca5f952576a8fda668e40c"
+    },
+    {
+      "clips": 18546,
+      "frames": 13301808,
+      "subset_sha256": "b891370c8afcc63897da2e5b969f2dc57424d23f59e0d4a04961eb4dfa3bcc52"
+    }
+  ],
+  "checkpoint_sha256": "7fda55aa7acc76f5c4979f77b36a12162d202a1213c4a6126c9742e850f9d063",
+  "iteration": 137670,
+  "training_commit": null,
+  "data_version_sha256": "3515a6d4680190d88caca9e51a6098e296e278c5b8ac997657aeba383a927b67",
+  "finetune_source_sha256": null,
+  "reference_feasibility_guard": "native_serial_and_coupled_motor_workspace_v2",
+  "normalizers": "baked_into_onnx",
+  "action_clip_note": "Graph emits raw normalized action; SDK clips to +/-20 then q_des=q_nom+scale*a. No joint-range PD target clip.",
+  "sonic_contract": {
+    "version": 3,
+    "profile": "vita02a_sonic_v2",
+    "source_commit": "5777f9c3a74dc7c3f5cc8b61a08c73983a6a538f",
+    "physics_dt": 0.00125,
+    "policy_dt": 0.02,
+    "action_lags": [
+      4,
+      8,
+      12,
+      16,
+      20
+    ],
+    "ctx_dim": 324,
+    "source_hashes": {
+      "sonic_contract.py": "4b5c6ae3dab2fafc042d401062f52ee0600cea6f09ed59c42d393951fd3ebb5f",
+      "env/actions.py": "bc1e4972240878ac17f8c16b8c2425dec5db98d166a8736179856324cf0c5fcd",
+      "env/env_cfg.py": "d813bcd3177f045c645c16419ad91dab2bb8f86c3843001eddf22ed68ae03052",
+      "env/sonic_events.py": "8490f019c7f2182bd1d229cbf222d6f0244c58e95bc8c178f4b820349ccf4b41",
+      "env/sonic_observations.py": "e076d1c5475295e07bfc3d93047e3b16a99df367442daf93bfd0d83b941b2ebe",
+      "env/morphmimic_env.py": "e17382102aae3b48830aa21779db1e02aac4f6d8ff7d502f9c08d4893a445919",
+      "robots/vita02a.py": "2a185b29ab128bcf557702089ed2dfe0dc1c06828c3e268875622d71cf2b1663",
+      "robots/vita02a_model.py": "b0317b5139cbe26f819553146a580a0d77ef81502357c7abdb1ee679413ce2bc",
+      "robots/vita02a_assets/closed_loop_sonic_5777f9c.urdf": "e368a4fe1e9d5ad0c834fb1b2b0caafb3bc2b0fd1bd925e78f2e9a9c6e1a7a4b",
+      "model/world_model.py": "78e031b24a920c09848381a78ccc9d61eae74db8ab10c2d862c69a22f9b82d8f",
+      "model/sonic_objectives.py": "d0d4be64cfad1885c02f87f374ee08c9868c50ed467898ce6d6d5d66ef92f7ac",
+      "env/sonic_objectives.py": "527a00a905cef2b88176c25fbeb0c0b5453f45e38273dba8302b1fa280750619",
+      "env/commands.py": "51bab87d49ef0eb7d35024a177424d19ed86f79bbca6f2164479350263922ae2",
+      "train/imagination.py": "8346d0ce9fc1c45825cb390e80fbb80f2664708ce761d81fe49c574f8b99dd67",
+      "train/trainer.py": "38039e8b13c66f22f52a2305579c12ff175926c8685ac881880fe77ea57476e6",
+      "train/collector.py": "66f43c1a8d3e855bb680d248ec4954d0d1d7bd641a15bd624db44ae268935bcb",
+      "train/replay.py": "5fbba9563190b8ebe170e2cf2ffc421d200a184c0ca45ce972401a48f295badf",
+      "train/budget.py": "f74002900da3e35ee3ad971212c01eff058068637a25c4840ae6b1a0949bda17",
+      "model/policy.py": "f032af8febbbfdf55e69c87c615c45e05230bfabf5ffbddb4d39a07817fe9c29"
+    },
+    "sha256": "5d721a32756d4e363664c9082b40835f444a594ab24018ed28e976f2b8ed6809"
+  },
+  "training_contract": {
+    "version": 3,
+    "profile": "vita02a_sonic_v2",
+    "source_commit": "5777f9c3a74dc7c3f5cc8b61a08c73983a6a538f",
+    "physics_dt": 0.00125,
+    "policy_dt": 0.02,
+    "action_lags": [
+      4,
+      8,
+      12,
+      16,
+      20
+    ],
+    "ctx_dim": 324,
+    "source_hashes": {
+      "sonic_contract.py": "4b5c6ae3dab2fafc042d401062f52ee0600cea6f09ed59c42d393951fd3ebb5f",
+      "env/actions.py": "bc1e4972240878ac17f8c16b8c2425dec5db98d166a8736179856324cf0c5fcd",
+      "env/env_cfg.py": "d813bcd3177f045c645c16419ad91dab2bb8f86c3843001eddf22ed68ae03052",
+      "env/sonic_events.py": "8490f019c7f2182bd1d229cbf222d6f0244c58e95bc8c178f4b820349ccf4b41",
+      "env/sonic_observations.py": "e076d1c5475295e07bfc3d93047e3b16a99df367442daf93bfd0d83b941b2ebe",
+      "env/morphmimic_env.py": "e17382102aae3b48830aa21779db1e02aac4f6d8ff7d502f9c08d4893a445919",
+      "robots/vita02a.py": "2a185b29ab128bcf557702089ed2dfe0dc1c06828c3e268875622d71cf2b1663",
+      "robots/vita02a_model.py": "b0317b5139cbe26f819553146a580a0d77ef81502357c7abdb1ee679413ce2bc",
+      "robots/vita02a_assets/closed_loop_sonic_5777f9c.urdf": "e368a4fe1e9d5ad0c834fb1b2b0caafb3bc2b0fd1bd925e78f2e9a9c6e1a7a4b",
+      "model/world_model.py": "78e031b24a920c09848381a78ccc9d61eae74db8ab10c2d862c69a22f9b82d8f",
+      "model/sonic_objectives.py": "d0d4be64cfad1885c02f87f374ee08c9868c50ed467898ce6d6d5d66ef92f7ac",
+      "env/sonic_objectives.py": "527a00a905cef2b88176c25fbeb0c0b5453f45e38273dba8302b1fa280750619",
+      "env/commands.py": "51bab87d49ef0eb7d35024a177424d19ed86f79bbca6f2164479350263922ae2",
+      "train/imagination.py": "8346d0ce9fc1c45825cb390e80fbb80f2664708ce761d81fe49c574f8b99dd67",
+      "train/trainer.py": "38039e8b13c66f22f52a2305579c12ff175926c8685ac881880fe77ea57476e6",
+      "train/collector.py": "66f43c1a8d3e855bb680d248ec4954d0d1d7bd641a15bd624db44ae268935bcb",
+      "train/replay.py": "5fbba9563190b8ebe170e2cf2ffc421d200a184c0ca45ce972401a48f295badf",
+      "train/budget.py": "f74002900da3e35ee3ad971212c01eff058068637a25c4840ae6b1a0949bda17",
+      "model/policy.py": "f032af8febbbfdf55e69c87c615c45e05230bfabf5ffbddb4d39a07817fe9c29"
+    },
+    "sha256": "5d721a32756d4e363664c9082b40835f444a594ab24018ed28e976f2b8ed6809"
+  },
+  "execution_contract": {
+    "version": 4,
+    "profile": "vita02a_sonic_v2",
+    "source_commit": "5777f9c3a74dc7c3f5cc8b61a08c73983a6a538f",
+    "physics_dt": 0.00125,
+    "policy_dt": 0.02,
+    "action_lags": [
+      4,
+      8,
+      12,
+      16,
+      20
+    ],
+    "ctx_dim": 324,
+    "source_hashes": {
+      "sonic_contract.py": "051aa7134448de3a03e7e9d8265a4607643d8ee1aa659d2fc90ab214e98affdc",
+      "env/actions.py": "234b70850e1f2fea207bc7c9e1ff1163a1cce371b4c32c09e754b28e281d2f0c",
+      "env/env_cfg.py": "d813bcd3177f045c645c16419ad91dab2bb8f86c3843001eddf22ed68ae03052",
+      "env/sonic_events.py": "8490f019c7f2182bd1d229cbf222d6f0244c58e95bc8c178f4b820349ccf4b41",
+      "env/sonic_observations.py": "e076d1c5475295e07bfc3d93047e3b16a99df367442daf93bfd0d83b941b2ebe",
+      "env/morphmimic_env.py": "e17382102aae3b48830aa21779db1e02aac4f6d8ff7d502f9c08d4893a445919",
+      "robots/vita02a.py": "2a185b29ab128bcf557702089ed2dfe0dc1c06828c3e268875622d71cf2b1663",
+      "robots/vita02a_model.py": "b0317b5139cbe26f819553146a580a0d77ef81502357c7abdb1ee679413ce2bc",
+      "robots/vita02a_assets/closed_loop_sonic_5777f9c.urdf": "e368a4fe1e9d5ad0c834fb1b2b0caafb3bc2b0fd1bd925e78f2e9a9c6e1a7a4b",
+      "model/world_model.py": "ff65d9cbc08379eed29c88c4db439452ff10877f32475c12792780d39674079e",
+      "model/sonic_objectives.py": "d0d4be64cfad1885c02f87f374ee08c9868c50ed467898ce6d6d5d66ef92f7ac",
+      "env/sonic_objectives.py": "527a00a905cef2b88176c25fbeb0c0b5453f45e38273dba8302b1fa280750619",
+      "env/commands.py": "51bab87d49ef0eb7d35024a177424d19ed86f79bbca6f2164479350263922ae2",
+      "train/imagination.py": "8346d0ce9fc1c45825cb390e80fbb80f2664708ce761d81fe49c574f8b99dd67",
+      "train/trainer.py": "38039e8b13c66f22f52a2305579c12ff175926c8685ac881880fe77ea57476e6",
+      "train/collector.py": "66f43c1a8d3e855bb680d248ec4954d0d1d7bd641a15bd624db44ae268935bcb",
+      "train/replay.py": "5fbba9563190b8ebe170e2cf2ffc421d200a184c0ca45ce972401a48f295badf",
+      "train/budget.py": "f74002900da3e35ee3ad971212c01eff058068637a25c4840ae6b1a0949bda17",
+      "model/policy.py": "f032af8febbbfdf55e69c87c615c45e05230bfabf5ffbddb4d39a07817fe9c29"
+    },
+    "sha256": "7b68798d018079585cf678c9ea2033e593a37aff7e31bcb2a442e7d2c5da088a"
+  },
+  "execution_transfer": {
+    "mode": "bounded_v3_actor_to_affine_v4",
+    "source_checkpoint_sha256": "7fda55aa7acc76f5c4979f77b36a12162d202a1213c4a6126c9742e850f9d063",
+    "actor_weights_unchanged": true,
+    "world_model_used_at_inference": false,
+    "training_plant_changed": false,
+    "evaluation_evidence": "evidence/final_evaluation_summary.json"
+  },
+  "sonic_run_kind": "production",
+  "pd_target_semantics": "affine_no_position_target_clip",
+  "sdk_adapter_required": "actor_morphmimic_sonic.py",
+  "release_status": "offline_validated_research_candidate_not_hardware_accepted"
+}

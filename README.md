@@ -54,6 +54,12 @@ bash scripts/start_actor_motion.sh supermimic --record-observations
 两组机器人 EXTERNAL 配置都需要 `ankle_virtual_pd_intent: false`，且命令空间必须匹配。
 切换机器人配置与重启服务仍需单独执行，脚本不会自动修改。步骤和日志对比见
 [脚踝控制路径 A/B 测试](README_ACTOR_PICO.md#controlled-ankle-command-path-ab-trial)。
+当前原生仿射 PD 目标要求配套固件支持并启用
+`actions.EXTERNAL.params.allow_position_targets_outside_mechanical_range: true`。
+配置生成脚本会在 native 模式启用、virtual 模式关闭该开关；原生未裁剪策略
+会拒绝缺少/关闭开关的配置。更换有效 YAML 后需重新配置本机启动信息。
+所有 WBC 部署必须显式设置 `actions.EXTERNAL.params.interpolation.enabled: false`；
+开启或省略该设置会在请求控制权前被拒绝。配置生成脚本统一关闭命令插值。
 离线检查及模拟接口测试不代表实机稳定性验收。
 
 ## 首次部署：以下命令在目标 S100 执行

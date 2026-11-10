@@ -264,11 +264,13 @@ class AnkleTypeReportTests(unittest.TestCase):
         runtime.policy = ga.create_policy(runtime.model.contract, runtime.config['body_profile'], runtime.math)
         self.assertEqual(entry.ankle_type(runtime), dict(ankle_control_space='virtual_pitch_roll',
                                                          required_ankle_command_space='virtual_pitch_roll',
-                                                         required_ankle_virtual_pd_intent=True))
+                                                         required_ankle_virtual_pd_intent=True,
+                                                         position_target_semantics='affine_unclipped'))
         install_motor_theta(runtime)
         self.assertEqual(entry.ankle_type(runtime), dict(ankle_control_space='motor_theta',
                                                          required_ankle_command_space='virtual_pitch_roll',
-                                                         required_ankle_virtual_pd_intent=False))
+                                                         required_ankle_virtual_pd_intent=False,
+                                                         position_target_semantics='affine_unclipped'))
 
 
 class GrootMotorThetaLiveTests(test_actor_pico_live.LiveTests):

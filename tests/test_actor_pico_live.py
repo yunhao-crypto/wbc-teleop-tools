@@ -2,6 +2,7 @@
 from dataclasses import replace
 from contextlib import redirect_stdout
 import io
+import copy
 import importlib.util
 import json
 import os
@@ -45,8 +46,10 @@ def robot_config(runtime=None):
                 virtual_limits=dict(pitch=[-.751, .414], roll=[-.43625, .43625])),
         actions=dict(EXTERNAL=dict(generator='builtin::external', params=dict(
             ankle_command_space=command_space(runtime.policy) if runtime is not None else 'virtual_pitch_roll',
+            allow_position_targets_outside_mechanical_range=(runtime is not None and
+                command_space(runtime.policy) == 'motor_theta'),
             ankle_virtual_pd_intent=not (runtime is not None and motor_theta(runtime)), command_timeout_ms=1000,
-            recover_valid_frames=1, interpolation=dict(min_period_ms=2, max_period_ms=100),
+            recover_valid_frames=1, interpolation=dict(enabled=False, min_period_ms=2, max_period_ms=100),
             safe_hold=dict(kp=[10.]*42, kd=[1.]*42)))))
     config['actions']['FIXED_STAND'] = dict(generator='builtin::keyframe', params=dict(
         keyframes=[dict(timestamp=0,positions=[0.]*42,kp=[10.]*42,kd=[1.]*42)]))
@@ -1076,11 +1079,42 @@ class LiveTests(unittest.TestCase):
     def test_obsolete_yaml_limits_and_invalid_timing_refuse_before_control(self):
         for changes in (dict(command_limits={}), dict(command_timeout_ms=True),
                         dict(recover_valid_frames=0),
-                        dict(interpolation=dict(min_period_ms=100, max_period_ms=2))):
+                        dict(interpolation=dict(enabled=False, min_period_ms=100, max_period_ms=2))):
             config = robot_config(self.runtime)
             config['actions']['EXTERNAL']['params'].update(changes)
             self.config.write_text(json.dumps(config))
             with self.assertRaises(ValueError): self.run_trial()
+        self.assertEqual((self.transport.requests, self.transport.commands), ([], []))
+
+    def test_only_explicitly_disabled_interpolation_is_accepted(self):
+        config = robot_config(self.runtime)
+        self.config.write_text(json.dumps(config))
+        _, receipt = load_robot_config(self.config, self.runtime)
+        self.assertIs(receipt['command_interpolation_enabled'], False)
+        for enabled in (None, True):
+            candidate = copy.deepcopy(config)
+            switch = candidate['actions']['EXTERNAL']['params']['interpolation']
+            if enabled is None:
+                switch.pop('enabled')
+            else:
+                switch['enabled'] = enabled
+            self.config.write_text(json.dumps(candidate))
+            with self.subTest(enabled=enabled), self.assertRaisesRegex(ValueError, 'interpolation.enabled'):
+                self.run_trial()
+        self.assertEqual((self.transport.requests, self.transport.commands), ([], []))
+
+    def test_invalid_interpolation_switch_refuses_before_control(self):
+        for value in ('false', 0, 1, None, []):
+            config = robot_config(self.runtime)
+            config['actions']['EXTERNAL']['params']['interpolation']['enabled'] = value
+            self.config.write_text(json.dumps(config))
+            with self.subTest(value=value), self.assertRaisesRegex(ValueError, 'must be a boolean'):
+                self.run_trial()
+        config = robot_config(self.runtime)
+        config['actions']['EXTERNAL']['params']['interpolation']['mode'] = 'none'
+        self.config.write_text(json.dumps(config))
+        with self.assertRaisesRegex(ValueError, 'interpolation'):
+            self.run_trial()
         self.assertEqual((self.transport.requests, self.transport.commands), ([], []))
 
     def test_missing_or_malformed_linear_ranges_and_support_are_rejected(self):
