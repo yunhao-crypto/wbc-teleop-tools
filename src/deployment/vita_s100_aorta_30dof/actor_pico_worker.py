@@ -73,7 +73,7 @@ class ReferenceStream:
             raise ValueError('Pico timestamps must strictly increase')
         self.last_source_stamp = stamp
         begin, cpu = time.monotonic(), time.thread_time()
-        q, root_quat, residual = retarget.solve(body, robot_root=anchor)
+        q, root_quat, residual = retarget.solve(body, robot_root=anchor, stamp_ns=stamp)
         solve_end, cpu_end = time.monotonic(), time.thread_time()
         retarget_ms, retarget_cpu_ms = (solve_end-begin)*1000, (cpu_end-cpu)*1000
         raw_q, raw_root = q, root_quat
@@ -97,6 +97,8 @@ class ReferenceStream:
             reader_frame_sequence=metadata.get('reader_frame_sequence'),
             reader_realtime_ns=metadata.get('reader_realtime_ns'),
             reader_monotonic_ns=metadata.get('reader_monotonic_ns'))
+        if retarget.last_foot_support is not None:
+            timing['foot_support'] = retarget.last_foot_support
         self.pending_log = (stamp, received, available, body, retarget.last_qpos.copy(), residual, timing)
         snapshot = dict(state='collecting', received_monotonic=received,
             **gap_info,

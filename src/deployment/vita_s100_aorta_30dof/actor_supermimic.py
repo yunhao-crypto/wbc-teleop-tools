@@ -423,13 +423,13 @@ def create_policy(contract, profile, math_api, config):
 
 
 def create_reference(contract, math_api, config):
-    if not is_supermimic(contract) and getattr(contract, 'policy_kind', '') != 'morphmimic_vita02a_tracking':
-        from .actor_pico_reference import CausalActorReference
-        return CausalActorReference(contract, math_api)
     from .actor_pico_stream import stream_settings
-    past, tail = reference_window(config)
     settings = stream_settings(config)
     # Playback lags the newest sample by the margin and, before the hold
     # rule takes over, by up to pico_hold_age_s; keep samples for both.
     history = 0. if settings is None else settings.playback_margin_s+config['pico_hold_age_s']+.1
+    if not is_supermimic(contract) and getattr(contract, 'policy_kind', '') != 'morphmimic_vita02a_tracking':
+        from .actor_pico_reference import CausalActorReference
+        return CausalActorReference(contract, math_api, history_s=history)
+    past, tail = reference_window(config)
     return SuperMimicReference(contract, math_api, past_frames=past, tail_frames=tail, history_s=history)

@@ -69,6 +69,10 @@ def main():
                    'scripts/import_actor_motion.py', 'scripts/compare_actor_motion.py',
                    'tests/test_actor_motion_tools.py']
     additional += ['tests/test_morph_reference_feasibility.py']
+    additional += ['src/deployment/vita_s100_aorta_30dof/actor_pico_gmr_profile.py',
+                   'scripts/export_gmr_calibration_profile.py',
+                   'config/gmr_calibration/vita02a_neutral_20261110_h180.json',
+                   'tests/test_actor_pico_gmr_profile.py']
     additional += ['src/deployment/vita_s100_aorta_30dof/actor_morphmimic_sonic.py',
                    'tests/fixtures/actor_pico/morphmimic_sonic_137670_contract.json',
                    'tests/fixtures/actor_pico/supermimic_v2_contract.json',

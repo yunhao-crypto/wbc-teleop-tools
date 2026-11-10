@@ -1,7 +1,8 @@
 """Adapter to the pinned motion-stream-bridge Vita02A GMR implementation.
 
 The vendored solver, Unity conversion and XML remain intact. Candidate profiles
-may narrow ankle ranges before constructing the IK limits. The adapter validates
+may narrow ankle ranges before constructing the IK limits; opt-in operator
+calibration profiles and planted-foot targets live in actor_pico_gmr_profile. The adapter validates
 raw frames and selects joints by name; following entry anchors world yaw. It does
 not calibrate an arbitrary first pose to home.
 
@@ -22,6 +23,9 @@ import tempfile
 
 import numpy as np
 from scipy.spatial.transform import Rotation
+
+from .actor_pico_gmr_profile import (apply_calibration, foot_support_engine, foot_support_settings,
+                                     load_calibration_profile)
 
 # The accelerated engine reuses mink/daqp internals of exactly these releases.
 _ACCELERATED_VERSIONS = {'mink': '1.3.0', 'daqp': '0.10.3', 'qpsolvers': '4.13.0'}
@@ -185,20 +189,48 @@ def _accelerated_engine(module):
     return AcceleratedGeneralMotionRetargeting
 
 
-def _construct_engine(engine, config_path, settings):
-    """Narrow candidate-specific ankle ranges before Mink snapshots IK limits.
+def _construct_engine(engine, config_path, settings, root=None):
+    """Apply opt-in settings to a copy of the pinned config before Mink snapshots it.
 
-    Keep the pinned vendored config immutable. Existing profiles without the
-    override construct exactly the same engine as before.
+    ``ankle_reference_limits`` narrows candidate-specific ankle ranges,
+    ``calibration_profile`` replaces task offsets and ``foot_support``
+    rewrites planted-foot targets (see actor_pico_gmr_profile). The pinned
+    vendored config stays immutable; without these settings the engine is
+    constructed exactly as before.
     """
     kwargs = dict(src_human='xrobot', tgt_robot='vita02a',
                   actual_human_height=float(settings['human_height_m']), verbose=False)
     limits = settings.get('ankle_reference_limits')
-    if limits is None:
-        return engine(config=str(config_path), **kwargs)
+    calibration = load_calibration_profile(root, settings, config_path)
+    support = foot_support_settings(settings.get('foot_support'))
+    if support is not None:
+        # The planted sole height comes from the calibrated home pose; the
+        # shipped offsets do not place the human ground on the robot ground.
+        if calibration is None:
+            raise ValueError('retargeting.foot_support requires retargeting.calibration_profile')
+        engine = foot_support_engine(engine)
+    if limits is None and calibration is None:
+        built = engine(config=str(config_path), **kwargs)
+    else:
+        config = json.loads(Path(config_path).read_text())
+        if limits is not None:
+            _narrow_ankle_limits(config, limits)
+        if calibration is not None:
+            apply_calibration(config, calibration)
+        config['robot_xml'] = str((Path(config_path).parent/config['robot_xml']).resolve())
+        with tempfile.NamedTemporaryFile(mode='w+', suffix='.json') as stream:
+            json.dump(config, stream); stream.flush()
+            built = engine(config=stream.name, **kwargs)
+    if calibration is not None:
+        built.calibration = calibration
+    if support is not None:
+        built.configure_foot_support(support)
+    return built
+
+
+def _narrow_ankle_limits(config, limits):
     if set(limits) != {'pitch', 'roll'}:
         raise ValueError('ankle_reference_limits requires pitch and roll')
-    config = json.loads(Path(config_path).read_text())
     safe = {'pitch': (-.751, .414), 'roll': (-.43625, .43625)}
     for axis, bounds in limits.items():
         values = np.asarray(bounds, dtype=float)
@@ -211,10 +243,6 @@ def _construct_engine(engine, config_path, settings):
             if values[0] < old[0]-1e-9 or values[1] > old[1]+1e-9:
                 raise ValueError('Ankle IK override may only narrow the pinned configuration')
             config['joint_limits'][name] = values.tolist()
-    config['robot_xml'] = str((Path(config_path).parent/config['robot_xml']).resolve())
-    with tempfile.NamedTemporaryFile(mode='w+', suffix='.json') as stream:
-        json.dump(config, stream); stream.flush()
-        return engine(config=stream.name, **kwargs)
 
 
 class PicoGmrRetargeter:
@@ -238,7 +266,9 @@ class PicoGmrRetargeter:
         else:
             engine = module.GeneralMotionRetargeting
         self.engine = _construct_engine(engine,
-            vendor/'motion_stream_bridge/gmr_lite/configs/xrobot_to_vita02a.json', settings)
+            vendor/'motion_stream_bridge/gmr_lite/configs/xrobot_to_vita02a.json', settings, root=root)
+        self.calibration = getattr(self.engine, 'calibration', None)
+        self.foot_support = getattr(self.engine, 'foot_support', None)
         import mujoco
         self.indices = []
         for name in contract.names:
@@ -256,6 +286,7 @@ class PicoGmrRetargeter:
         self.unity_quat = Rotation.from_matrix(self.unity_matrix).as_quat(scalar_first=True)
         self.last_qpos = None
         self.last_error = None
+        self.last_foot_support = None
 
     def processed_body(self, body):
         body = np.asarray(body, dtype=np.float64)
@@ -277,13 +308,20 @@ class PicoGmrRetargeter:
         return {name: [(p @ rotation).tolist(), q] for name, p, q in
                 zip(self.streamer.body_joint_names, body[:, :3], quat.tolist())}
 
-    def solve(self, body, *, robot_root=None):
+    def solve(self, body, *, robot_root=None, stamp_ns=None):
         # robot_root is deliberately unused here. The GMR root is in its own
         # world frame; following entry aligns yaw once against current feedback.
-        qpos = self.engine.retarget(self.processed_body(body), offset_to_ground=True)
+        processed = self.processed_body(body)
+        if self.foot_support is not None:
+            if stamp_ns is None:
+                raise ValueError('foot_support needs the Pico frame timestamp')
+            self.engine.set_frame_time(stamp_ns)
+        qpos = self.engine.retarget(processed, offset_to_ground=True)
         if qpos.shape != (self.engine.model.nq,) or not np.isfinite(qpos).all():
             raise ValueError('Nonfinite/invalid GMR qpos')
         self.last_qpos = qpos.copy()
+        if self.foot_support is not None:
+            self.last_foot_support = self.engine.foot_support_state
         error = float(self.engine.error1())
         self.last_error = error if self.same_tables else max(error, float(self.engine.error2()))
         # This is a mixed position/orientation weighted task norm, NOT radians.
