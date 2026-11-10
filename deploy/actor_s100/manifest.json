@@ -126,7 +126,7 @@
     {
       "path": "ACTOR-PICO-MANIFEST.json",
       "bytes": 21644,
-      "sha256": "6ce16325630a16d23aafb0c9567ad6810bae2383731080198d4772b4948811f9"
+      "sha256": "e2d6fc4f20bb09bf06ffe3566c258d3db2f9ba045b1ae1aa87da11fd9cda8f20"
     },
     {
       "path": "README.md",
@@ -186,17 +186,17 @@
     {
       "path": "config/actor_pico.json",
       "bytes": 7528,
-      "sha256": "67e8ebc64f338b6ae54f470c755ad34479a036079ad56618d98d5b39e5f11505"
+      "sha256": "c253611e2026fddda0b1f223386c3c2f46646049f908abc26fa7414d92798d25"
     },
     {
       "path": "config/actor_pico_morphmimic.json",
       "bytes": 8574,
-      "sha256": "1a336157979bc761d6bec31fb1c0218372cd24024b1a141b0ac4fc34a593e3d7"
+      "sha256": "c5ad989cbe8ab3d80b7f3fc8e9566f5ec0fe9ac0d28c3cf62b08edf79b3f71ae"
     },
     {
       "path": "config/actor_pico_supermimic.json",
       "bytes": 8837,
-      "sha256": "05ef51536655e0ed5f41957a20e1018a828f63e75b77185b7deb928c712eaa80"
+      "sha256": "7a72343d737a8b4b6aac2de0adf8d1fcfcf7a9f964965094ff1e2b7b7632cbd8"
     },
     {
       "path": "config/motion_groups.json",
@@ -206,12 +206,12 @@
     {
       "path": "config/sdk021-wheel-guard.json",
       "bytes": 4231,
-      "sha256": "a12d012c71bd828cd99366233f1f0a208489293b7a34350251dd2e392c4664c3"
+      "sha256": "1d9da2e6ec82b16ca963d2648921dcfc091ed9524c3adcbd28e050c713e289b3"
     },
     {
       "path": "deploy/actor_s100/README.md",
-      "bytes": 10350,
-      "sha256": "807dd2adb2d0998033e3475d3b07ee8cc74c0e585fe2682d335a0c799a201f06"
+      "bytes": 10734,
+      "sha256": "467e56f1f0996b979558f94be03fbadb0f7320df797d1770bb736d026a594ac6"
     },
     {
       "path": "deploy/actor_s100/requirements-host-check.txt",
@@ -280,8 +280,8 @@
     },
     {
       "path": "deploy/actor_s100/wheelhouse/locomotion_aorta-0.2.1-cp310-cp310-manylinux_2_35_aarch64.whl",
-      "bytes": 8499176,
-      "sha256": "5671d88680ae2f47dd39b50e9a650f4cb51b7a53bd7dc76b39f512adba81f66b"
+      "bytes": 8455539,
+      "sha256": "dd6190ea69bf35e3c39aabaac9f1dcbdcc24d69d3cd0fd1d8d484ec6619f9190"
     },
     {
       "path": "deploy/actor_s100/wheelhouse/mink-1.3.0-cp310-cp310-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl",
@@ -330,8 +330,8 @@
     },
     {
       "path": "deploy/actor_s100/wheelhouse/vbot_humanoid_msgs-0.1.5-py3-none-any.whl",
-      "bytes": 154176,
-      "sha256": "371a06baefebaa4ceff88dd430784ea47c960e372fe4abe1e3be2c31c1f79646"
+      "bytes": 154221,
+      "sha256": "9f2949f0f4748554627c624c93cf382159dd6a4fbbd845d7a83ed2af241e2afd"
     },
     {
       "path": "deploy/actor_s100/wheelhouse/zipp-4.1.2-py3-none-any.whl",
@@ -3580,8 +3580,8 @@
     },
     {
       "path": "tests/sdkmain_opt021_offline.py",
-      "bytes": 30117,
-      "sha256": "5a4e7034ba00a63ae895df8805eef04bbd5dda60202c9772740c6cd497ec617d"
+      "bytes": 30123,
+      "sha256": "3f4bf7334e6ff05e74f141730a89da9be6cbf29b7adbf830326452a0e02b0044"
     },
     {
       "path": "tests/test_actor_candidate_contracts.py",
