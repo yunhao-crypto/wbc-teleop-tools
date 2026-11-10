@@ -115,8 +115,9 @@ class NativeAnkleTests(unittest.TestCase):
             pd=dict(strategy='virtual_pd',kp_motor=20,kd_motor=1,kp_motor_max=600,kd_motor_max=60)),
             actions=dict(EXTERNAL=dict(generator='builtin::external',params=dict(
                 ankle_command_space='motor_theta',ankle_virtual_pd_intent=False,
+                allow_position_targets_outside_mechanical_range=True,
                 command_timeout_ms=1000,recover_valid_frames=1,
-                interpolation=dict(min_period_ms=2,max_period_ms=100),
+                interpolation=dict(enabled=False, min_period_ms=2,max_period_ms=100),
                 safe_hold=dict(kp=[20.]*31,kd=[1.]*31)))))
         root['actions']['FIXED_STAND']=dict(generator='builtin::keyframe',params=dict(
             keyframes=[dict(timestamp=0,positions=[0.]*31,kp=[20.]*31,kd=[1.]*31)]))
@@ -136,6 +137,51 @@ class NativeAnkleTests(unittest.TestCase):
                     root['actions']['EXTERNAL']['params'].update(ankle_command_space=space,ankle_virtual_pd_intent=intent)
                     path.write_text(yaml.safe_dump(root))
                     with self.assertRaises(ValueError):load_robot_config(path,runtime)
+
+    def test_native_affine_targets_require_explicit_firmware_opt_in(self):
+        for policy in self.policies():
+            root,runtime=self.config(policy)
+            params=root['actions']['EXTERNAL']['params']
+            with tempfile.TemporaryDirectory() as tmp:
+                path=Path(tmp)/'robot.yaml'
+                for value in (None,False):
+                    if value is None:params.pop('allow_position_targets_outside_mechanical_range',None)
+                    else:params['allow_position_targets_outside_mechanical_range']=value
+                    path.write_text(yaml.safe_dump(root))
+                    with self.subTest(kind=policy.contract.policy_kind,value=value),self.assertRaisesRegex(ValueError,'Affine native PD targets require'):
+                        load_robot_config(path,runtime)
+                params['allow_position_targets_outside_mechanical_range']=True
+                path.write_text(yaml.safe_dump(root));_,receipt=load_robot_config(path,runtime)
+                self.assertTrue(receipt['allow_position_targets_outside_mechanical_range'])
+
+    def test_position_target_opt_in_is_boolean_and_native_only(self):
+        root,_=self.config(self.policies()[0]);params=root['actions']['EXTERNAL']['params']
+        with tempfile.TemporaryDirectory() as tmp:
+            path=Path(tmp)/'robot.yaml'
+            for value in ('true',1,0,None,[],{}):
+                params['allow_position_targets_outside_mechanical_range']=value
+                path.write_text(yaml.safe_dump(root))
+                with self.subTest(value=value),self.assertRaisesRegex(ValueError,'must be a boolean'):
+                    load_robot_config(path)
+            params.update(allow_position_targets_outside_mechanical_range=True,ankle_command_space='virtual_pitch_roll')
+            path.write_text(yaml.safe_dump(root))
+            with self.assertRaisesRegex(ValueError,'Unclipped PD targets require motor_theta'):
+                load_robot_config(path)
+
+    def test_comparison_receipt_excludes_only_correlated_path_selectors(self):
+        import copy
+        root,_=self.config(self.policies()[0])
+        with tempfile.TemporaryDirectory() as tmp:
+            path=Path(tmp)/'robot.yaml';path.write_text(yaml.safe_dump(root))
+            _,native=load_robot_config(path)
+            legacy=copy.deepcopy(root);params=legacy['actions']['EXTERNAL']['params']
+            params.update(ankle_command_space='virtual_pitch_roll',allow_position_targets_outside_mechanical_range=False)
+            path.write_text(yaml.safe_dump(legacy));_,converted=load_robot_config(path)
+            self.assertEqual(native['ankle_path_comparison_sha256'],converted['ankle_path_comparison_sha256'])
+            self.assertNotEqual(native['allow_position_targets_outside_mechanical_range'],converted['allow_position_targets_outside_mechanical_range'])
+            params['safe_hold']['kp'][0]+=1
+            path.write_text(yaml.safe_dump(legacy));_,changed=load_robot_config(path)
+            self.assertNotEqual(native['ankle_path_comparison_sha256'],changed['ankle_path_comparison_sha256'])
 
     def test_native_command_limits_keep_feedback_and_startup_virtual(self):
         from locomotion_aorta.body_types import BodyJointCapability,BodyInfo,RobotInfo,GetRobotInfoResponse

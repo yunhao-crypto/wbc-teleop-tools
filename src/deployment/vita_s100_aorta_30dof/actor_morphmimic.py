@@ -29,6 +29,9 @@ class MorphMimicContract(GrootMotorThetaContract):
     def from_metadata(cls, math_api, metadata):
         raw = json.loads(metadata[CONTRACT_KEY])
         guard = raw.get('reference_feasibility_guard')
+        if guard == 'native_serial_and_coupled_motor_workspace_v2':
+            from .actor_morphmimic_sonic import contract_from_metadata
+            return contract_from_metadata(math_api, metadata)
         if guard not in (None, 'virtual_box_and_coupled_motor_v1'):
             raise ValueError('Unsupported MorphMimic reference feasibility guard')
         if (raw.get('schema_version') != 1 or raw.get('policy_kind') != POLICY_KIND

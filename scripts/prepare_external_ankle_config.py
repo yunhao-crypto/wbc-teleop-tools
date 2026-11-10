@@ -36,11 +36,31 @@ def prepare(source, space, virtual_pd_intent=None):
         block = re.sub(r'^      ankle_command_space:.*$', line, block, flags=re.M)
     else:
         block = block.replace('    params:\n', '    params:\n'+line+'\n', 1)
+    raw_targets = space == 'motor_theta'
+    line = '      allow_position_targets_outside_mechanical_range: '+('true' if raw_targets else 'false')
+    block, count = re.subn(r'^      allow_position_targets_outside_mechanical_range:.*$',
+                          line, block, flags=re.M)
+    if count > 1:
+        raise ValueError('Expected at most one EXTERNAL position-target opt-in')
+    if not count:
+        block = block.replace('    params:\n', '    params:\n'+line+'\n', 1)
+    interpolation = re.search(r'^      interpolation:\s*\n(?: {8}[^\n]*\n)*', block, re.M)
+    if not interpolation or not isinstance(action['params'].get('interpolation'), dict):
+        raise ValueError('Expected a block-style EXTERNAL interpolation configuration')
+    direct = interpolation.group()
+    direct, count = re.subn(r'^        enabled:.*$', '        enabled: false', direct, flags=re.M)
+    if count > 1:
+        raise ValueError('Expected at most one EXTERNAL interpolation.enabled')
+    if not count:
+        direct = direct.replace('      interpolation:\n', '      interpolation:\n        enabled: false\n', 1)
+    block = block[:interpolation.start()]+direct+block[interpolation.end():]
     result = source[:match.start()]+block+source[match.end():]
     parsed = yaml.safe_load(result)
     expected = root['actions']['EXTERNAL']['params']
+    expected['interpolation']['enabled'] = False
     expected['ankle_command_space'] = space
     expected['ankle_virtual_pd_intent'] = intent
+    expected['allow_position_targets_outside_mechanical_range'] = raw_targets
     if parsed != root:
         raise ValueError('Configuration rewrite changed an unrelated setting')
     return result

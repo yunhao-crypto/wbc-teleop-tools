@@ -22,8 +22,8 @@ STATE_AGE = .1
 STATUS_AGE = .5
 TARGET_PERIOD = .020
 # Policy ticks skipped in a row on stale BodyState before cancelling. While a
-# tick is skipped the firmware keeps interpolating/holding the last command
-# (interpolation max 100 ms, EXTERNAL watchdog 1000 ms).
+# tick is skipped the firmware holds the last command until its watchdog
+# expires (EXTERNAL watchdog 1000 ms); normal command interpolation is disabled.
 MAX_STALE_TICKS = 2
 # Firmware ingress_drop_count counts a valid command superseded by a newer one
 # before its control tick consumed it (latest wins), plus full control-request
@@ -111,12 +111,24 @@ def load_robot_config(path, runtime=None):
         if space == 'motor_theta' and (intent or (runtime is not None and not motor_theta)):
             raise ValueError('motor_theta requires a motor-angle policy and '
                              'ankle_virtual_pd_intent=false (motor PD)')
+        raw_targets = params.get('allow_position_targets_outside_mechanical_range', False)
+        if type(raw_targets) is not bool:
+            raise ValueError('EXTERNAL allow_position_targets_outside_mechanical_range must be a boolean')
+        if raw_targets and space != 'motor_theta':
+            raise ValueError('Unclipped PD targets require motor_theta command space')
+        if (runtime is not None and space == 'motor_theta'
+                and getattr(runtime.policy, 'clip_target_positions', True) is False
+                and not raw_targets):
+            raise ValueError('Affine native PD targets require EXTERNAL '
+                             'allow_position_targets_outside_mechanical_range=true; '
+                             'install matching firmware and configuration')
         if motor_theta:
             check_motor_theta_ankle(ankle, intent, runtime, native=space == 'motor_theta')
         elif runtime is not None and (ankle['pd']['strategy'] != 'virtual_pd' or intent is not True):
             raise ValueError('Requires virtual_pd and EXTERNAL ankle_virtual_pd_intent=true; no config is changed')
         unknown = set(params)-{'command_timeout_ms', 'recover_valid_frames',
-                              'interpolation', 'safe_hold', 'ankle_virtual_pd_intent', 'ankle_command_space'}
+                              'interpolation', 'safe_hold', 'ankle_virtual_pd_intent', 'ankle_command_space',
+                              'allow_position_targets_outside_mechanical_range'}
         if unknown:
             raise ValueError('Unsupported EXTERNAL params: '+', '.join(sorted(unknown)))
         timeout = params['command_timeout_ms']
@@ -126,8 +138,14 @@ def load_robot_config(path, runtime=None):
         if type(recover) is not int or recover < 1:
             raise ValueError('EXTERNAL recover_valid_frames must be a positive integer')
         interpolation = params['interpolation']
+        interpolation_enabled = interpolation.get('enabled')
+        if type(interpolation_enabled) is not bool:
+            raise ValueError('EXTERNAL interpolation.enabled must be a boolean and explicitly false')
+        if interpolation_enabled:
+            raise ValueError('WBC requires EXTERNAL interpolation.enabled=false; '
+                             'install matching firmware and configuration')
         periods = [interpolation[key] for key in ('min_period_ms', 'max_period_ms')]
-        if (set(interpolation) != {'min_period_ms', 'max_period_ms'}
+        if (set(interpolation)-{'enabled', 'min_period_ms', 'max_period_ms'}
                 or any(type(value) is not int or value <= 0 for value in periods)
                 or periods[0] > periods[1]):
             raise ValueError('Invalid EXTERNAL interpolation periods')
@@ -146,10 +164,14 @@ def load_robot_config(path, runtime=None):
     except (KeyError, TypeError) as error:
         raise ValueError('Incomplete effective A-sample robot configuration') from error
     # Compare trial YAMLs without exposing their contents: only the wire-space
-    # selector may differ in a controlled ankle-path A/B trial.
+    # selectors may differ in a controlled ankle-path A/B trial. Raw-target
+    # opt-in is native-only; legacy wire behavior remains part of that trial.
     comparable = json.loads(json.dumps(root))
     comparable['actions']['EXTERNAL']['params'].pop('ankle_command_space', None)
+    comparable['actions']['EXTERNAL']['params'].pop('allow_position_targets_outside_mechanical_range', None)
     return params, dict(path=str(path), sha256=hashlib.sha256(payload).hexdigest(),
+        allow_position_targets_outside_mechanical_range=raw_targets,
+        command_interpolation_enabled=interpolation_enabled,
         ankle_path_comparison_sha256=hashlib.sha256(json.dumps(comparable, sort_keys=True).encode()).hexdigest())
 
 

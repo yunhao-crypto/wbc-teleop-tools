@@ -136,6 +136,39 @@ checks; measured/startup poses and fixed joints still use their position bounds.
 The robot driver/firmware must implement the same target semantics. This does
 not change the physical plant's position stops or motor effort envelope.
 
+Native affine-target actors require all three EXTERNAL settings:
+
+```yaml
+ankle_command_space: motor_theta
+ankle_virtual_pd_intent: false
+allow_position_targets_outside_mechanical_range: true
+```
+
+Use firmware implementing this explicit opt-in (vita-robot `d9e1a0a32` or a
+compatible later build). A missing/false opt-in is rejected before a native
+actor can create control handles; non-boolean values and an enabled opt-in on
+the virtual wire are rejected too. Firmware retains confirmed protocol
+position bounds and applies its physical-range rules to startup/safe hold.
+The command `tau` field is feedforward: checking it alone does not establish
+the bound on total motor-local PD effort.
+
+Firmware `d7c5dbc81` adds `EXTERNAL.params.interpolation.enabled: false` for
+same-tick body command output. WBC requires this explicit setting: true,
+an omitted switch, strings and integers are rejected before requesting control.
+The configuration preparation tool always writes `enabled: false`; there is no
+WBC opt-in to command interpolation. `min_period_ms` and `max_period_ms` remain
+required for firmware safety-generated hold ramps. The receipt records
+`command_interpolation_enabled: false`, and the setting remains part of the
+configuration comparison identity.
+After reviewing a firmware/YAML change, rerun read-only checks and re-provision
+the device-local startup profile and frozen trial receipts; do not bypass a
+configuration fingerprint mismatch or reuse the old validation receipt.
+
+Log headers record `contract.position_target_semantics`, and the effective
+robot configuration receipt records the opt-in. Keep these identities when
+comparing captures: the same model SHA may have been run with the older
+secondary target-clipping decoder.
+
 For the legacy virtual wire, a motor target must have a representable FK pose;
 an unreachable request is rejected rather than projected. Use native
 `motor_theta` commands for the full action range of motor-angle policies.
@@ -145,6 +178,11 @@ The actor **never changes** `ankle_virtual_pd_intent` or any other robot setting
 Prepare a separate YAML using `scripts/prepare_external_ankle_config.py`
 (`--input SOURCE --output NEW_FILE --space motor_theta` or `virtual_pitch_roll`).
 The script writes a new file only; it never installs it or restarts a service.
+It enables the position-target opt-in for native mode and explicitly disables
+it when generating a virtual-wire configuration, including from an already
+enabled source YAML. Local startup defaults must reference the configuration
+actually selected by the running locomotion service; regenerate device-bound
+defaults when that selection changes.
 Install the matching robot configuration and pass it as `--robot-config`. If the YAML
 does not match the model type (wrong intent, gains, motor limits, geometry or
 `virtual_limits`), `live` stops before requesting EXTERNAL or sending any
@@ -167,6 +205,23 @@ manifests and install it with
 `bootstrap_actor_s100.py --policy sonic --model /path/to/actor_g1.onnx`; then
 change the robot YAML to the matching row above.
 ## MorphMimic Vita02A
+
+The versioned `native_serial_and_coupled_motor_workspace_v2` reference guard
+supports the 137670 `vita02a_sonic_v2` export through
+`actor_morphmimic_sonic.py`. Despite its training profile name, this export uses
+the **MorphMimic 1600-dimensional interface**, not SONIC's 1520-dimensional
+interface. The adapter validates its declared bounded-v3 training to affine-v4
+execution transfer and retains native A/B target decoding. Its reference
+projection uses serial travel and the coupled motor workspace; existing
+`virtual_box_and_coupled_motor_v1` models retain their original reference guard.
+
+SuperMimic schema 2 retains the 1670-dimensional feature layout and explicitly
+declares affine PD targets. The loader requires its no-position-clip semantics,
+native motor command space and unchanged root-reference features, and checks
+declared actuation overrides against exported gain/scale arrays. Schema 1
+remains supported. Select candidate models in separate deployment roots so
+their metadata, configuration and recordings remain identifiable; this support
+does not change the default model files.
 
 The default deployment model is the teleop fine-tune iteration 31000. Its model
 path, SHA256 and size are specified in `config/actor_pico_morphmimic.json`.
@@ -409,10 +464,10 @@ whose contract explicitly says motor-theta), NPZ/hash, gains, reference settings
 and robot build. Keep video and other background workloads in the same state.
 A virtual-angle SONIC model cannot be used as the native half of this test.
 
-| Trial | `--ankle-command-space` / EXTERNAL `ankle_command_space` | EXTERNAL `ankle_virtual_pd_intent` |
-|---|---|---|
-| Native | `motor_theta` | `false` |
-| Legacy conversion | `virtual_pitch_roll` | `false` |
+| Trial | `--ankle-command-space` / EXTERNAL `ankle_command_space` | EXTERNAL `ankle_virtual_pd_intent` | `allow_position_targets_outside_mechanical_range` |
+|---|---|---|---|
+| Native | `motor_theta` | `false` | `true` |
+| Legacy conversion | `virtual_pitch_roll` | `false` | `false` |
 
 In both trials observations/references use the same virtual-to-motor conversion
 and the same ONNX. Only the output path changes. Native sends A/B targets and
@@ -421,6 +476,11 @@ back and applies motor PD. Legacy virtual clipping/FK residuals may change the
 result; they are part of the behavior being tested. Keep
 `ankle_clamp_feedforward` identical between trials. The legacy path additionally
 checks that the firmware's fixed motor gains equal the model gains.
+The comparison receipt excludes these two correlated command-path selectors,
+while retaining gains and all other robot settings. The comparator rejects
+mixed decoder semantics (including a new capture paired with an older log
+that did not identify its decoder). This remains a comparison of complete
+output paths, including legacy clipping, rather than an equal-target proof.
 
 Prepare candidate YAMLs from the SAME effective robot configuration; these
 commands only create files, never install them or restart locomotion:
@@ -702,7 +762,7 @@ As in the SDK WBC demo, the gate is local receipt age plus producer publication
 age (`ts_state_pub_us`, CLOCK_REALTIME, at most 5 ms in the future); sensor
 stamp age is reported only. A stale tick is skipped rather than ending the
 trial: no command is published and the firmware keeps interpolating/holding
-the last one (interpolation max 100 ms, watchdog 1000 ms). The third
+the last one without command interpolation (watchdog 1000 ms). The third
 consecutive stale tick cancels. Each `body_state_age_failure` record holds
 phase, ages, compute/policy time and `action` (`skip_tick` or `cancel`).
 A stale command is never published or retried.

@@ -33,15 +33,28 @@ class MotionToolsTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError,'SHA256'):imp['install'](archive,'L1/clip.npz',root,True)
             self.assertEqual(Path(result['path']).read_bytes(),blob)
 
-    def test_prepare_legacy_motor_pd_and_native_differ_only_in_space(self):
+    def test_prepare_sets_native_opt_in_and_clears_it_for_legacy(self):
         original=dict(parallel_ankle={'geometry':{}},actions={'EXTERNAL':{'generator':'builtin::external',
-                      'params':{'ankle_virtual_pd_intent':False,'ankle_command_space':'motor_theta','command_timeout_ms':1000}}})
+                      'params':{'ankle_virtual_pd_intent':False,'ankle_command_space':'motor_theta','command_timeout_ms':1000,'interpolation':{'min_period_ms':2,'max_period_ms':100}}}})
         source=yaml.safe_dump(original,sort_keys=False)
         a=yaml.safe_load(prepare(source,'motor_theta',False))
         b=yaml.safe_load(prepare(source,'virtual_pitch_roll',False))
+        self.assertTrue(a['actions']['EXTERNAL']['params']['allow_position_targets_outside_mechanical_range'])
+        self.assertFalse(b['actions']['EXTERNAL']['params']['allow_position_targets_outside_mechanical_range'])
         self.assertFalse(b['actions']['EXTERNAL']['params']['ankle_virtual_pd_intent'])
         b['actions']['EXTERNAL']['params']['ankle_command_space']='motor_theta'
-        self.assertEqual(a,b);self.assertEqual(a,original)
+        b['actions']['EXTERNAL']['params']['allow_position_targets_outside_mechanical_range']=True
+        self.assertEqual(a,b)
+        original['actions']['EXTERNAL']['params']['allow_position_targets_outside_mechanical_range']=True
+        original['actions']['EXTERNAL']['params']['interpolation']['enabled']=False
+        self.assertEqual(a,original)
+        for enabled in (True, False):
+            original['actions']['EXTERNAL']['params']['interpolation']['enabled']=enabled
+            direct=yaml.safe_load(prepare(yaml.safe_dump(original,sort_keys=False),'motor_theta'))
+            self.assertIs(direct['actions']['EXTERNAL']['params']['interpolation']['enabled'],False)
+        # Source already opted in: a virtual-wire rewrite must reset the flag.
+        rewritten=prepare(yaml.safe_dump(original,sort_keys=False),'virtual_pitch_roll',False)
+        self.assertFalse(yaml.safe_load(rewritten)['actions']['EXTERNAL']['params']['allow_position_targets_outside_mechanical_range'])
         with self.assertRaises(ValueError):prepare(source,'motor_theta',True)
 
     def trial(self,space):
@@ -59,12 +72,13 @@ class MotionToolsTests(unittest.TestCase):
         result=compare['compare'](a,b)
         self.assertTrue(result['both_clips_complete']);self.assertEqual(result['common_clip_frames'],2)
         self.assertAlmostEqual(result['trials'][0]['ankle_rmse_deg'],5.7295779513)
-        for field in ('robot_hash','model','projection','space','reference'):
+        for field in ('robot_hash','model','projection','space','reference','semantics'):
             bad=copy.deepcopy(b)
             if field=='robot_hash':bad['robot_hash']='other'
             elif field=='model':bad['header']['model']['sha256']='other'
             elif field=='projection':bad['header']['motion']['limit_corrections']=[{'delta_rad':.1}]
             elif field=='space':bad['header']['contract']['required_ankle_command_space']='motor_theta'
+            elif field=='semantics':bad['header']['contract']['position_target_semantics']='affine_unclipped'
             else:bad['frames'][0]['motion_reference']['q']=[[.2]]
             with self.subTest(field=field),self.assertRaises(ValueError):compare['compare'](a,bad)
         del b['frames'][1]

@@ -69,6 +69,10 @@ def main():
                    'scripts/import_actor_motion.py', 'scripts/compare_actor_motion.py',
                    'tests/test_actor_motion_tools.py']
     additional += ['tests/test_morph_reference_feasibility.py']
+    additional += ['src/deployment/vita_s100_aorta_30dof/actor_morphmimic_sonic.py',
+                   'tests/fixtures/actor_pico/morphmimic_sonic_137670_contract.json',
+                   'tests/fixtures/actor_pico/supermimic_v2_contract.json',
+                   'tests/test_actor_candidate_contracts.py']
     additional += ['scripts/pico_camera_bridge.py', 'scripts/check_pico_camera_stream.py',
                    'scripts/pico_session_services.py', 'tests/test_pico_session_services.py',
                    'scripts/prepare_pico_camera_viewer.py', 'scripts/build_pico_camera_viewer.sh',

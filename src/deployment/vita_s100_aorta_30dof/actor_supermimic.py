@@ -83,7 +83,8 @@ class SuperMimicContract:
             raise ValueError(f'model is missing {CONTRACT_KEY}')
         raw = json.loads(metadata[CONTRACT_KEY])
         obs, goal = raw.get('observation', {}), raw.get('goal', {})
-        if (raw.get('schema_version') != 1 or raw.get('policy_kind') != POLICY_KIND
+        version = raw.get('schema_version')
+        if (type(version) is not int or version not in (1, 2) or raw.get('policy_kind') != POLICY_KIND
                 or raw.get('robot_type') != 'vita02a' or raw.get('action_dim') != 28
                 or raw.get('input_layout') != 'observation_history_then_goal'
                 or obs.get('history_order') != 'frame_major_oldest_first'
@@ -95,6 +96,15 @@ class SuperMimicContract:
                 or goal.get('beyond_reference_end') != 'hold_last_frame_zero_velocity'
                 or goal.get('velocity_rules') != VELOCITY_RULES):
             raise ValueError('unsupported SuperMimic tracking contract/layout')
+        if version == 2 and (
+                raw.get('command_target_clipping') != 'none'
+                or raw.get('joint_pos_limit_usage') != 'reference_only_not_PD_target_clipping'
+                or raw.get('joint_target_formula') !=
+                    'default_joint_pos + action_scale * clip(action, -action_clip, action_clip)'
+                or raw.get('required_ankle_command_space') != 'motor_theta'
+                or raw.get('ankle', {}).get('control_space') != 'motor_theta'
+                or goal.get('zero_dp_v') is not False):
+            raise ValueError('Unsupported SuperMimic v2 affine target/reference semantics')
         names = tuple(raw['joint_names'])
         if len(names) != 28 or len(set(names)) != 28 or not all(names):
             raise ValueError('model must name 28 distinct policy joints')
@@ -104,6 +114,20 @@ class SuperMimicContract:
         if any(x.shape != (28,) for x in arrays):
             raise ValueError('model arrays must match the 28 named joints')
         default, scale, kp, kd, lower, upper = arrays
+        if version == 2:
+            overrides = raw.get('actuation_overrides', {})
+            if not isinstance(overrides, dict):
+                raise ValueError('Invalid SuperMimic actuation overrides')
+            for name, values in overrides.items():
+                if (name not in names or not isinstance(values, dict)
+                        or set(values) != {'kp', 'kd', 'action_scale'}):
+                    raise ValueError('Invalid SuperMimic actuation override: '+name)
+                i = names.index(name)
+                for key, array in (('kp', kp), ('kd', kd), ('action_scale', scale)):
+                    value = values[key]
+                    if (isinstance(value, bool) or not isinstance(value, (int, float))
+                            or not math.isfinite(value) or not math.isclose(value, array[i], rel_tol=1e-9, abs_tol=1e-9)):
+                        raise ValueError('SuperMimic actuation override disagrees with '+name+'.'+key)
         if (np.any(scale <= 0) or np.any(kp < 0) or np.any(kd < 0) or np.any(lower >= upper)
                 or np.any(default < lower) or np.any(default > upper)):
             raise ValueError('model has invalid scales, gains or limits')

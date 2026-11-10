@@ -1,0 +1,408 @@
+{
+  "action_clip": 20.0,
+  "action_dim": 28,
+  "action_scale": [
+    0.14957953295027204,
+    0.14957953295027204,
+    0.14957953295027204,
+    0.14957953295027204,
+    0.43857731389829635,
+    0.43857731389829635,
+    0.14957953295027204,
+    0.14957953295027204,
+    0.14957953295027204,
+    0.14957953295027204,
+    0.43857731389829635,
+    0.43857731389829635,
+    0.29629763758025607,
+    0.19583333333333333,
+    0.21686897183719556,
+    0.21686897183719556,
+    0.21686897183719556,
+    0.21686897183719556,
+    0.2692918198976216,
+    0.2692918198976216,
+    0.2692918198976216,
+    0.21686897183719556,
+    0.21686897183719556,
+    0.21686897183719556,
+    0.21686897183719556,
+    0.2692918198976216,
+    0.2692918198976216,
+    0.2692918198976216
+  ],
+  "actuation_overrides": {
+    "waist_pitch_joint": {
+      "action_scale": 0.19583333333333333,
+      "kd": 5.0,
+      "kp": 90.0
+    }
+  },
+  "ankle": {
+    "control_space": "motor_theta",
+    "geometry": {
+      "lx": 0.05,
+      "ly": 0.02175,
+      "z_bot": 0.235,
+      "z_top": 0.31
+    },
+    "joints": {
+      "left_ankle_pitch_joint": {
+        "action_scale": 0.43857731389829635,
+        "armature": 0.0192325,
+        "kd": 1.0,
+        "kp": 20.0
+      },
+      "left_ankle_roll_joint": {
+        "action_scale": 0.43857731389829635,
+        "armature": 0.0192325,
+        "kd": 1.0,
+        "kp": 20.0
+      },
+      "right_ankle_pitch_joint": {
+        "action_scale": 0.43857731389829635,
+        "armature": 0.0192325,
+        "kd": 1.0,
+        "kp": 20.0
+      },
+      "right_ankle_roll_joint": {
+        "action_scale": 0.43857731389829635,
+        "armature": 0.0192325,
+        "kd": 1.0,
+        "kp": 20.0
+      }
+    },
+    "motor_limits": [
+      -0.95975,
+      0.61075
+    ],
+    "motor_model": {
+      "gain_rule": "motor_pd_equals_virtual_pitch_gain_over_neutral_pitch_column_ss",
+      "qd_no_load": 12.25221135,
+      "tau_max": 50.0
+    },
+    "policy_joint_aliases": {
+      "left_A_achilles_joint": "left_ankle_pitch_joint",
+      "left_B_achilles_joint": "left_ankle_roll_joint",
+      "right_A_achilles_joint": "right_ankle_pitch_joint",
+      "right_B_achilles_joint": "right_ankle_roll_joint"
+    },
+    "reference_conversion": "virtual_pitch_roll_to_motor_theta",
+    "robot_type": "vita02a_closed_loop",
+    "roll_sign": {
+      "left": 1,
+      "right": -1
+    },
+    "schema_version": 3,
+    "slots": {
+      "left_ankle_pitch_joint": {
+        "joint": "left_A_achilles_joint",
+        "motor": "theta_top",
+        "side": "left"
+      },
+      "left_ankle_roll_joint": {
+        "joint": "left_B_achilles_joint",
+        "motor": "theta_bottom",
+        "side": "left"
+      },
+      "right_ankle_pitch_joint": {
+        "joint": "right_A_achilles_joint",
+        "motor": "theta_top",
+        "side": "right"
+      },
+      "right_ankle_roll_joint": {
+        "joint": "right_B_achilles_joint",
+        "motor": "theta_bottom",
+        "side": "right"
+      }
+    }
+  },
+  "command_target_clipping": "none",
+  "default_joint_pos": [
+    -0.2,
+    0.088,
+    0.0,
+    0.4,
+    -0.23838967629694996,
+    -0.16190759459843465,
+    -0.2,
+    -0.088,
+    0.0,
+    0.4,
+    -0.23838967629694996,
+    -0.16190759459843465,
+    0.0,
+    0.0,
+    0.0,
+    0.4226,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    -0.4226,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+  ],
+  "goal": {
+    "beyond_reference_end": "hold_last_frame_zero_velocity",
+    "dt": 0.02,
+    "frame_dim": 71,
+    "frame_offsets": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10
+    ],
+    "heading_frame": "current_reference_root_yaw",
+    "joint_velocity_scale": 0.1,
+    "num_frames": 10,
+    "terms": [
+      {
+        "dim": 3,
+        "name": "root_pos_delta_heading"
+      },
+      {
+        "dim": 6,
+        "name": "root_rot_heading_6d"
+      },
+      {
+        "dim": 3,
+        "name": "root_lin_vel_local"
+      },
+      {
+        "dim": 3,
+        "name": "root_ang_vel_local"
+      },
+      {
+        "dim": 28,
+        "name": "joint_pos"
+      },
+      {
+        "dim": 28,
+        "name": "joint_vel_scaled"
+      }
+    ],
+    "velocity_rules": {
+      "joint": "forward_difference_last_repeats_penultimate",
+      "root_angular": "forward_quaternion_difference_world_then_gaussian_sigma2_nearest",
+      "root_linear": "gradient_then_gaussian_sigma2_nearest"
+    },
+    "zero_dp_v": false
+  },
+  "imu": "HIP IMU quaternion and body-frame gyroscope; training models sensor latency, deployment adds none",
+  "input_dim": 1670,
+  "input_layout": "observation_history_then_goal",
+  "joint_damping": [
+    12.768186124352187,
+    12.768186124352187,
+    12.768186124352187,
+    12.768186124352187,
+    1.0,
+    1.0,
+    12.768186124352187,
+    12.768186124352187,
+    12.768186124352187,
+    12.768186124352187,
+    1.0,
+    1.0,
+    3.786875784637137,
+    5.0,
+    4.403256263271454,
+    4.403256263271454,
+    4.403256263271454,
+    4.403256263271454,
+    1.7730387408618906,
+    1.7730387408618906,
+    1.7730387408618906,
+    4.403256263271454,
+    4.403256263271454,
+    4.403256263271454,
+    4.403256263271454,
+    1.7730387408618906,
+    1.7730387408618906,
+    1.7730387408618906
+  ],
+  "joint_limit_source": "reviewed deployment limits of the same Vita02A contract: actor_g1.onnx; ankle slots use the motor_theta motor_limits",
+  "joint_names": [
+    "left_hip_pitch_joint",
+    "left_hip_roll_joint",
+    "left_hip_yaw_joint",
+    "left_knee_joint",
+    "left_ankle_pitch_joint",
+    "left_ankle_roll_joint",
+    "right_hip_pitch_joint",
+    "right_hip_roll_joint",
+    "right_hip_yaw_joint",
+    "right_knee_joint",
+    "right_ankle_pitch_joint",
+    "right_ankle_roll_joint",
+    "waist_yaw_joint",
+    "waist_pitch_joint",
+    "left_shoulder_pitch_joint",
+    "left_shoulder_roll_joint",
+    "left_shoulder_yaw_joint",
+    "left_elbow_joint",
+    "left_wrist_roll_joint",
+    "left_wrist_yaw_joint",
+    "left_wrist_pitch_joint",
+    "right_shoulder_pitch_joint",
+    "right_shoulder_roll_joint",
+    "right_shoulder_yaw_joint",
+    "right_elbow_joint",
+    "right_wrist_roll_joint",
+    "right_wrist_yaw_joint",
+    "right_wrist_pitch_joint"
+  ],
+  "joint_pos_limit_lower": [
+    -2.648533821105957,
+    -0.3054323196411133,
+    -1.413719892501831,
+    0.10908299684524536,
+    -0.95975,
+    -0.95975,
+    -2.648533821105957,
+    -2.05076003074646,
+    -1.413719892501831,
+    0.10908299684524536,
+    -0.95975,
+    -0.95975,
+    -1.413719892501831,
+    -0.4712391197681427,
+    -2.3090667724609375,
+    -0.1099550724029541,
+    -2.213972806930542,
+    -0.5129522085189819,
+    -2.089160680770874,
+    -0.7819069623947144,
+    -1.6790038347244263,
+    -2.3090667724609375,
+    -2.1519956588745117,
+    -2.1838443279266357,
+    -0.5129522085189819,
+    -2.089160680770874,
+    -1.5742899179458618,
+    -1.6790038347244263
+  ],
+  "joint_pos_limit_upper": [
+    1.5140738487243652,
+    2.05076003074646,
+    1.413719892501831,
+    2.0725767612457275,
+    0.61075,
+    0.61075,
+    1.5140738487243652,
+    0.3054323196411133,
+    1.413719892501831,
+    2.0725767612457275,
+    0.61075,
+    0.61075,
+    1.413719892501831,
+    0.4712391197681427,
+    2.3090667724609375,
+    2.1519956588745117,
+    2.1838443279266357,
+    2.2673583030700684,
+    2.089160680770874,
+    1.5742899179458618,
+    1.776743769645691,
+    2.3090667724609375,
+    0.1099550724029541,
+    2.213972806930542,
+    2.2673583030700684,
+    2.089160680770874,
+    0.7819069623947144,
+    1.776743769645691
+  ],
+  "joint_pos_limit_usage": "reference_only_not_PD_target_clipping",
+  "joint_stiffness": [
+    200.5621986396598,
+    200.5621986396598,
+    200.5621986396598,
+    200.5621986396598,
+    20.0,
+    20.0,
+    200.5621986396598,
+    200.5621986396598,
+    200.5621986396598,
+    200.5621986396598,
+    20.0,
+    20.0,
+    59.484105725365566,
+    90.0,
+    69.16618764283423,
+    69.16618764283423,
+    69.16618764283423,
+    69.16618764283423,
+    27.850827414109062,
+    27.850827414109062,
+    27.850827414109062,
+    69.16618764283423,
+    69.16618764283423,
+    69.16618764283423,
+    69.16618764283423,
+    27.850827414109062,
+    27.850827414109062,
+    27.850827414109062
+  ],
+  "joint_target_formula": "default_joint_pos + action_scale * clip(action, -action_clip, action_clip)",
+  "observation": {
+    "frame_dim": 96,
+    "history_length": 10,
+    "history_order": "frame_major_oldest_first",
+    "reference_orientation": "robot_root^T * reference_root at the current reference frame",
+    "reset": "repeat_first_frame",
+    "rotation_6d": "first_two_columns_row_major",
+    "terms": [
+      {
+        "dim": 28,
+        "name": "joint_pos_rel_default"
+      },
+      {
+        "dim": 28,
+        "name": "joint_vel"
+      },
+      {
+        "dim": 3,
+        "name": "base_ang_vel_body"
+      },
+      {
+        "dim": 3,
+        "name": "gravity_dir_body"
+      },
+      {
+        "dim": 28,
+        "name": "last_action"
+      },
+      {
+        "dim": 6,
+        "name": "reference_root_ori_rel_6d"
+      }
+    ]
+  },
+  "policy_dt": 0.02,
+  "policy_kind": "supermimic_vita02a_tracking",
+  "required_ankle_command_space": "motor_theta",
+  "robot_type": "vita02a",
+  "schema_version": 2,
+  "source": {
+    "checkpoint": "/vita-vepfs-data/fileset1/usr_data/yunhao.xia/code/trackerlab-supermimic/logs/vita02a_no_target_clip_20261108/train_8gpu_24h/ckpt_043000.pt",
+    "checkpoint_mlp_dtype": "bf16",
+    "checkpoint_sha256": "33e3f34bf528354a17d841707aa61bc7121d4e25e84fb2bfdc18aa4ded5d221c",
+    "deployment_reference_sha256": "a341391a346e050caf11c40c6989336c658c445e3e124f12dcbe292d91324474",
+    "iteration": 43000,
+    "onnx_dtype": "float32",
+    "training_contract": "/vita-vepfs-data/fileset1/usr_data/yunhao.xia/code/trackerlab-supermimic/logs/vita02a_no_target_clip_20261108/train_8gpu_24h/physical_contract.json",
+    "training_contract_sha256": "b376171b1f6761d1231d6a2a7196f47890048da090114d3ee92bbc2e77085dbf"
+  }
+}
