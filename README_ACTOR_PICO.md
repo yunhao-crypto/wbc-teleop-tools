@@ -1039,8 +1039,51 @@ starts only after the full model-derived window is available (200 ms for the cur
   the reference root tilt and keeps its heading.
 
 Without the block, the previous newest-sample window is used unchanged. The
-SONIC reference does not implement this playback, so its configuration must
-not contain `pico_stream`.
+SONIC reference (`CausalActorReference`) implements the same playback: with
+`pico_stream` it keeps enough history for the playback lag and resamples its
+window on the control clock. `config/actor_pico.json` ships without the block,
+so SONIC behaviour is unchanged until it is added and reviewed.
+
+## GMR calibration profile and planted feet (opt-in)
+
+Two `retargeting` keys change the GMR targets without modifying the vendored
+solver, its IK configuration or the MJCF. Neither shipped config sets them.
+
+- `calibration_profile: {"path": ..., "sha256": ...}` replaces the per-task
+  position/rotation offsets in both IK tables with a profile fitted on a
+  confirmed neutral stance. The path must be inside the deployment root and
+  match the hash. Startup refuses a profile whose schema, robot, base GMR
+  config hash, `human_height_m` or `offset_to_ground` differs from the
+  launch: offsets live in GMR's height-scaled space and only hold for the
+  operator height they were fitted at. With a profile, head control uses the
+  calibrated `waist_pitch_link` rotation offset as its chest frame.
+  `scripts/export_gmr_calibration_profile.py PATCH --output config/gmr_calibration/NAME.json`
+  converts a `vita_gmr_neutral_calibration_v1` fit and prints the hash.
+  `config/gmr_calibration/vita02a_neutral_20261110_h180.json` is fitted for
+  one operator at 1.80 m; its held-out check did not pass. Its `provenance`
+  block records the state at fit time (`offline_only_not_deployed`) and is
+  left unchanged because trial configs pin the file hash; it has since been
+  used in an operator-supported SONIC trial configuration, which is not a
+  hardware validation.
+- `foot_support` (requires a profile) classifies each processed human foot as
+  planted or swing from its height above the lower foot and its low-passed
+  horizontal speed, with enter/exit hysteresis and an enter hold. A planted
+  foot gets a level sole with the tracked heading, the toe on the calibrated
+  ground and an ankle target derived from the toe through the rigid foot
+  offset; swing feet keep the tracked targets and `blend_s` ramps between
+  the two. All keys are required:
+
+```json
+"foot_support": {"enter_height_m": 0.03, "exit_height_m": 0.05,
+                 "enter_speed_m_s": 0.15, "exit_speed_m_s": 0.35,
+                 "enter_hold_s": 0.05, "blend_s": 0.15, "speed_cutoff_hz": 4.0}
+```
+
+`foot_support` needs the Pico frame timestamp of every solve; the worker and
+replay pass it and log the per-foot state as `timing.foot_support`. These
+change the IK targets, not the IK weights: the achieved sole tilt still
+depends on how well the profile fits the operator. Validate a profile on
+held-out stances and in closed-loop simulation before using it on the robot.
 
 ## Pico worker: GMR and CPU layout (all policies)
 

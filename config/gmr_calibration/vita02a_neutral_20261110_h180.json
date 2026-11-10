@@ -1,0 +1,137 @@
+{
+  "schema": "vita_gmr_task_calibration_v1",
+  "robot": "vita02a",
+  "base_config_sha256": "5116a7ea3aabd8703c793f6143cbbba73f3bad5bd5c808b605f13b85048949b1",
+  "human_height_m": 1.8,
+  "offset_to_ground": true,
+  "tasks": {
+    "base_link": {
+      "position_offset": [
+        0.0,
+        0.0,
+        -0.06389456520245751
+      ],
+      "rotation_offset_wxyz": [
+        0.48186099263344206,
+        -0.4967009788082648,
+        0.4984672488809281,
+        0.5221384138543195
+      ]
+    },
+    "waist_pitch_link": {
+      "position_offset": [
+        0.00044356655777599293,
+        -0.0024858116631444865,
+        -0.2503740566445545
+      ],
+      "rotation_offset_wxyz": [
+        0.4868862297983835,
+        -0.5004128681511677,
+        0.5146664925430555,
+        0.49764160002442204
+      ]
+    },
+    "left_knee_link": {
+      "position_offset": [
+        0.10441141876728621,
+        0.028046747526330913,
+        -0.02854709985636098
+      ],
+      "rotation_offset_wxyz": [
+        0.4092955622093793,
+        -0.47699439381719466,
+        0.6190331320723411,
+        0.47090495051483877
+      ]
+    },
+    "right_knee_link": {
+      "position_offset": [
+        0.10295737906352523,
+        -0.03640475160109247,
+        -0.01932995458785552
+      ],
+      "rotation_offset_wxyz": [
+        0.44353299937113494,
+        -0.5716388245655964,
+        0.5120574864572561,
+        0.46293051668817964
+      ]
+    },
+    "left_ankle_roll_link": {
+      "position_offset": [
+        0.06298898145767846,
+        0.07903530155271418,
+        -0.09101838111185843
+      ],
+      "rotation_offset_wxyz": [
+        0.4820325491992181,
+        -0.5199180808703902,
+        0.505918294632523,
+        0.4913008140158876
+      ]
+    },
+    "right_ankle_roll_link": {
+      "position_offset": [
+        0.07081616433153462,
+        -0.0886050194993351,
+        -0.08524087571780142
+      ],
+      "rotation_offset_wxyz": [
+        0.45721788184468704,
+        -0.491337890537008,
+        0.5116996097180778,
+        0.5363789660850505
+      ]
+    },
+    "left_toe_link": {
+      "position_offset": [
+        0.060494987366473824,
+        0.04395248080998591,
+        -0.09337431830113317
+      ],
+      "rotation_offset_wxyz": [
+        0.4816365648247114,
+        -0.5195143842159062,
+        0.5060731421670851,
+        0.49195629764619614
+      ]
+    },
+    "right_toe_link": {
+      "position_offset": [
+        0.0677739909089546,
+        -0.053777585484084525,
+        -0.07815085062491525
+      ],
+      "rotation_offset_wxyz": [
+        0.4574566734335231,
+        -0.49128963775951334,
+        0.5120468940070407,
+        0.535887919344151
+      ]
+    }
+  },
+  "provenance": {
+    "status": "offline_only_not_deployed",
+    "capture": "capture_20261110_1538",
+    "fit_phase": "neutral_fit",
+    "fit_frames": 726,
+    "scope": [
+      "base_link",
+      "waist_pitch_link",
+      "left_knee_link",
+      "right_knee_link",
+      "left_ankle_roll_link",
+      "right_ankle_roll_link",
+      "left_toe_link",
+      "right_toe_link"
+    ],
+    "note": "Task offset calibration only; weights, joint limits, scales and upper-limb task offsets unchanged.",
+    "heldout_test_performed": true,
+    "heldout_test_passed": false,
+    "heldout_conclusion": "Neutral offsets improve fit, but independent planted-foot neutral retains tilt. Contact-consistent foot targets require further validation; not ready for deployment.",
+    "training_home_max_error_rad": 8.222239444855006e-09,
+    "source_patch": "neutral_calibration_patch.json",
+    "source_patch_sha256": "0fcfb1541ab10da2a0e13e1694e5b96984e61ca801d3fe0da1c7476b45d9bf7a",
+    "operator": "robot42_20261110_1538"
+  }
+}

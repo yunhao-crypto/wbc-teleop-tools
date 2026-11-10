@@ -17,6 +17,7 @@ import numpy as np
 from .actor_morphmimic import MorphMimicContract, POLICY_KIND as MORPHMIMIC_KIND
 from .actor_groot_ankle import contract_from_metadata as groot_contract
 from .actor_pico_gmr import create_retargeter
+from .actor_pico_gmr_profile import apply_calibration, load_calibration_profile
 from .actor_pico_head import PicoHeadControl, head_settings
 from .actor_pico_stream import stream_settings, worker_settings
 from .actor_supermimic import (POLICY_KIND as SUPERMIMIC_KIND, NativeModel, SuperMimicContract,
@@ -51,8 +52,7 @@ def load_actor_config(root, policy='sonic'):
     if (isinstance(hold, bool) or not isinstance(hold, (int, float)) or not np.isfinite(hold)
             or not 0 < hold < config['pico_max_age_s']):
         raise ValueError('Pico reference hold age must be positive and below pico_max_age_s')
-    if stream_settings(config) is not None and policy not in ('supermimic', 'morphmimic'):
-        raise ValueError('pico_stream playback is only implemented for the SuperMimic reference')
+    stream_settings(config)
     worker_settings(config)
     head_settings(config)
     for item in config['artifacts'].values():
@@ -153,7 +153,12 @@ class ActorPicoRuntime:
         settings = head_settings(self.config)
         self.head = None
         if settings is not None and reference_source == 'pico':
-            gmr_config = json.loads((self.root/self.config['artifacts']['gmr_source_4']['path']).read_text())
+            gmr_path = self.root/self.config['artifacts']['gmr_source_4']['path']
+            gmr_config = json.loads(gmr_path.read_text())
+            # Head motion is expressed in the same chest frame the GMR waist task uses.
+            calibration = load_calibration_profile(self.root, self.config['retargeting'], gmr_path)
+            if calibration is not None:
+                apply_calibration(gmr_config, calibration)
             offset = gmr_config['ik_match_table1']['waist_pitch_link'][4]
             self.head = PicoHeadControl(settings, offset, period=self.model.contract.period,
                 hold_age=self.config['pico_hold_age_s'], maximum_age=self.config['pico_max_age_s'])
@@ -194,7 +199,7 @@ class ActorPicoRuntime:
         if self.reference.last_stamp_ns is not None and stamp_ns <= self.reference.last_stamp_ns:
             raise ValueError('Pico frame did not advance')
         start = time.perf_counter()
-        q, root, residual = self.retarget.solve(body, robot_root=robot_root)
+        q, root, residual = self.retarget.solve(body, robot_root=robot_root, stamp_ns=stamp_ns)
         self.reference.append(stamp_ns, q, root, received_monotonic=received_monotonic,
                               base=self.retarget.last_qpos[:3])
         self.last_residual = residual
