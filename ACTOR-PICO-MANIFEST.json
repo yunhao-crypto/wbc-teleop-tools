@@ -12,7 +12,7 @@
     },
     {
       "path": "config/actor_pico.json",
-      "sha256": "67e8ebc64f338b6ae54f470c755ad34479a036079ad56618d98d5b39e5f11505",
+      "sha256": "c253611e2026fddda0b1f223386c3c2f46646049f908abc26fa7414d92798d25",
       "bytes": 7528,
       "mode": "0o644"
     },
@@ -216,7 +216,7 @@
     },
     {
       "path": "config/actor_pico_supermimic.json",
-      "sha256": "05ef51536655e0ed5f41957a20e1018a828f63e75b77185b7deb928c712eaa80",
+      "sha256": "7a72343d737a8b4b6aac2de0adf8d1fcfcf7a9f964965094ff1e2b7b7632cbd8",
       "bytes": 8837,
       "mode": "0o644"
     },
@@ -318,7 +318,7 @@
     },
     {
       "path": "config/actor_pico_morphmimic.json",
-      "sha256": "1a336157979bc761d6bec31fb1c0218372cd24024b1a141b0ac4fc34a593e3d7",
+      "sha256": "c5ad989cbe8ab3d80b7f3fc8e9566f5ec0fe9ac0d28c3cf62b08edf79b3f71ae",
       "bytes": 8574,
       "mode": "0o644"
     },

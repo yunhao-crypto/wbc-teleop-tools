@@ -440,7 +440,7 @@ class GuardAndScopeTests(unittest.TestCase):
         transport = Mock()
         transport.subscribe.return_value = types.SimpleNamespace(close=lambda: None)
         controller = PullController(group='default', _transport=transport)
-        transport.wait_state.side_effect = TimeoutError('first frame timeout')
+        transport._wait_body_state.side_effect = TimeoutError('first frame timeout')
         with self.assertRaises(ExternalControlTimeoutError):
             controller.wait_body_state(.01)
         snapshot = object()

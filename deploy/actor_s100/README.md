@@ -66,6 +66,12 @@ Retain the original license/notices associated with each dependency.
 
 The tested robot baseline is `1.6.0-200`, commit
 `c9b4e80c074a8898d1290927a1be5350bc725d4a`, with Aorta/messages `2026.10.20`.
+The pinned SDK build follows humanoid-sdk main `95268c7d957242383b42341ddef1c084e6229322`
+(development build, not a separately published SDK release). The wheel and native
+library identities are sealed in `config/sdk021-wheel-guard.json`; update the
+per-deployment venv as well as the source/config files. Changing `/userdata/sdk-demo`
+alone does not update a WBC trial environment.
+
 The actor uses SDK `0.2.1`, Body31 protocol 2 / roster 1, 28 policy joints and
 fixed neck targets; waist-roll slot 14 is unpopulated. A different firmware
 requires an interface/configuration review before live use. Device-owned peer
