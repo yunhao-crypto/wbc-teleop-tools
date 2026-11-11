@@ -164,7 +164,9 @@ that selection on another robot. No hardware configuration is changed here.
 The launcher subsequently requests FIXED_STAND and EXTERNAL motion with
 `bash scripts/start_actor_pico.sh sonic` or `supermimic`; it has no default policy.
 That requires current on-site authorization/support, independent of configuration.
-Height defaults to 1.75 m; use `--human-height` for the actual operator.
+Height defaults to 1.80 m, the height of the shipped GMR calibration profile
+(enabled with planted feet for every policy). Use `--human-height` for the
+actual operator; a different height switches both off with `ACTOR_WARNING`.
 See the [run guide](../../README_ACTOR_PICO.md#default-local-startup).
 
 ## Upgrade and rollback

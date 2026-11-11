@@ -1,4 +1,4 @@
-"""Opt-in GMR calibration profile, planted-foot targets and SONIC control-clock playback."""
+"""GMR calibration profile, planted-foot targets and SONIC control-clock playback."""
 import copy
 import hashlib
 import json
@@ -40,6 +40,12 @@ def profile_spec(path=PROFILE_PATH):
     return dict(path=str(path), sha256=sha256(ROOT/path))
 
 
+def plain_head_offset():
+    gmr = json.loads((ROOT/'third_party/motion_stream_bridge/motion_stream_bridge/gmr_lite/configs/'
+                      'xrobot_to_vita02a.json').read_text())
+    return Rotation.from_quat(np.roll(gmr['ik_match_table1']['waist_pitch_link'][4], -1)).as_matrix()
+
+
 class ProfileTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -72,8 +78,12 @@ class ProfileTests(unittest.TestCase):
     def test_profile_mismatches_are_refused(self):
         with self.assertRaisesRegex(ValueError, 'hash mismatch'):
             self.retarget(calibration_profile=dict(path=PROFILE_PATH, sha256='0'*64))
+        # Strict loader keeps refusing another height; launch paths switch off instead.
         with self.assertRaisesRegex(ValueError, 'human_height_m'):
-            self.retarget(calibration_profile=profile_spec(), human_height_m=1.75)
+            profile_module.load_calibration_profile(ROOT, dict(self.runtime.config['retargeting'], human_height_m=1.75),
+                                                    ROOT/self.runtime.config['artifacts']['gmr_source_4']['path'])
+        with self.assertRaisesRegex(ValueError, 'hash mismatch'):
+            self.retarget(calibration_profile=dict(path=PROFILE_PATH, sha256='0'*64), human_height_m=1.75)
         with self.assertRaisesRegex(ValueError, 'inside the deployment root'):
             self.retarget(calibration_profile=dict(path='/etc/hostname', sha256='0'*64))
         with self.assertRaisesRegex(ValueError, 'inside the deployment root'):
@@ -96,6 +106,50 @@ class ProfileTests(unittest.TestCase):
                                      (dict(extra=1), 'schema')):
                 with self.subTest(changes=list(changes)), self.assertRaisesRegex(ValueError, message):
                     self.retarget(calibration_profile=self.scratch_profile(tmp, **changes))
+                # A different launch height does not hide an invalid profile.
+                with self.subTest(changes=list(changes), height=1.75), self.assertRaisesRegex(ValueError, message):
+                    self.retarget(calibration_profile=self.scratch_profile(tmp, **changes), human_height_m=1.75)
+
+    def test_shipped_configs_enable_calibration_and_planted_feet_at_180(self):
+        for policy in ('sonic', 'supermimic', 'morphmimic'):
+            with self.subTest(policy=policy):
+                config = load_actor_config(ROOT, policy)
+                settings = config['retargeting']
+                self.assertEqual(settings['human_height_m'], 1.8)
+                self.assertEqual(settings['calibration_profile'], profile_spec())
+                self.assertEqual(foot_support_settings(settings['foot_support']), FootSupportSettings(**FOOT))
+                self.assertIsNotNone(stream_settings(config))
+        self.assertEqual(self.profile['human_height_m'], 1.8)
+        self.assertNotIn('root_max_tilt_deg', load_actor_config(ROOT, 'sonic')['pico_stream'])
+        rt = self.retarget()
+        self.assertEqual(rt.calibration['path'], PROFILE_PATH)
+        self.assertEqual(rt.foot_support, FootSupportSettings(**FOOT))
+        self.assertIsNone(rt.calibration_notice)
+        self.assertEqual(self.runtime.gmr_calibration, dict(calibration_profile=PROFILE_PATH, foot_support=True,
+                                                            human_height_m=1.8, notice=None))
+
+    def test_other_operator_height_switches_calibration_and_planted_feet_off(self):
+        rt = self.retarget(human_height_m=1.7)
+        self.assertIsNone(rt.calibration)
+        self.assertIsNone(rt.foot_support)
+        self.assertEqual(rt.calibration_notice, dict(reason='human_height_mismatch', profile=PROFILE_PATH,
+            fitted_human_height_m=1.8, human_height_m=1.7, calibration_profile_disabled=True,
+            foot_support_disabled=True))
+        # Same engine as a launch without either setting.
+        config = copy.deepcopy(self.runtime.config)
+        for key in ('calibration_profile', 'foot_support'):
+            config['retargeting'].pop(key)
+        config['retargeting']['human_height_m'] = 1.7
+        plain = create_retargeter(ROOT, config, self.runtime.model.contract, self.runtime.math)
+        self.assertEqual(rt.engine.ik_match_table1, plain.engine.ik_match_table1)
+        body = np.load(ROOT/'tests/fixtures/actor_pico/bridge_gmr_golden.npz')['body_poses']
+        for frame in body[:5]:
+            np.testing.assert_array_equal(rt.solve(frame)[0], plain.solve(frame)[0])
+        runtime = ActorPicoRuntime(ROOT, backend='auto', human_height=1.7)
+        self.assertEqual(runtime.gmr_calibration['notice'], rt.calibration_notice)
+        self.assertEqual((runtime.gmr_calibration['calibration_profile'], runtime.gmr_calibration['foot_support']),
+                         (None, False))
+        np.testing.assert_allclose(runtime.head.offset, plain_head_offset(), atol=0)
 
     def test_head_control_uses_the_calibrated_chest_frame(self):
         config = load_actor_config(ROOT, 'sonic')
@@ -104,7 +158,8 @@ class ProfileTests(unittest.TestCase):
             runtime = ActorPicoRuntime(ROOT, backend='auto', human_height=1.8)
         wxyz = self.profile['tasks']['waist_pitch_link']['rotation_offset_wxyz']
         np.testing.assert_allclose(runtime.head.offset, Rotation.from_quat(np.roll(wxyz, -1)).as_matrix(), atol=1e-12)
-        self.assertGreater(np.abs(runtime.head.offset-self.runtime.head.offset).max(), 1e-3)
+        self.assertGreater(np.abs(runtime.head.offset-plain_head_offset()).max(), 1e-3)
+        np.testing.assert_allclose(self.runtime.head.offset, runtime.head.offset, atol=0)
 
     def test_foot_support_settings_are_explicit_and_need_a_profile(self):
         self.assertIsNone(foot_support_settings(None))
@@ -116,7 +171,7 @@ class ProfileTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             foot_support_settings({k: v for k, v in FOOT.items() if k != 'blend_s'})
         with self.assertRaisesRegex(ValueError, 'requires retargeting.calibration_profile'):
-            self.retarget(foot_support=FOOT)
+            self.retarget(calibration_profile=None, foot_support=FOOT)
 
     def test_foot_support_needs_frame_timestamps(self):
         rt = self.retarget(calibration_profile=profile_spec(), foot_support=FOOT)

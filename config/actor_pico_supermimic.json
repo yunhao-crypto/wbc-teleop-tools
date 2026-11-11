@@ -253,9 +253,23 @@
   "retargeting": {
     "implementation": "motion_stream_bridge_gmr_vita02a",
     "source_commit": "763f5607c3f0accb61a415cfd676af54b72e1232",
-    "human_height_m": 1.75,
+    "human_height_m": 1.8,
     "robot": "vita02a",
-    "offset_to_ground": true
+    "offset_to_ground": true,
+    "calibration_profile": {
+      "path": "config/gmr_calibration/vita02a_neutral_20261110_h180.json",
+      "sha256": "048f0591b38a813104164e98a385144972677c33ff11ad110095ff60a34616a6"
+    },
+    "foot_support": {
+      "enter_height_m": 0.03,
+      "exit_height_m": 0.05,
+      "enter_speed_m_s": 0.15,
+      "exit_speed_m_s": 0.35,
+      "enter_hold_s": 0.05,
+      "blend_s": 0.15,
+      "speed_cutoff_hz": 4.0,
+      "note": "Planted-foot targets (level sole on calibrated ground, rigid toe/ankle). Needs the calibration profile; both switch off with a warning when the launch height differs from the profile's 1.80 m."
+    }
   },
   "reference_window": {
     "past_frames": 8,

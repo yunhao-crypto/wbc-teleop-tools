@@ -88,7 +88,7 @@ python3.10 scripts/bootstrap_actor_s100.py --policy supermimic --model /absolute
 bash scripts/start_actor_pico.sh sonic check --steps 100
 bash scripts/start_actor_pico.sh sonic state-check --seconds 5
 # 头显已完成全身追踪标定并点击 Send 后，运行只记录结果的影子推理：
-bash scripts/start_actor_pico.sh sonic shadow --seconds 30 --human-height 1.75
+bash scripts/start_actor_pico.sh sonic shadow --seconds 30 --human-height 1.80
 ```
 
 **运动与策略检查入口必须显式选择策略，没有默认值，也不会改用另一个策略。** 第一个参数写 `sonic` 或
@@ -126,7 +126,8 @@ bash scripts/start_actor_pico.sh configure \
 bash scripts/start_actor_pico.sh sonic        # GR00T G1 (SONIC) 策略
 bash scripts/start_actor_pico.sh supermimic   # SuperMimic 策略
 bash scripts/start_actor_pico.sh              # 终端菜单选择 1) sonic 2) supermimic，无默认
-# 身高默认 1.75 米，其他操作者可覆盖：
+# 身高默认 1.80 米（与随附 GMR 标定档案一致，三种策略默认启用标定与落地脚）。
+# 其他操作者可覆盖身高；身高与档案不一致时自动关闭标定与落地脚并打印 ACTOR_WARNING：
 # bash scripts/start_actor_pico.sh supermimic --human-height 1.68
 ```
 

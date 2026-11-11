@@ -431,6 +431,13 @@ def main():
         configured = runtime.config['retargeting'].get('human_height_m')
         print(f"ACTOR_WARNING: --human-height not given; GMR uses the configured {configured} m. "
               "Pass the operator's height.", file=sys.stderr, flush=True)
+    gmr_calibration = getattr(runtime, 'gmr_calibration', None)
+    notice = (gmr_calibration or {}).get('notice')
+    if notice is not None:
+        print(f"ACTOR_WARNING: GMR calibration profile {notice['profile']} was fitted at "
+              f"{notice['fitted_human_height_m']:g} m, this launch uses {notice['human_height_m']:g} m; "
+              "calibration and planted-foot support are OFF for this run. Refit the profile for this operator.",
+              file=sys.stderr, flush=True)
     args.log = args.log or args.root/'outputs'/f'actor_pico_{args.mode}_{time.time_ns()}.jsonl'
     comparable_config = copy.deepcopy(runtime.config)
     comparable_config['body_profile'].pop('ankle_command_space', None)
@@ -454,6 +461,7 @@ def main():
                    motion=runtime.motion_source.metadata if args.motion_config is not None else None,
                    retargeter=runtime.config['retargeting'] if runtime.retarget is not None else None,
                    gmr_engine=('accelerated' if runtime.retarget.accelerated else 'pinned') if runtime.retarget is not None else None,
+                   gmr_calibration=gmr_calibration,
                    reference_delay_s=runtime.reference.delay if args.motion_config is None else 0.,
                    pico_stream=runtime.config.get('pico_stream') if args.motion_config is None else None,
                    pico_worker=runtime.config.get('pico_worker'),

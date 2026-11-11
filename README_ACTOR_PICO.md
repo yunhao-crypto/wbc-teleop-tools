@@ -309,7 +309,10 @@ other versions raise at startup instead of silently running the slower pinned
 engine. Log headers record `gmr_engine`. The input worker no longer
 sleeps 5 ms after each solved frame; it polls every 1 ms only while idle.
 
-Operator height defaults to **1.75 metres**. Override it for every launch:
+Operator height defaults to **1.80 metres**, the height the shipped GMR
+calibration profile was fitted at. Override it for every other operator
+(this switches the profile and planted feet off, see
+[GMR calibration profile and planted feet](#gmr-calibration-profile-and-planted-feet-default-on)):
 
 ```bash
 bash scripts/start_actor_pico.sh sonic --human-height 1.68
@@ -1051,28 +1054,39 @@ starts only after the full model-derived window is available (200 ms for the cur
 Without the block, the previous newest-sample window is used unchanged. The
 SONIC reference (`CausalActorReference`) implements the same playback: with
 `pico_stream` it keeps enough history for the playback lag and resamples its
-window on the control clock. `config/actor_pico.json` ships without the block,
-so SONIC behaviour is unchanged until it is added and reviewed.
+window on the control clock. `config/actor_pico.json` ships the block with
+the SuperMimic margin and filters but without `root_max_tilt_deg`: in
+closed-loop simulation the 25 deg clamp made SONIC 49000 fall during deep
+forward bends, while all runs completed without it.
 
-## GMR calibration profile and planted feet (opt-in)
+## GMR calibration profile and planted feet (default on)
 
 Two `retargeting` keys change the GMR targets without modifying the vendored
-solver, its IK configuration or the MJCF. Neither shipped config sets them.
+solver, its IK configuration or the MJCF. All three shipped configs (SONIC,
+SuperMimic, MorphMimic) set both, with `human_height_m: 1.8` to match the
+profile.
+
+The profile only holds for the height it was fitted at. When `--human-height`
+(or the config) differs from the profile's `human_height_m`, startup prints
+`ACTOR_WARNING: GMR calibration profile ... disabled` and continues with the
+plain GMR offsets and no planted feet. The decision is recorded as
+`gmr_calibration` in the log header and in `ACTOR_LIVE_REVIEW`. Any other
+profile problem (missing file, hash, schema, robot, base GMR config hash,
+`offset_to_ground`, unknown task) still refuses startup.
 
 - `calibration_profile: {"path": ..., "sha256": ...}` replaces the per-task
   position/rotation offsets in both IK tables with a profile fitted on a
   confirmed neutral stance. The path must be inside the deployment root and
-  match the hash. Startup refuses a profile whose schema, robot, base GMR
-  config hash, `human_height_m` or `offset_to_ground` differs from the
-  launch: offsets live in GMR's height-scaled space and only hold for the
-  operator height they were fitted at. With a profile, head control uses the
+  match the hash. Offsets live in GMR's height-scaled space and only hold
+  for the operator height they were fitted at; a different height turns the
+  profile off as described above. With a profile, head control uses the
   calibrated `waist_pitch_link` rotation offset as its chest frame.
   `scripts/export_gmr_calibration_profile.py PATCH --output config/gmr_calibration/NAME.json`
   converts a `vita_gmr_neutral_calibration_v1` fit and prints the hash.
   `config/gmr_calibration/vita02a_neutral_20261110_h180.json` is fitted for
   one operator at 1.80 m; its held-out check did not pass. Its `provenance`
   block records the state at fit time (`offline_only_not_deployed`) and is
-  left unchanged because trial configs pin the file hash; it has since been
+  left unchanged because the configs pin the file hash; it has since been
   used in an operator-supported SONIC trial configuration, which is not a
   hardware validation.
 - `foot_support` (requires a profile) classifies each processed human foot as

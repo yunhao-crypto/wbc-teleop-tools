@@ -70,7 +70,10 @@ class StreamSettingsTests(unittest.TestCase):
         self.assertEqual((settings.gmr_cpus, settings.control_cpus), ((1,), (2, 3, 4)))
         self.assertTrue(set(settings.gmr_cpus) <= set(settings.worker_cpus))
         self.assertFalse(set(settings.control_cpus) & set(settings.gmr_cpus))
-        self.assertIsNone(sonic.stream)
+        self.assertEqual(sonic.stream.playback_margin_s, supermimic.stream.playback_margin_s)
+        self.assertEqual((sonic.stream.joint_filter, sonic.stream.root_filter),
+                         (supermimic.stream.joint_filter, supermimic.stream.root_filter))
+        self.assertIsNone(sonic.stream.root_max_tilt_rad)
         self.assertEqual(sonic.retarget.engine.max_iter, supermimic.retarget.engine.max_iter)
 
     def test_one_euro_holds_constants_and_follows_steps_with_bounded_lag(self):

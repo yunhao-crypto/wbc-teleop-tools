@@ -1,4 +1,4 @@
-"""Opt-in operator calibration and planted-foot targets for the pinned GMR.
+"""Operator calibration and planted-foot targets for the pinned GMR.
 
 Both are selected through the actor ``retargeting`` block and leave the
 vendored solver, IK configuration and MJCF byte-for-byte unchanged:
@@ -7,7 +7,9 @@ vendored solver, IK configuration and MJCF byte-for-byte unchanged:
   hash-pinned profile fitted on a confirmed neutral stance. The offsets live in
   GMR's height-scaled, ground-normalised human space, so a profile is only
   valid for the base configuration, operator height and ``offset_to_ground``
-  it was fitted with; any mismatch raises instead of silently mis-mapping.
+  it was fitted with. A different operator height switches the profile and
+  planted-foot targets off for that launch (see ``operator_calibration``);
+  every other mismatch raises instead of silently mis-mapping.
 * ``foot_support`` rewrites the toe/ankle task targets of a foot classified as
   planted: level sole with the tracked heading, on the calibrated ground, and
   the ankle target derived from the toe through the model's rigid foot offset.
@@ -37,11 +39,8 @@ def sha256_file(path):
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
 
-def load_calibration_profile(root, settings, base_config_path):
-    """Validated ``retargeting.calibration_profile``, or None when absent."""
-    spec = settings.get('calibration_profile')
-    if spec is None:
-        return None
+def _parse_profile(root, settings, base_config_path, *, check_height):
+    spec = settings['calibration_profile']
     if not isinstance(spec, dict) or set(spec) != {'path', 'sha256'}:
         raise ValueError('retargeting.calibration_profile needs exactly path and sha256')
     if root is None:
@@ -64,7 +63,9 @@ def load_calibration_profile(root, settings, base_config_path):
     if profile['base_config_sha256'] != sha256_file(base_config_path):
         raise ValueError('Calibration profile was fitted against another GMR configuration')
     height, fitted = float(settings['human_height_m']), profile['human_height_m']
-    if isinstance(fitted, bool) or not isinstance(fitted, (int, float)) or abs(float(fitted)-height) > 1e-9:
+    if isinstance(fitted, bool) or not isinstance(fitted, (int, float)) or not math.isfinite(fitted):
+        raise ValueError('Calibration profile has an invalid human_height_m')
+    if check_height and abs(float(fitted)-height) > 1e-9:
         raise ValueError(f'Calibration profile was fitted at human_height_m={fitted}, this launch uses '
                          f'{height}; offsets live in the height-scaled space, refit for this operator')
     if profile['offset_to_ground'] is not True or settings.get('offset_to_ground') is not True:
@@ -72,8 +73,11 @@ def load_calibration_profile(root, settings, base_config_path):
     tasks = profile['tasks']
     if not isinstance(tasks, dict) or not tasks:
         raise ValueError('Calibration profile has no tasks')
+    base = json.loads(Path(base_config_path).read_text())
     parsed = {}
     for frame, entry in tasks.items():
+        if any(frame not in base[key] for key in ('ik_match_table1', 'ik_match_table2')):
+            raise ValueError('Calibration profile names an unknown GMR task: '+str(frame))
         if not isinstance(entry, dict) or set(entry) != {'position_offset', 'rotation_offset_wxyz'}:
             raise ValueError('Calibration task needs position_offset and rotation_offset_wxyz: '+str(frame))
         position = np.asarray(entry['position_offset'], dtype=float)
@@ -84,8 +88,42 @@ def load_calibration_profile(root, settings, base_config_path):
             raise ValueError('Invalid calibration offsets for task '+str(frame))
         parsed[str(frame)] = (position.tolist(), rotation.tolist())
     return dict(path=str(relative), sha256=spec['sha256'], tasks=parsed,
-                provenance=profile.get('provenance'))
+                human_height_m=float(fitted), provenance=profile.get('provenance'))
 
+
+def load_calibration_profile(root, settings, base_config_path):
+    """Validated ``retargeting.calibration_profile``, or None when absent.
+
+    Strict: a launch height other than the fitted one raises. Launch paths use
+    ``operator_calibration``, which switches the profile off instead.
+    """
+    if settings.get('calibration_profile') is None:
+        return None
+    return _parse_profile(root, settings, base_config_path, check_height=True)
+
+
+def operator_calibration(root, settings, base_config_path):
+    """Effective ``(calibration, foot_support, notice)`` for this launch.
+
+    A profile is fitted for one operator height. At another height both the
+    profile and the planted-foot targets (which need its calibrated ground) are
+    off for the launch and ``notice`` records why; otherwise ``notice`` is None.
+    Every other profile or setting problem raises, at any height.
+    """
+    support = foot_support_settings(settings.get('foot_support'))
+    calibration = None
+    if settings.get('calibration_profile') is not None:
+        calibration = _parse_profile(root, settings, base_config_path, check_height=False)
+    # The planted sole height comes from the calibrated home pose; the
+    # shipped offsets do not place the human ground on the robot ground.
+    if support is not None and calibration is None:
+        raise ValueError('retargeting.foot_support requires retargeting.calibration_profile')
+    height = float(settings['human_height_m'])
+    if calibration is not None and abs(calibration['human_height_m']-height) > 1e-9:
+        return None, None, dict(reason='human_height_mismatch', profile=calibration['path'],
+                                fitted_human_height_m=calibration['human_height_m'], human_height_m=height,
+                                calibration_profile_disabled=True, foot_support_disabled=support is not None)
+    return calibration, support, None
 
 def apply_calibration(config, calibration):
     """Write profile offsets into both IK tables of a parsed GMR configuration."""
