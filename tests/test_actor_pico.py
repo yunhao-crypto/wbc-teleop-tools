@@ -134,18 +134,26 @@ class ActorPicoTests(unittest.TestCase):
         from deployment.vita_s100_aorta_30dof.actor_pico_gmr import create_retargeter
         replay = np.load(ROOT/'tests/fixtures/actor_pico/pico_replay.npz')['body_poses']
         golden = np.load(ROOT/'tests/fixtures/actor_pico/bridge_gmr_golden.npz')['body_poses']
-        for height, bodies in ((None, replay), (1.6, golden), (None, [self.body()]*5)):
+        # Uncalibrated engines, then the shipped default (calibration + planted feet).
+        for height, bodies, plain in ((None, replay, True), (1.6, golden, True), (None, [self.body()]*5, True),
+                                      (None, golden, False)):
             config = dict(self.config, retargeting=dict(self.config['retargeting']))
+            if plain:
+                config['retargeting'].pop('calibration_profile')
+                config['retargeting'].pop('foot_support')
             if height is not None:
                 config['retargeting']['human_height_m'] = height
             fast = create_retargeter(ROOT, config, self.c, self.math)
             pinned = create_retargeter(ROOT, config, self.c, self.math, accelerated=False)
             self.assertTrue(fast.accelerated)
             self.assertFalse(pinned.accelerated)
-            self.assertEqual(type(pinned.engine).__name__, 'GeneralMotionRetargeting')
-            for body in bodies:
+            self.assertEqual(type(pinned.engine).__name__,
+                             'GeneralMotionRetargeting' if plain else 'FootSupportRetargeting')
+            self.assertEqual(pinned.foot_support is None, plain)
+            for i, body in enumerate(bodies):
+                stamp = None if plain else 1_000_000_000+i*12_000_000
                 self.assertEqual(fast.processed_body(body), pinned.processed_body(body))
-                a, b = fast.solve(body), pinned.solve(body)
+                a, b = fast.solve(body, stamp_ns=stamp), pinned.solve(body, stamp_ns=stamp)
                 np.testing.assert_array_equal(fast.last_qpos, pinned.last_qpos)
                 np.testing.assert_array_equal(a[0], b[0])
                 np.testing.assert_array_equal(a[1], b[1])
@@ -161,17 +169,17 @@ class ActorPicoTests(unittest.TestCase):
             # The pinned engine is available only when requested explicitly.
             rt = create_retargeter(ROOT, self.config, self.c, self.math, accelerated=False)
         self.assertFalse(rt.accelerated)
-        self.assertEqual(type(rt.engine).__name__, 'GeneralMotionRetargeting')
-        rt.solve(self.body())
+        self.assertEqual(type(rt.engine).__mro__[1].__name__, 'GeneralMotionRetargeting')
+        rt.solve(self.body(), stamp_ns=1_000_000_000)
         self.assertTrue(np.isfinite(rt.last_qpos).all())
 
     def test_human_height_default_override_and_invalid_values(self):
-        self.assertEqual(self.config['retargeting']['human_height_m'], 1.75)
+        self.assertEqual(self.config['retargeting']['human_height_m'], 1.8)
         default = self.retarget()
         shorter = self.retarget(human_height=1.6)
         key = default.engine.human_root_name
         self.assertAlmostEqual(default.engine.human_scale_table[key] /
-                               shorter.engine.human_scale_table[key], 1.75/1.6)
+                               shorter.engine.human_scale_table[key], 1.8/1.6)
         for height in (0, float('nan'), float('inf')):
             with self.assertRaises(ValueError):
                 self.retarget(human_height=height)

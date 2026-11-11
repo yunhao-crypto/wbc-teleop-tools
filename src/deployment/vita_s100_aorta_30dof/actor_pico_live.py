@@ -677,6 +677,7 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
         fixed_joints=runtime.config['body_profile']['fixed_joints'],
         reference_delay_s=runtime.reference.delay if motion_source is None else 0.,
         human_height_m=runtime.config['retargeting']['human_height_m'] if motion_source is None else None,
+        gmr_calibration=runtime.gmr_calibration if motion_source is None else None,
         pico_stream=runtime.config.get('pico_stream') if motion_source is None else None,
         pico_worker=runtime.config.get('pico_worker'),
         head_control=runtime.config.get('head_control') if runtime.head is not None else None)), flush=True)

@@ -1,7 +1,7 @@
 """Adapter to the pinned motion-stream-bridge Vita02A GMR implementation.
 
 The vendored solver, Unity conversion and XML remain intact. Candidate profiles
-may narrow ankle ranges before constructing the IK limits; opt-in operator
+may narrow ankle ranges before constructing the IK limits; operator
 calibration profiles and planted-foot targets live in actor_pico_gmr_profile. The adapter validates
 raw frames and selects joints by name; following entry anchors world yaw. It does
 not calibrate an arbitrary first pose to home.
@@ -24,8 +24,7 @@ import tempfile
 import numpy as np
 from scipy.spatial.transform import Rotation
 
-from .actor_pico_gmr_profile import (apply_calibration, foot_support_engine, foot_support_settings,
-                                     load_calibration_profile)
+from .actor_pico_gmr_profile import apply_calibration, foot_support_engine, operator_calibration
 
 # The accelerated engine reuses mink/daqp internals of exactly these releases.
 _ACCELERATED_VERSIONS = {'mink': '1.3.0', 'daqp': '0.10.3', 'qpsolvers': '4.13.0'}
@@ -190,7 +189,7 @@ def _accelerated_engine(module):
 
 
 def _construct_engine(engine, config_path, settings, root=None):
-    """Apply opt-in settings to a copy of the pinned config before Mink snapshots it.
+    """Apply retargeting settings to a copy of the pinned config before Mink snapshots it.
 
     ``ankle_reference_limits`` narrows candidate-specific ankle ranges,
     ``calibration_profile`` replaces task offsets and ``foot_support``
@@ -201,13 +200,8 @@ def _construct_engine(engine, config_path, settings, root=None):
     kwargs = dict(src_human='xrobot', tgt_robot='vita02a',
                   actual_human_height=float(settings['human_height_m']), verbose=False)
     limits = settings.get('ankle_reference_limits')
-    calibration = load_calibration_profile(root, settings, config_path)
-    support = foot_support_settings(settings.get('foot_support'))
+    calibration, support, notice = operator_calibration(root, settings, config_path)
     if support is not None:
-        # The planted sole height comes from the calibrated home pose; the
-        # shipped offsets do not place the human ground on the robot ground.
-        if calibration is None:
-            raise ValueError('retargeting.foot_support requires retargeting.calibration_profile')
         engine = foot_support_engine(engine)
     if limits is None and calibration is None:
         built = engine(config=str(config_path), **kwargs)
@@ -225,6 +219,7 @@ def _construct_engine(engine, config_path, settings, root=None):
         built.calibration = calibration
     if support is not None:
         built.configure_foot_support(support)
+    built.calibration_notice = notice
     return built
 
 
@@ -269,6 +264,7 @@ class PicoGmrRetargeter:
             vendor/'motion_stream_bridge/gmr_lite/configs/xrobot_to_vita02a.json', settings, root=root)
         self.calibration = getattr(self.engine, 'calibration', None)
         self.foot_support = getattr(self.engine, 'foot_support', None)
+        self.calibration_notice = self.engine.calibration_notice
         import mujoco
         self.indices = []
         for name in contract.names:

@@ -245,9 +245,23 @@
   "retargeting": {
     "implementation": "motion_stream_bridge_gmr_vita02a",
     "source_commit": "763f5607c3f0accb61a415cfd676af54b72e1232",
-    "human_height_m": 1.75,
+    "human_height_m": 1.8,
     "robot": "vita02a",
-    "offset_to_ground": true
+    "offset_to_ground": true,
+    "calibration_profile": {
+      "path": "config/gmr_calibration/vita02a_neutral_20261110_h180.json",
+      "sha256": "048f0591b38a813104164e98a385144972677c33ff11ad110095ff60a34616a6"
+    },
+    "foot_support": {
+      "enter_height_m": 0.03,
+      "exit_height_m": 0.05,
+      "enter_speed_m_s": 0.15,
+      "exit_speed_m_s": 0.35,
+      "enter_hold_s": 0.05,
+      "blend_s": 0.15,
+      "speed_cutoff_hz": 4.0,
+      "note": "Planted-foot targets (level sole on calibrated ground, rigid toe/ankle). Needs the calibration profile; both switch off with a warning when the launch height differs from the profile's 1.80 m."
+    }
   },
   "pico_worker": {
     "ik_max_iter": 3,
@@ -268,5 +282,19 @@
       4
     ],
     "note": "Same GMR/receiver/control layout as SuperMimic (config/actor_pico_supermimic.json): ik_max_iter 3, 2 ms duplicate polling, receivers on CPU 0-4, GMR on CPU 1, live control on CPU 2-4 (full-load layout B). These CPU indices require the reviewed six-core S100 layout."
+  },
+  "pico_stream": {
+    "playback_margin_s": 0.06,
+    "joint_filter": {
+      "min_cutoff_hz": 3.0,
+      "beta": 0.5,
+      "d_cutoff_hz": 1.0
+    },
+    "root_filter": {
+      "min_cutoff_hz": 1.5,
+      "beta": 0.3,
+      "d_cutoff_hz": 1.0
+    },
+    "note": "SONIC control-clock playback with the SuperMimic One-Euro filters. No root_max_tilt_deg: in closed-loop sim the 25 deg clamp made SONIC49000 fall during deep forward bends (reference pelvis tilt 45-53 deg); without it all runs completed."
   }
 }

@@ -17,7 +17,7 @@ import numpy as np
 from .actor_morphmimic import MorphMimicContract, POLICY_KIND as MORPHMIMIC_KIND
 from .actor_groot_ankle import contract_from_metadata as groot_contract
 from .actor_pico_gmr import create_retargeter
-from .actor_pico_gmr_profile import apply_calibration, load_calibration_profile
+from .actor_pico_gmr_profile import apply_calibration, operator_calibration
 from .actor_pico_head import PicoHeadControl, head_settings
 from .actor_pico_stream import stream_settings, worker_settings
 from .actor_supermimic import (POLICY_KIND as SUPERMIMIC_KIND, NativeModel, SuperMimicContract,
@@ -150,13 +150,19 @@ class ActorPicoRuntime:
         self.policy = create_policy(self.model.contract, self.config['body_profile'], self.math, self.config)
         from .actor_parallel_ankle import command_space
         command_space(self.policy)  # Reject native commands with a virtual-angle model immediately.
+        calibration = self.gmr_calibration = None
+        if reference_source == 'pico':
+            gmr_path = self.root/self.config['artifacts']['gmr_source_4']['path']
+            calibration, support, notice = operator_calibration(self.root, self.config['retargeting'], gmr_path)
+            self.gmr_calibration = dict(
+                calibration_profile=calibration['path'] if calibration is not None else None,
+                foot_support=support is not None,
+                human_height_m=float(self.config['retargeting']['human_height_m']), notice=notice)
         settings = head_settings(self.config)
         self.head = None
         if settings is not None and reference_source == 'pico':
-            gmr_path = self.root/self.config['artifacts']['gmr_source_4']['path']
             gmr_config = json.loads(gmr_path.read_text())
             # Head motion is expressed in the same chest frame the GMR waist task uses.
-            calibration = load_calibration_profile(self.root, self.config['retargeting'], gmr_path)
             if calibration is not None:
                 apply_calibration(gmr_config, calibration)
             offset = gmr_config['ik_match_table1']['waist_pitch_link'][4]
