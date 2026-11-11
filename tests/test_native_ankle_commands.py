@@ -244,18 +244,10 @@ class NativeAnkleTests(unittest.TestCase):
                     # all controlled PD targets survive advertised q ranges.
                     extreme, row = policy.decode(np.full(28, 100.))
                     envelope.check(extreme)
-                    # The SDK keeps its RobotInfo q check except for the exact
-                    # declared policy targets, and only with the robot opt-in.
+                    # Official SDK #23 delegates device ranges to EXTERNAL;
+                    # the actor still validates its policy envelope locally.
                     from locomotion_aorta.controller import _validate_body_targets
-                    from locomotion_aorta import InvalidCommandError
-                    exempt=set(envelope.q_limit_exempt_names)
-                    self.assertEqual(exempt,set(policy.contract.names)&set(envelope.target_names))
-                    _validate_body_targets(extreme,body,envelope.target_names,0x1f,envelope.q_limit_exempt_names)
-                    with self.assertRaises(InvalidCommandError):
-                        _validate_body_targets(extreme,body,envelope.target_names,0x1f)
-                    params['allow_position_targets_outside_mechanical_range']=False
-                    self.assertEqual(CommandEnvelope(runtime,reply,params).q_limit_exempt_names,())
-                    params['allow_position_targets_outside_mechanical_range']=True
+                    _validate_body_targets(extreme,body,envelope.target_names,0x1f)
                     expected = policy.contract.policy_default+policy.contract.scale*policy.contract.action_clip
                     for i, slot in enumerate(policy.mapping):
                         self.assertEqual(extreme.joints[slot].q, float(np.float32(expected[i])))

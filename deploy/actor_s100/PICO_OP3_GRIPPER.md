@@ -10,7 +10,7 @@ been made with it.
 1. A rebuilt PICO binding that exports `get_controller_grip_snapshot`
    (`third_party/pico_binding`, same build as before). The archived prebuilt
    extension in this delivery predates it.
-2. The pinned SDK 0.3.0 (humanoid-sdk 535cbbc: main abe21ab plus PR #22) with
+2. The pinned SDK 0.3.0 (official main `a0b50cef`, merged PR #23) with
    `locomotion_aorta.end_effector.EndEffectorClient` and its generated EE
    bindings. The body path uses the same SDK (body protocol 3, control
    protocol 4); Body and EE commands share one controller's session and

@@ -134,13 +134,13 @@ class ActorPicoTests(unittest.TestCase):
         from deployment.vita_s100_aorta_30dof.actor_pico_gmr import create_retargeter
         replay = np.load(ROOT/'tests/fixtures/actor_pico/pico_replay.npz')['body_poses']
         golden = np.load(ROOT/'tests/fixtures/actor_pico/bridge_gmr_golden.npz')['body_poses']
-        # Uncalibrated engines, then the shipped default (calibration + planted feet).
+        # Default uncalibrated engines, then explicit calibration + planted feet.
         for height, bodies, plain in ((None, replay, True), (1.6, golden, True), (None, [self.body()]*5, True),
                                       (None, golden, False)):
             config = dict(self.config, retargeting=dict(self.config['retargeting']))
-            if plain:
-                config['retargeting'].pop('calibration_profile')
-                config['retargeting'].pop('foot_support')
+            if not plain:
+                from test_actor_pico_gmr_profile import profile_spec, FOOT
+                config['retargeting'].update(calibration_profile=profile_spec(), foot_support=FOOT)
             if height is not None:
                 config['retargeting']['human_height_m'] = height
             fast = create_retargeter(ROOT, config, self.c, self.math)

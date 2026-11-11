@@ -500,6 +500,33 @@ class LiveTests(unittest.TestCase):
         stages=[r['stage'] for r in self.rows if 'stage' in r]
         self.assertEqual(stages[-1],'prepare_stand')
 
+    def test_expired_head_with_fresh_body_keeps_tracking_and_publishing(self):
+        worker, command = self.manual_trial()
+        self.args.seconds = 4.8
+        original = worker.snapshot
+        def snapshot():
+            value = original()
+            if value['state'] == 'ready':
+                age = 10. if 165 <= len(self.transport.commands) < 190 else 0.
+                value['head_snapshot'] = dict(raw_body_poses=value['raw_body_poses'],
+                    pico_timestamp_ns=value['pico_timestamp_ns'],
+                    received_monotonic=self.clock.monotonic()-age, source='pico_reader')
+            return value
+        with patch.object(worker, 'snapshot', snapshot):
+            report = self.run_trial(manual_pico=worker, poll_command=command)
+        held = [row for row in self.rows if row.get('head_control', {}).get('input_expired')]
+        self.assertGreater(len(held), 10)
+        self.assertTrue(all(row['stage'] == 'pico_tracking' for row in held))
+        self.assertTrue(all(row['head_control']['mode'] == 'hold' for row in held))
+        last_hold = max(i for i, row in enumerate(self.rows)
+                        if row.get('head_control', {}).get('input_expired'))
+        self.assertTrue(any(row.get('stage') == 'pico_tracking' and
+                            row.get('head_control', {}).get('mode') == 'tracking'
+                            for row in self.rows[last_hold+1:]))
+        self.assertFalse(any(row.get('record_type') == 'pico_loss_stand' for row in self.rows))
+        self.assertEqual([r.operation.value for r in self.transport.requests], ['PREPARE', 'COMMIT', 'CANCEL'])
+        self.assertTrue(report['exit_confirmed'])
+
     def test_fresh_head_does_not_bypass_expired_body_reference(self):
         worker,command=self.manual_trial()
         original=worker.snapshot
@@ -716,6 +743,48 @@ class LiveTests(unittest.TestCase):
         self.assertFalse(any(r.get('stage') == 'pico_tracking' for r in after))
         self.assertEqual(report['pico_losses'], 1)
         self.assertTrue(report['exit_confirmed'])
+        self.assert_cancelled()
+
+    def test_required_pico_persistent_worker_failure_keeps_standing(self):
+        self.args.seconds = 6.5
+        original = self.pico.snapshot
+        def snapshot():
+            if len(self.transport.commands) >= 180:
+                return dict(state='failed', error='persistent worker failure')
+            return original()
+        with patch.object(self.pico, 'snapshot', snapshot):
+            report = self.run_trial()
+        loss_index = next(i for i, row in enumerate(self.rows)
+                          if row.get('record_type') == 'pico_loss_stand')
+        after = [row for row in self.rows[loss_index+1:] if 'sent_body_targets' in row]
+        self.assertGreater(len(after), 50)
+        self.assertTrue(all(row['stage'] == 'prepare_stand' for row in after))
+        self.assertEqual(len({row['state_id'] for row in after}), len(after))
+        self.assertEqual(report['pico_losses'], 1)
+        self.assertTrue(report['exit_confirmed'])
+        self.assertEqual([c.sequence for c in self.transport.commands],
+                         list(range(1, report['actions_sent']+1)))
+        self.assert_cancelled()
+
+    def test_robot_fault_after_pico_worker_loss_still_cancels(self):
+        self.args.seconds = 6.5
+        original = self.pico.snapshot
+        def snapshot():
+            if len(self.transport.commands) >= 180:
+                return dict(state='failed', error='persistent worker failure')
+            return original()
+        def state_fault(state):
+            if len(self.transport.commands) < 200:
+                return state
+            errors = state.error_code.copy()
+            errors[0] = 8  # Real body feedback faults must still terminate stand.
+            return replace(state, error_code=errors)
+        with patch.object(self.pico, 'snapshot', snapshot):
+            self.transport.state_fault = state_fault
+            with self.assertRaises(ValueError):
+                self.run_trial()
+        self.assertTrue(any(row.get('record_type') == 'pico_loss_stand' for row in self.rows))
+        self.assertEqual(len(self.transport.commands), 200)
         self.assert_cancelled()
 
     def test_pico_loss_action_cancel_still_aborts_to_passive(self):
@@ -1155,13 +1224,9 @@ class LiveTests(unittest.TestCase):
                 with self.assertRaisesRegex(error, message): self.run_trial()
                 self.assertEqual(self.transport.requests, [])
 
-    def test_sdk_exempts_only_opted_in_unclipped_targets(self):
-        # SDK 0.3.0 checks every target q against RobotInfo before transmission.
-        # With the robot opt-in, the declared unclipped policy targets are exempt
-        # and pass a narrowed advertised range; without the exemption the SDK
-        # refuses the first such target, nothing out of range leaves, and entry
-        # is cancelled.
-        from locomotion_aorta import InvalidCommandError
+    def test_official_sdk_publishes_unclipped_targets_without_exemption_api(self):
+        # Real SDK #23 has no exemption keyword. A complete trial must publish
+        # policy q outside RobotInfo ranges through its public publish API.
         self.assertIs(getattr(self.runtime.policy, 'clip_target_positions', True), False)
         default = float(self.runtime.model.contract.default[
             list(self.runtime.model.contract.names).index('left_knee_joint')])
@@ -1177,17 +1242,6 @@ class LiveTests(unittest.TestCase):
         self.assertTrue(any(not default-.05 <= c.joints[slot].q <= default+.05 for c in self.transport.commands))
         self.assert_cancelled()
 
-        self.setUp(); slot = narrow()
-        publish = self.controller.publish
-        def without_exemption(*a, **kw):
-            kw['q_limit_exempt_names'] = ()
-            return publish(*a, **kw)
-        with patch.object(self.controller, 'publish', without_exemption):
-            with self.assertRaisesRegex(InvalidCommandError, 'target q outside limit: %d' % slot):
-                self.run_trial()
-        self.assertTrue(self.transport.commands)
-        self.assertTrue(all(default-.05 <= c.joints[slot].q <= default+.05 for c in self.transport.commands))
-        self.assert_cancelled()
     def test_config_changed_during_preflight_refuses_entry(self):
         original=self.runtime.infer_motion
         def changed(*a,**kw):
