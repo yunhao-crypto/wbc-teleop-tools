@@ -1,4 +1,4 @@
-"""SuperMimic Vita02A tracking actor on the SDK 0.2.1 Body31 interface.
+"""SuperMimic Vita02A tracking actor on the SDK 0.3.0 Body31 interface.
 
 The exported model states its observation/goal layout in
 ``supermimic.tracking_contract.v1`` metadata. The SDK's quaternion math,
@@ -286,7 +286,7 @@ def policy_class(math_api):
 
 
 class NativeModel:
-    """SDK 0.2.1 native ONNX session with a metadata contract parser (mirrors SDK Model)."""
+    """SDK 0.3.0 native ONNX session with a metadata contract parser (mirrors SDK Model)."""
 
     def __init__(self, path, math_api, threads=1, parse=SuperMimicContract.from_metadata):
         session_type = importlib.import_module(math_api.__name__.rpartition('.')[0]+'._onnx').Session

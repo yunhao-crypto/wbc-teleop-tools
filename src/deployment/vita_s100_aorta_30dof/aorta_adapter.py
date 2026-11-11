@@ -129,6 +129,8 @@ class VitaRawStateSource:
             self.group = self._effective_group(self._source)
             if self.group != group:
                 raise RuntimeError('effective Aorta group does not match config')
+            # SDK 0.3 accepts BodyState only from the discovered robot runtime.
+            validate_robot_info(self._source.get_robot_info(5.))
         except BaseException:
             self.close()
             raise
@@ -264,13 +266,16 @@ class VitaExternalSession:
         """Wait for this controller's own LowState and status subscriptions."""
 
         deadline = time.monotonic() + float(timeout)
+        # Discovery binds the runtime first; SDK 0.3 drops state/status otherwise.
+        reply = self.controller.get_robot_info(max(0.001, deadline - time.monotonic()))
+        validate_robot_info(reply)
+        self.target_names = tuple(name for name, cap in zip(reply.info.body.joint_names,
+                                                            reply.info.body.joints) if not cap.is_mock)
         self.controller.wait_state(max(0.001, deadline - time.monotonic()))
         while time.monotonic() < deadline:
             status = self.controller.status
             if status is not None:
                 self.require_available(status)
-                validate_robot_info(self.controller.get_robot_info(
-                    max(0.001, deadline - time.monotonic())))
                 return status
             time.sleep(0.01)
         raise TimeoutError("timed out waiting for S100 control status")
@@ -287,7 +292,7 @@ class VitaExternalSession:
             raise RuntimeError(
                 "S100 already has an active EXTERNAL owner: "
                 f"client_id={status.client_id!r}, "
-                f"lease_id={status.lease_id!r}, phase={phase}"
+                f"control_id={status.control_id!r}, phase={phase}"
             )
 
     def enter(self, timeout: float, *, lease_duration_s: float) -> Any:
@@ -324,7 +329,8 @@ class VitaExternalSession:
                                     input_state_ts_real_us=input_state_ts_real_us)
         publish_started_ns = int(self._monotonic_ns())
         publish_started_wall_ns = time.time_ns()
-        sent = self.controller.publish(command)
+        sent = self.controller.publish(command, target_names=self.target_names,
+                                       required_fields=0x1f)
         wire_command = getattr(self.controller.transport, 'last_body_command', None)
         # The SDK return object still has its pre-transport monotonic send stamp.
         wire_send_us = (wire_command.ts_client_send_us

@@ -121,13 +121,14 @@ def main():
         camera_tests = run_tests('tests/test_pico_camera_bridge.py', cwd=export, env=env)
         camera_prepare_tests = run_tests('tests/test_pico_viewer_prepare.py', cwd=export, env=env)
         camera_session_tests = run_tests('tests/test_pico_session_services.py', cwd=export, env=env)
+        gripper_tests = run_tests('tests/test_actor_pico_gripper.py', cwd=export, env=env)
         # Compile actual callback/parser/getter source without Python or ARM
         # libraries; no vendor SDK init or service is run by this regression.
         run([sys.executable, 'scripts/state_test_pico_snapshot.py'], cwd=export, env=env)
         result = dict(status='PASS_STAGED_GIT_DELIVERY', offline_wheels=wheel_count,
                       runtime_archives_verified=True, pico_snapshot_cpp='PASS',
                       installer_tests=installer_tests, full_load_benchmark_tests=full_load_tests,
-                      camera_bridge_tests=camera_tests,
+                      camera_bridge_tests=camera_tests, gripper_tests=gripper_tests,
                       camera_viewer_prepare_tests=camera_prepare_tests,
                       pico_session_lifecycle_tests=camera_session_tests,
                       local_provision_tests='not_measured',
@@ -151,6 +152,10 @@ def main():
             head_tests = run_tests('tests/test_actor_pico_head.py', cwd=export, env=env)
             provision_tests = run_tests('tests/test_actor_local_provision.py', cwd=export, env=env)
             live_tests = run_tests('tests/test_actor_pico_live.py', cwd=export, env=env)
+            # Rerun with the SDK present: the pinned EE enum check must execute, not skip.
+            gripper_sdk = run([sys.executable, 'tests/test_actor_pico_gripper.py'], cwd=export, env=env)
+            if 'skipped' in gripper_sdk:
+                raise RuntimeError('Pinned-SDK gripper checks were skipped\n'+gripper_sdk)
             reader_tests = run_tests('src/tests/test_pico_atomic_reader.py', cwd=export, env=env)
             run([sys.executable, 'scripts/actor_pico.py', 'check', '--steps', '100'], cwd=export, env=env)
             run([sys.executable, 'scripts/actor_pico.py', 'replay', '--input',
@@ -165,7 +170,8 @@ def main():
             result.update(model_steps=100, replay_steps=100, actor_tests=actor_tests, pico_reader_tests=reader_tests,
                           head_control_tests=head_tests,
                           local_provision_tests=provision_tests,
-                          live_runner_tests=live_tests, live_runner_io='simulated; real SDK session/math',
+                          live_runner_tests=live_tests, gripper_pinned_sdk_check='PASS',
+                          live_runner_io='simulated; real SDK session/math',
                           robot_motion='not_measured')
         (ROOT/'outputs').mkdir(exist_ok=True)
         (ROOT/'outputs/actor_delivery_validation.json').write_text(json.dumps(result, indent=2)+'\n')

@@ -27,8 +27,8 @@ disables video. Offline validation modes do not start it.
 
 ## Included dependencies
 
-`wheelhouse/` contains 21 pinned wheels: locomotion-aorta 0.2.1,
-aorta-sdk/aorta-msgs 2026.10.20, vbot-humanoid-msgs 0.1.5,
+`wheelhouse/` contains 21 pinned wheels: locomotion-aorta 0.3.0,
+aorta-sdk/aorta-msgs 0.0.0+g7649a87ebb03, vbot-humanoid-msgs 0.0.0+g35ce9eb82d5b,
 FlatBuffers 25.12.19, NumPy 1.26.4, PyYAML 6.0.3 and pybind11 2.13.6, plus the complete pinned GMR dependency closure
 (mink 1.3.0, MuJoCo 3.11.0, SciPy 1.15.3, DAQP 0.10.3 and qpsolvers 4.13.0).
 The bootstrap uses pip's full dependency resolver with `--no-index` and runs
@@ -46,6 +46,9 @@ with aarch64 GCC 11 and the target's Python 3.10 headers, then imported and
 queried on S100 without initializing the SDK. The SDK/service binaries and
 double-conversion dependency are unchanged; actual controller input is a
 separate hardware check.
+The binding source also exports a same-packet side-grip snapshot used by the
+opt-in OP3 gripper control; see `PICO_OP3_GRIPPER.md`. That needs a rebuilt
+binding and an SDK with the end-effector client.
 Retain the original license/notices associated with each dependency.
 
 ## Target prerequisites
@@ -64,17 +67,34 @@ Retain the original license/notices associated with each dependency.
 - A Pico headset client with full-body tracking, calibrated trackers and Send
   enabled. The headset client and robot firmware are separate installed products.
 
-The tested robot baseline is `1.6.0-200`, commit
-`c9b4e80c074a8898d1290927a1be5350bc725d4a`, with Aorta/messages `2026.10.20`.
-The pinned SDK build follows humanoid-sdk main `95268c7d957242383b42341ddef1c084e6229322`
-(development build, not a separately published SDK release). The wheel and native
-library identities are sealed in `config/sdk021-wheel-guard.json`; update the
+The pinned SDK build follows humanoid-sdk `535cbbc02c5baa22157520491128aa211b61c997`
+(main `abe21ab` plus PR #22, which adds `publish(..., q_limit_exempt_names=...)`;
+only `controller.py` differs from the main wheel; development build, not a separately published SDK release; its manifest marks the
+native inputs as not ABI-validated). The wheel and native library identities are
+sealed in `config/sdk021-wheel-guard.json` (file name kept from 0.2.1); update the
 per-deployment venv as well as the source/config files. Changing `/userdata/sdk-demo`
 alone does not update a WBC trial environment.
 
-The actor uses SDK `0.2.1`, Body31 protocol 2 / roster 1, 28 policy joints and
-fixed neck targets; waist-roll slot 14 is unpopulated. A different firmware
-requires an interface/configuration review before live use. Device-owned peer
+The actor uses SDK `0.3.0`: control protocol 4 with numeric client/control IDs
+and robot runtime binding, Body31 protocol 3 / roster 1, RobotInfo protocol 2,
+28 policy joints and two neck joints; waist-roll slot 14 is MOCK and every
+command leaves it zero. It needs robot firmware that speaks these protocols
+(vita-robot master `896385d5b` or later). The earlier tested baseline
+`1.6.0-200` (`c9b4e80c`, Aorta/messages `2026.10.20`) speaks only the 0.2.1
+protocols and cannot run this delivery. No robot run with SDK 0.3.0 has been made.
+A different firmware requires an interface/configuration review before live use.
+
+**Out-of-range PD targets for the motor-theta / unclipped policies (SONIC,
+SuperMimic, MorphMimic).** These policies send unclipped PD setpoints that leave
+the advertised RobotInfo q range (on the robot-42 SONIC log about a fifth of
+steps, mainly the ankles). The SDK checks every BodyCmd target q against that
+range before sending, except the joints passed in `q_limit_exempt_names`. The
+actor passes the policy's unclipped target joints only when the robot YAML sets
+`allow_position_targets_outside_mechanical_range: true` together with a finite
+`position_target_margin_rad` in (0, pi]; any other out-of-range target raises
+`InvalidCommandError`, after which the actor cancels EXTERNAL and the robot goes
+to PASSIVE. The firmware must implement the same opt-in (vita-robot PR #13086).
+Neither SDK PR #22 nor firmware PR #13086 is merged or HIL-accepted. Device-owned peer
 credentials and the active effective A-sample YAML are external prerequisites,
 not files to copy from the developer's machine. Live scheduling requires
 permission for SCHED_RR priority 1.

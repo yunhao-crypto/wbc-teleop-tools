@@ -5,7 +5,7 @@
 #include <stdexcept>
 #include <nlohmann/json.hpp>
 
-// Both trigger depths and the root timestamp from one controller packet.
+// Both trigger (or grip) depths and the root timestamp from one controller packet.
 struct ControllerTriggerSnapshot {
     bool available = false;
     int64_t packet_timestamp_ns = 0;
@@ -14,14 +14,15 @@ struct ControllerTriggerSnapshot {
     std::chrono::steady_clock::time_point received{};
 };
 
-inline ControllerTriggerSnapshot parseControllerTriggerSnapshot(const nlohmann::json& value) {
+inline ControllerTriggerSnapshot parseControllerTriggerSnapshot(const nlohmann::json& value,
+                                                                const char* key = "trigger") {
     ControllerTriggerSnapshot candidate;
     const auto& stamp = value.at("timeStampNs");
     if (!stamp.is_number_integer() || stamp.get<int64_t>() <= 0)
         throw std::runtime_error("Controller packet requires a positive root timestamp");
     const auto& controller = value.at("Controller");
-    const auto& left = controller.at("left").at("trigger");
-    const auto& right = controller.at("right").at("trigger");
+    const auto& left = controller.at("left").at(key);
+    const auto& right = controller.at("right").at(key);
     if (!left.is_number() || !right.is_number())
         throw std::runtime_error("Controller trigger depths must be numeric");
     candidate.left = left.get<double>();

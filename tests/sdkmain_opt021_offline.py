@@ -359,9 +359,9 @@ class PullSourceTests(FixtureCase):
 
 
 class GuardAndScopeTests(unittest.TestCase):
-    def test_original_15_pins_retained_and_final_wheel_required_before_node(self):
+    def test_original_18_pins_retained_and_final_wheel_required_before_node(self):
         self.assertEqual(set(guard.VENDOR_SOURCE_SHA256), set(guard.ORIGINAL_VENDOR_FILES))
-        self.assertEqual(len(guard.VENDOR_SOURCE_SHA256), 15)
+        self.assertEqual(len(guard.VENDOR_SOURCE_SHA256), 18)
         with patch.object(guard, 'GUARD', {**guard.GUARD, 'status': 'AWAITING_REQ182_FINAL_WHEEL'}), \
              patch('aorta.Node', side_effect=AssertionError('must not open a Node')):
             with self.assertRaisesRegex(RuntimeError, 'wheel guard is pending'):
@@ -369,7 +369,7 @@ class GuardAndScopeTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, 'wheel guard is pending'):
                 live_io.OnboardLiveStateSource(group='default', alignment=[1, 0, 0, 0])
 
-    def test_all_15_and_new_hot_path_files_are_checked_not_just_length(self):
+    def test_all_18_and_new_hot_path_files_are_checked_not_just_length(self):
         import hashlib
         payloads = {n: n.encode() for n in guard.ORIGINAL_VENDOR_FILES + guard.RUNTIME_FILES}
         native = {'_body_cmd_native.fixture.so': b'encoder',
@@ -459,7 +459,7 @@ class GuardGeneratorTests(unittest.TestCase):
         self.directory = Path(self.temp.name)
         spec = importlib.util.spec_from_file_location('guard_generator', ROOT / 'scripts/generate_sdk021_guard.py')
         self.generator = importlib.util.module_from_spec(spec); spec.loader.exec_module(self.generator)
-        self.compat = {'aorta_version': '2026.10.20', 'humanoid_msgs_version': '0.1.5',
+        self.compat = {'aorta_version': '0.0.0+g7649a87ebb03', 'humanoid_msgs_version': '0.0.0+g35ce9eb82d5b',
                        'flatbuffers_version': '25.12.19', 'schema_sha256': {'body_state': 'fixture-sha'}}
         self.sources = {name: ('fixture:' + name).encode()
                         for name in self.generator.ORIGINAL + self.generator.RUNTIME}
@@ -467,13 +467,13 @@ class GuardGeneratorTests(unittest.TestCase):
     def wheel(self, *, changed=None, dependencies=True):
         import hashlib, zipfile
         path = self.directory / 'fixture.whl'
-        metadata = 'Name: locomotion-aorta\nVersion: 0.2.1\n'
+        metadata = 'Name: locomotion-aorta\nVersion: 0.3.0\n'
         if dependencies:
             metadata += ''.join('Requires-Dist: ' + name + '\n' for name in (
-                'aorta-sdk==2026.10.20', 'aorta-msgs==2026.10.20',
-                'vbot-humanoid-msgs==0.1.5', 'flatbuffers==25.12.19'))
+                'aorta-sdk==0.0.0+g7649a87ebb03', 'aorta-msgs==0.0.0+g7649a87ebb03',
+                'vbot-humanoid-msgs==0.0.0+g35ce9eb82d5b', 'flatbuffers==25.12.19'))
         with zipfile.ZipFile(path, 'w') as wheel:
-            wheel.writestr('locomotion_aorta-0.2.1.dist-info/METADATA', metadata)
+            wheel.writestr('locomotion_aorta-0.3.0.dist-info/METADATA', metadata)
             for name, data in self.sources.items():
                 wheel.writestr('locomotion_aorta/' + name, b'changed' if name == changed else data)
             wheel.writestr('locomotion_aorta/_body_cmd_native.fixture.so', b'native encoder')
@@ -487,13 +487,13 @@ class GuardGeneratorTests(unittest.TestCase):
         if path == 'compatibility.json': return json.dumps(self.compat).encode()
         return self.sources[Path(path).name]
 
-    def test_reviewed_wheel_seals_exact_15_plus_hotpath_and_records_sha(self):
+    def test_reviewed_wheel_seals_exact_18_plus_hotpath_and_records_sha(self):
         args = self.wheel()
         with patch.object(self.generator.subprocess, 'check_output', side_effect=self.git_blob):
             result = self.generator.generate(args)
         self.assertEqual(result['status'], 'SEALED_FROM_REVIEWED_WHEEL')
         self.assertEqual(set(result['source_sha256']), set(guard.ORIGINAL_VENDOR_FILES))
-        self.assertEqual(len(result['source_sha256']), 15)
+        self.assertEqual(len(result['source_sha256']), 18)
         self.assertEqual(set(result['runtime_source_sha256']), set(guard.RUNTIME_FILES))
         self.assertEqual(result['wheel']['sha256'], args.wheel_sha256)
         self.assertEqual(set(result['native_sha256']),

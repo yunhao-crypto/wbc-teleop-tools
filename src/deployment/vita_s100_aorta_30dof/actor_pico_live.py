@@ -33,6 +33,7 @@ MAX_INGRESS_DROPS = 10
 # Measured positions can sit slightly past advertised ranges at hard stops or
 # within calibration error. Commanded q keeps the exact advertised range.
 MEASURED_Q_MARGIN = .03
+BODY_FIELDS_ALL = 0x1f  # q|dq|tau|kp|kd, declared on every BodyCmd publish
 
 
 class StaleStateError(TimeoutError):
@@ -116,6 +117,15 @@ def load_robot_config(path, runtime=None):
             raise ValueError('EXTERNAL allow_position_targets_outside_mechanical_range must be a boolean')
         if raw_targets and space != 'motor_theta':
             raise ValueError('Unclipped PD targets require motor_theta command space')
+        margin = params.get('position_target_margin_rad')
+        if raw_targets:
+            if (type(margin) not in (int, float) or not math.isfinite(margin)
+                    or not 0 < margin <= math.pi):
+                raise ValueError('EXTERNAL allow_position_targets_outside_mechanical_range=true requires '
+                                 'a finite position_target_margin_rad in (0, pi]')
+        elif margin is not None:
+            raise ValueError('EXTERNAL position_target_margin_rad requires '
+                             'allow_position_targets_outside_mechanical_range=true')
         if (runtime is not None and space == 'motor_theta'
                 and getattr(runtime.policy, 'clip_target_positions', True) is False
                 and not raw_targets):
@@ -124,11 +134,18 @@ def load_robot_config(path, runtime=None):
                              'install matching firmware and configuration')
         if motor_theta:
             check_motor_theta_ankle(ankle, intent, runtime, native=space == 'motor_theta')
+            if raw_targets and getattr(runtime.policy, 'clip_target_positions', True) is False:
+                required = ankle_torque_equivalent_margin(ankle, runtime.model.contract)
+                if margin < required:
+                    raise ValueError(f'EXTERNAL position_target_margin_rad={margin} would change the '
+                                     'trained unclipped ankle PD torque; use at least '
+                                     f'{required:.4f} rad (motor PD saturation bound)')
         elif runtime is not None and (ankle['pd']['strategy'] != 'virtual_pd' or intent is not True):
             raise ValueError('Requires virtual_pd and EXTERNAL ankle_virtual_pd_intent=true; no config is changed')
         unknown = set(params)-{'command_timeout_ms', 'recover_valid_frames',
                               'interpolation', 'safe_hold', 'ankle_virtual_pd_intent', 'ankle_command_space',
-                              'allow_position_targets_outside_mechanical_range'}
+                              'allow_position_targets_outside_mechanical_range',
+                              'position_target_margin_rad'}
         if unknown:
             raise ValueError('Unsupported EXTERNAL params: '+', '.join(sorted(unknown)))
         timeout = params['command_timeout_ms']
@@ -169,10 +186,27 @@ def load_robot_config(path, runtime=None):
     comparable = json.loads(json.dumps(root))
     comparable['actions']['EXTERNAL']['params'].pop('ankle_command_space', None)
     comparable['actions']['EXTERNAL']['params'].pop('allow_position_targets_outside_mechanical_range', None)
+    comparable['actions']['EXTERNAL']['params'].pop('position_target_margin_rad', None)
     return params, dict(path=str(path), sha256=hashlib.sha256(payload).hexdigest(),
         allow_position_targets_outside_mechanical_range=raw_targets,
+        position_target_margin_rad=margin,
         command_interpolation_enabled=interpolation_enabled,
         ankle_path_comparison_sha256=hashlib.sha256(json.dumps(comparable, sort_keys=True).encode()).hexdigest())
+
+
+def ankle_torque_equivalent_margin(ankle, contract):
+    """Smallest travel margin whose target clamp leaves the motor PD torque unchanged.
+
+    With |dq| <= qd_motor_max, a target error of (tau_motor_max + kd*qd_motor_max)/kp
+    already saturates the motor PD, so clamping farther from travel cannot change
+    the commanded torque of an unclipped training target.
+    """
+    caps = ankle['caps']
+    tau, speed = float(caps['tau_motor_max']), float(caps['qd_motor_max'])
+    gains = [(float(contract.kp[i]), float(contract.kd[i])) for i in contract.ankle.slots]
+    if not gains or any(not kp > 0 or kd < 0 for kp, kd in gains):
+        raise ValueError('Motor-theta ankle gains must be positive')
+    return max((tau+kd*speed)/kp for kp, kd in gains)
 
 
 def check_motor_theta_ankle(ankle, intent, runtime, native=False):
@@ -250,12 +284,12 @@ class CommandEnvelope:
         ankles = {'left_ankle_pitch_joint', 'left_ankle_roll_joint',
                   'right_ankle_pitch_joint', 'right_ankle_roll_joint'}
         for index, (name, cap) in enumerate(zip(self.body.joint_names, self.body.joints)):
-            self.measured_q_ranges.append((cap.q_min, cap.q_max) if cap.populated else None)
-            if not cap.populated:
+            self.measured_q_ranges.append((cap.q_min, cap.q_max) if not cap.is_mock else None)
+            if cap.is_mock:
                 self.limits.append(None)
                 self.virtual_limits.append(None)
                 continue
-            if cap.is_mock or cap.slot_role != 1:
+            if cap.slot_role != 1:
                 raise ValueError('Physical ACTIVE body actuator required: '+name)
             if cap.supported_fields != 31:
                 raise ValueError('Required q/dq/tau/kp/kd support unavailable: '+name)
@@ -286,6 +320,13 @@ class CommandEnvelope:
                         and not value_range[0] <= value <= value_range[1])):
                     raise ValueError('safe_hold gain unavailable/out of bounds: '+name)
             self.limits.append(ranges)
+        self.target_names = tuple(name for name, cap in zip(self.body.joint_names, self.body.joints)
+                                  if not cap.is_mock)
+        # Only the robot's explicit opt-in keeps such targets; otherwise the
+        # SDK range check stays active for every declared target.
+        self.q_limit_exempt_names = (
+            tuple(name for name in self.target_names if name in self.unbounded_target_joints)
+            if params.get('allow_position_targets_outside_mechanical_range') is True else ())
         if runtime.head is not None:
             runtime.head.bind_body_info(self.body)
         # A fixed model/gain profile, including both necks, must fit BEFORE entry.
@@ -432,7 +473,7 @@ class StatusGuard:
                                    '/'.join(self.initial_actions)+'/IDLE')
         elif (status.current_action != 'EXTERNAL' or phase(status) != 'RUNNING'
               or status.timeout_hold or any(getattr(status, key) != getattr(entered, key)
-                  for key in ('generation', 'client_id', 'lease_id', 'reject_count'))):
+                  for key in ('runtime_id', 'generation', 'client_id', 'control_id', 'reject_count'))):
             raise RuntimeError('EXTERNAL ownership/state or reject/drop counters changed')
         else:
             self.ingress_drops(status, entered)
@@ -564,6 +605,14 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
     guard = StatusGuard(clock, initial_actions=initial_actions)
     if manual and manual_pico is None:
         raise ValueError('Manual Pico mode requires an idle capture worker')
+    gripper_config = getattr(args, 'gripper_config', None)
+    if gripper_config is not None:
+        if not manual or args.stand_only or motion_source is not None:
+            raise ValueError('PICO gripper control requires live manual Pico mode without stand-only or file motion')
+        if len(getattr(manual_pico, 'controls', None) or ()) < 7:
+            raise ValueError('PICO gripper control requires the 7-slot controller array (grip snapshots)')
+        from .actor_pico_gripper import GripperRunner, load_config as load_gripper_config
+        gripper_config = load_gripper_config(gripper_config)
     runtime.reset_inputs()
     # Warm actual inference before taking ownership; erase its action history.
     runtime.infer_motion(runtime.hold_motion(),
@@ -694,17 +743,32 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
                   exit_confirmed=False, robot_id=args.robot_id, stand_only=args.stand_only,
                   auto_start=auto, onnx_control_enabled=False,
                   missed_policy_ticks=0, duration_limit_s=args.seconds)
+    grippers = None
+
+    def write_gripper_events():
+        for row in grippers.drain():
+            write(dict(row, actions_sent=sent_count))
+
     try:
         if stop.is_set():
             return report
+        if gripper_config is not None:
+            # Info, State and output preparation complete before entry; output
+            # permission is only checked once the gripper thread starts.
+            grippers = GripperRunner(gripper_config, manual_pico.controls, connection=controller)
+            write_gripper_events()
         attempted = True
         entered = controller.enter_external(timeout=5.)
         if (entered.current_action != 'EXTERNAL' or phase(entered) != 'RUNNING'
-                or entered.client_id != controller.client_id or not entered.lease_id
+                or entered.client_id != controller.client_id or not entered.control_id
                 or entered.generation <= 0):
             raise RuntimeError('Entry did not confirm owned EXTERNAL/RUNNING')
         report['entered'] = True
         write(dict(record_type='external_entered', status=status_row(entered), actions_sent=0))
+        if grippers is not None:
+            grippers.start()
+            print('PICO_GRIPPER: hold a side grip to close that gripper, release to open; '
+                  'lost or stale input opens.', flush=True)
         runtime.reset_inputs()
         state, q, dq, root, gyro = inputs.read(0)
         if requires_pico:
@@ -777,6 +841,9 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
             cpu_clock = getattr(clock,'thread_time',None)
             cpu_start = cpu_clock() if cpu_clock is not None else None
             status = guard.check(controller.status, entered)
+            if grippers is not None:
+                write_gripper_events()
+                grippers.check()
             if status.ingress_drop_count != logged_drops:
                 write(dict(record_type='firmware_ingress_drop', previous=logged_drops,
                            count=status.ingress_drop_count, actions_sent=sent_count))
@@ -966,7 +1033,10 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
                 ts_client_created_us=clock.time_ns()//1000)
             state_age_before_publish = inputs.ages(state)
             before = clock.monotonic()
-            sent = controller.publish(command)  # SDK alone owns session + sequence.
+            # SDK alone owns session + sequence, shared with end-effector output.
+            sent = controller.publish(command, target_names=envelope.target_names,
+                                      required_fields=BODY_FIELDS_ALL,
+                                      q_limit_exempt_names=envelope.q_limit_exempt_names)
             runtime.policy.last_action = pending_action
             if runtime.head is not None:
                 runtime.head.commit(pending_head)
@@ -1018,6 +1088,13 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
         print(f"ACTOR_STOP: {report['stop_reason']}, elapsed={report['elapsed_s']:.2f}s; CANCEL -> PASSIVE",flush=True)
         return report
     finally:
+        if grippers is not None:
+            # Opens and releases EE clients while EXTERNAL is still owned.
+            try:
+                grippers.close()
+                write_gripper_events()
+            except BaseException as error:
+                print(f'PICO_GRIPPER close: {error}', file=sys.stderr, flush=True)
         if auto and not attempted:
             cancel_startup(controller, cancel_action, clock, write, startup_generation)
         if attempted:

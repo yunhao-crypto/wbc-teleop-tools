@@ -1,7 +1,7 @@
 # Vita02A policy + Pico on S100
 
 This entry runs the reviewed joint-reference policy through the installed SDK
-0.2.1 WBC observation/decoder math. The model is supplied separately and excluded
+0.3.0 WBC observation/decoder math. The model is supplied separately and excluded
 from Git. Its identity, installation path and SHA256 are pinned in
 `config/actor_pico.json` and the delivery manifest. Supply the model matching
 that contract; the example filename `policy.onnx` is only a local pathname.
@@ -52,8 +52,11 @@ motor passthrough adapter: no target FK/IK roundtrip, virtual-box clamp or
 virtual-torque compensation. Rate/torque/gain caps still apply; motor travel
 does not clip the policy's PD position setpoints.
 
-SDK 0.2.1 and its wire schema are unchanged. `BodyState` and `RobotInfo` still
-use virtual pitch/roll coordinates. EXTERNAL's command space is immutable for
+SDK 0.3.0 (BodyState/BodyCmd protocol 3, RobotInfo protocol 2) keeps
+`BodyState` and `RobotInfo` in virtual pitch/roll coordinates. The SDK checks
+every target q against the RobotInfo range before sending, so unclipped
+setpoints outside it stop the session; see the known blocker in
+[`deploy/actor_s100/README.md`](deploy/actor_s100/README.md). EXTERNAL's command space is immutable for
 the robot process; there is no remote SDK negotiation. The client checks the
 provided effective YAML against the model/profile, but that file is not proof
 of the running firmware configuration. Install the matching robot build and
@@ -136,16 +139,23 @@ checks; measured/startup poses and fixed joints still use their position bounds.
 The robot driver/firmware must implement the same target semantics. This does
 not change the physical plant's position stops or motor effort envelope.
 
-Native affine-target actors require all three EXTERNAL settings:
+Native affine-target actors require all four EXTERNAL settings:
 
 ```yaml
 ankle_command_space: motor_theta
 ankle_virtual_pd_intent: false
 allow_position_targets_outside_mechanical_range: true
+position_target_margin_rad: 3.14159
 ```
 
-Use firmware implementing this explicit opt-in (vita-robot `d9e1a0a32` or a
-compatible later build). A missing/false opt-in is rejected before a native
+The margin must be finite and in (0, pi], and is rejected when the opt-in is
+off. For unclipped motor-theta policies it must also be at least the ankle target
+offset at which motor PD effort saturates, `(tau_max + kd*qd_max)/kp`. The
+actor passes exactly the policy's unclipped target joints to the SDK as
+`q_limit_exempt_names`; every other joint keeps the SDK RobotInfo q check.
+
+Use firmware implementing this explicit opt-in and margin (vita-robot PR #13086
+or a compatible later build). A missing/false opt-in is rejected before a native
 actor can create control handles; non-boolean values and an enabled opt-in on
 the virtual wire are rejected too. Firmware retains confirmed protocol
 position bounds and applies its physical-range rules to startup/safe hold.
@@ -627,7 +637,7 @@ The bootstrap creates a fresh environment and verifies/extracts the resources;
 it does not borrow an existing development environment. See
 [`deploy/actor_s100/README.md`](deploy/actor_s100/README.md) for prerequisites and
 the optional `--build-pico` source build on S100. The launcher selects SDK
-0.2.1's bundled native CPU ONNX runner on aarch64; a separate pip ORT install
+0.3.0's bundled native CPU ONNX runner on aarch64; a separate pip ORT install
 is not needed. Neither the existing HoloMotion MoE backend nor BPU acceleration
 is used by this actor. 50 Hz scheduling is configured, but S100 timing remains
 unmeasured until an actual run; overruns and skipped ticks are logged.
@@ -873,8 +883,8 @@ YAML `command_limits` (which it rejects). The client checks supported fields
 and every advertised range, including model and safe-hold gains. For the four
 A-sample parallel ankle axes, `supported_fields=31, valid_limits=1` means only
 q has a joint-domain range; dq/tau/kp/kd remain validated by the firmware's
-motor-space adapter. Those absent ranges are not zero limits. Other populated
-axes must advertise all five ranges; missing or degraded capabilities fail
+motor-space adapter. Those absent ranges are not zero limits. Other physical
+(non-MOCK) axes must advertise all five ranges; missing or degraded capabilities fail
 before requesting ownership. The full A-sample YAML still supplies watchdog,
 recovery, interpolation, safe-hold and virtual-PD intent. Do not add old limits
 to robot YAML or weaken output/hardware checks to get past preflight.
@@ -978,7 +988,7 @@ after handoff; disabling it uses the fixed profile directly.
 At the handoff, the entire buffered Pico reference
 must be complete, finite and within the configured Pico age budget.
 The complete decoded BodyCmd is sent, including ankle compensation torque.
-The unpopulated waist-roll slot remains inert; no hand command is sent.
+The MOCK waist-roll slot stays zero and outside the declared targets; no hand command is sent.
 
 `--seconds 0` disables only application duration expiry. Body feedback age must
 stay within 100 ms (up to two consecutive stale ticks are skipped), Pico age

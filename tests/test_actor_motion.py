@@ -185,7 +185,7 @@ class MotionTests(unittest.TestCase):
         self.runtime.reset_inputs()
         self.clock, self.stop, self.rows = Clock(), threading.Event(), []
         self.transport = Loopback(self.runtime, self.clock)
-        self.controller = PullController(group='default', client_id='mock-client', _transport=self.transport)
+        self.controller = PullController(group='default', client_id=0x5eed, _transport=self.transport)
         self.addCleanup(self.controller.close)
         config = self.folder/'robot.json'
         config.write_text(json.dumps(robot_config(self.runtime)))
