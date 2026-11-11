@@ -11,6 +11,7 @@ from scipy.spatial.transform import Rotation
 
 
 NECK_NAMES = ('neck_yaw_joint', 'neck_pitch_joint')
+NEUTRAL_TOLERANCE_RAD = math.radians(1.)
 
 
 @dataclass(frozen=True)
@@ -131,7 +132,18 @@ class PicoHeadControl:
         desired = np.zeros(2)
         age, calibrated = None, False
         mode = 'return_to_neutral'
-        if tracking:
+        # Each engagement must reach neutral before capturing its Pico zero.
+        # Live supplies measured_q; offline previews use the simulated target.
+        recenter = False
+        if tracking and neutral is None:
+            measured = q if measured_q is None else np.asarray(measured_q, dtype=float)[slots]
+            if measured.shape != (2,) or not np.isfinite(measured).all():
+                raise ValueError('Invalid measured neck pose')
+            recenter = (np.any(np.abs(q) > NEUTRAL_TOLERANCE_RAD)
+                        or np.any(np.abs(measured) > NEUTRAL_TOLERANCE_RAD))
+        if recenter:
+            mode = 'recenter'
+        elif tracking:
             if snapshot is None:
                 raise ValueError('Head tracking requires a Pico snapshot')
             age = now-float(snapshot['received_monotonic'])
@@ -176,11 +188,11 @@ class PicoHeadControl:
             joints[slot] = replace(joints[slot], q=float(value), dq=0., tau=0.)
         candidate = HeadState(q, filtered, angles, neutral, tracking, stamp, now)
         diagnostics = dict(mode=mode, calibrated=calibrated, pico_age_s=age,
-                           input_expired=tracking and not 0 <= age <= self.maximum_age,
+                           input_expired=age is not None and not 0 <= age <= self.maximum_age,
                            pico_timestamp_ns=stamp, joint_names=list(NECK_NAMES),
                            target_q=q.tolist(), desired_q=desired.tolist(),
                            effective_limits=limits.tolist())
-        if tracking:
+        if tracking and not recenter:
             diagnostics.update(source=snapshot.get('source', 'gmr_snapshot'),
                 reader_frame_sequence=snapshot.get('reader_frame_sequence'),
                 reader_monotonic_ns=snapshot.get('reader_monotonic_ns'))
