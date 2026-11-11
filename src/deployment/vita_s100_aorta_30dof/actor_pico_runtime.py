@@ -1,4 +1,4 @@
-"""Actor inference through SDK 0.2.1 math; no transport or publication.
+"""Actor inference through SDK 0.3.0 math; no transport or publication.
 
 ``policy`` selects a pinned configuration: the SONIC/GR00T G1 actor or the
 SuperMimic/MorphMimic actors. They share feedback validation and Body31 decode.

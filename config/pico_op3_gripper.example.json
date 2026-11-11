@@ -1,0 +1,22 @@
+{
+  "schema": "wtt_pico_gripper_v1",
+  "device_model": "AGILINK_OP3",
+  "control_mode": "POSITION_TORQUE",
+  "rate_hz": 50,
+  "input_max_age_s": 0.2,
+  "close_threshold": 0.7,
+  "open_threshold": 0.3,
+  "close_hold_s": 0.05,
+  "feedback_max_age_s": 0.2,
+  "startup_timeout_s": 3.0,
+  "output_ready_timeout_s": 2.0,
+  "on_fault": "open_and_disable_side",
+  "sides": {
+    "left": {"open_m": 0.08, "close_m": 0.0, "vel_limit_m_s": 0.1, "current_a": 1.0,
+             "grasp_min_opening_m": 0.005, "grasp_stall_m": 0.001, "grasp_settle_s": 0.3,
+             "grasp_current_ratio": 0.8},
+    "right": {"open_m": 0.08, "close_m": 0.0, "vel_limit_m_s": 0.1, "current_a": 1.0,
+              "grasp_min_opening_m": 0.005, "grasp_stall_m": 0.001, "grasp_settle_s": 0.3,
+              "grasp_current_ratio": 0.8}
+  }
+}

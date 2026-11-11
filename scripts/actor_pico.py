@@ -115,6 +115,8 @@ def state_check(runtime, args, write):
     frames, last_key = 0, None
     deadline = time.monotonic()+args.seconds
     try:
+        # SDK 0.3 accepts BodyState only after discovery binds the robot runtime.
+        source.get_robot_info(timeout=min(5., args.seconds))
         validator = Inputs(runtime, source, None, time)
         while time.monotonic() < deadline:
             remaining = deadline-time.monotonic()
@@ -175,6 +177,7 @@ def shadow(runtime, args, write):
             resources.callback(source.close)
             if source.group != args.group:
                 raise RuntimeError('SDK source group mismatch')
+            source.get_robot_info(timeout=5.)
             pico = create_pico_source(logger=logging.getLogger('actor-pico'), maximum_age=runtime.config['pico_max_age_s'],
                                       duplicate_poll_interval_s=runtime.worker.reader_poll_interval_s)
             resources.callback(pico.stop)
@@ -205,8 +208,8 @@ def shadow(runtime, args, write):
                 source_age = (time.time_ns()-state.ts_state_pub_us*1000)*1e-9
                 if not 0 <= age <= .1 or not -.005 <= source_age <= .1:
                     raise TimeoutError('Body31 feedback is stale or clock contract differs')
-                if state.protocol_version != 2 or state.roster_version != 1:
-                    raise ValueError('Expected the pinned protocol2 roster1 body31 state')
+                if state.protocol_version != 3 or state.roster_version != 1:
+                    raise ValueError('Expected the pinned protocol3 roster1 body31 state')
                 q, dq, root, gyro = runtime.policy.state(state)
                 sample = pico.step()
                 if sample is not None:
@@ -299,6 +302,12 @@ def live(runtime, args, write):
                 import xrobotoolkit_sdk as pico_sdk
                 if not callable(getattr(pico_sdk,'get_controller_trigger_snapshot',None)):
                     raise RuntimeError('Update the Pico binding: atomic dual-trigger input is required')
+                if args.gripper_config is not None:
+                    if not callable(getattr(pico_sdk,'get_controller_grip_snapshot',None)):
+                        raise RuntimeError('Rebuild the Pico binding: atomic side-grip snapshots are required for --gripper-config')
+                    from deployment.vita_s100_aorta_30dof.actor_pico_gripper import load_config, load_sdk
+                    load_config(args.gripper_config)
+                    load_sdk()  # Refuse before any control handle when the SDK has no EE client.
                 from deployment.vita_s100_aorta_30dof.actor_pico_worker import PicoReferenceProcess
                 manual = PicoReferenceProcess(runtime)
                 manual.start()
@@ -364,6 +373,8 @@ def main():
                         help='compatibility option; startup always uses continuous policy inference')
     parser.add_argument('--wait-pico', action='store_true', help='live manual-Pico path: start receiving Pico automatically while ONNX stand continues')
     parser.add_argument('--auto-pico', action='store_true', help='live: receive Pico and automatically follow only after preparation and a fresh complete reference window')
+    parser.add_argument('--gripper-config', type=Path,
+                        help='live manual-Pico only: explicit OP3 gripper JSON; side grips close/open each gripper')
     args = parser.parse_args()
     if args.ankle_command_space is not None and args.motion_config is None:
         parser.error('--ankle-command-space requires --motion-config')
@@ -394,11 +405,14 @@ def main():
             args.wait_pico = True
         if args.stand_only and args.manual_pico:
             parser.error('--stand-only and --manual-pico are mutually exclusive')
+        if args.gripper_config is not None and (not args.manual_pico or args.motion_config is not None):
+            parser.error('--gripper-config requires live manual Pico mode without --motion-config')
         if (not args.confirm_motion or not args.robot_id or not args.robot_id.strip()
                 or args.robot_config is None or not args.robot_config.is_absolute()):
             parser.error('live requires --confirm-motion, --robot-id and an absolute --robot-config')
     elif (args.confirm_motion or args.robot_id or args.robot_config or args.stand_only
-          or args.manual_pico or args.auto_start or args.wait_pico or args.auto_pico):
+          or args.manual_pico or args.auto_start or args.wait_pico or args.auto_pico
+          or args.gripper_config is not None):
         parser.error('motion authorization/options apply only to live')
     valid_duration = args.seconds >= 0 if args.mode == 'live' else 1 <= args.seconds <= 7200
     if (args.steps < 1 or not math.isfinite(args.seconds) or not valid_duration

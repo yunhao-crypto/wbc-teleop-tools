@@ -1,7 +1,7 @@
 # Vita02A / S100 actor + Pico
 
 部署链路：Pico → **motion-stream-bridge Vita02A GMR** → Vita02A 关节参考 →
-已审核的关节参考策略模型 → SDK 0.2.1 Body31。GMR 的算法、模型和参数固定自
+已审核的关节参考策略模型 → SDK 0.3.0 Body31。GMR 的算法、模型和参数固定自
 `763f560`，已移除自写姿态 IK；它与 HoloMotion 的 SMPL 输入双策略是不同的链路。
 
 **当前交付已合入 `main`，见已合并的 [PR #1](https://github.com/yunhao-crypto/wbc-teleop-tools/pull/1)。**
@@ -13,9 +13,16 @@
 ## 适用环境和验证范围
 
 - S100 本机：Linux aarch64、Python **3.10**、glibc ≥2.35、venv/ensurepip、Bash、`ip`、`flock`、`ldd`。
-- 已验证的软件基线：机器人 `1.6.0-200` / `c9b4e80c074a8898d1290927a1be5350bc725d4a`，
-  Aorta/messages `2026.10.20`，SDK `0.2.1`。Body31 协议 2、roster 1，28 策略关节加 2 颈关节。
+- SDK `0.3.0`（humanoid-sdk `535cbbc`，即 main `abe21ab` 加 PR #22 的显式 q 范围豁免），Aorta/messages `0.0.0+g7649a87ebb03`，
+  控制协议 4、Body31 协议 3、RobotInfo 协议 2、roster 1，28 策略关节加 2 颈关节。
+  需要支持这些协议的机器人固件（vita-robot master `896385d5b` 或更新）；此前验证的
+  `1.6.0-200` / `c9b4e80c` 只支持 SDK 0.2.1 协议，不能运行本交付。SDK 0.3.0 尚无真机运行记录。
   其他机器人发行版须先核对接口和有效配置；不能仅凭包日期选择 wheel。
+- **越界 PD 目标约定**：SONIC/SuperMimic/MorphMimic 发送未裁剪的 PD 目标（主要是踝），会超出 RobotInfo q 范围。
+  SDK 只对机器人配置显式开启 `allow_position_targets_outside_mechanical_range: true` 时、策略声明的
+  未裁剪目标关节跳过 q 范围检查；其余关节和其余字段仍按 RobotInfo 检查，越界即 `InvalidCommandError`、
+  CANCEL、PASSIVE。固件需支持同一约定（vita-robot PR #13086，含 `position_target_margin_rad`）。
+  SDK PR #22 与固件 PR #13086 尚未合入，也没有 HIL 验收。
 - 目标机提供 `/app/script/env.sh`、部署自有 `/app_param/zenoh/s100_session_peer.json5`
   和完整 A-sample 有效 YAML。当前无夹爪配置应与真实硬件一致，不自动修改末端选择或将执行器设为 MOCK。
 - 通过的交付/只读检查不等于运动验收。**真实 Pico 跟随质量、无支撑站立稳定性仍未完成验收。**
@@ -55,9 +62,11 @@ bash scripts/start_actor_motion.sh supermimic --record-observations
 切换机器人配置与重启服务仍需单独执行，脚本不会自动修改。步骤和日志对比见
 [脚踝控制路径 A/B 测试](README_ACTOR_PICO.md#controlled-ankle-command-path-ab-trial)。
 当前原生仿射 PD 目标要求配套固件支持并启用
-`actions.EXTERNAL.params.allow_position_targets_outside_mechanical_range: true`。
-配置生成脚本会在 native 模式启用、virtual 模式关闭该开关；原生未裁剪策略
-会拒绝缺少/关闭开关的配置。更换有效 YAML 后需重新配置本机启动信息。
+`actions.EXTERNAL.params.allow_position_targets_outside_mechanical_range: true`，
+并同时设置有限的 `position_target_margin_rad`（0, π]，默认 3.14159；未开启开关时不得设置 margin。
+未裁剪的 motor_theta 策略还要求 margin 不小于踝 PD 力矩饱和对应的目标偏差。
+配置生成脚本会在 native 模式启用开关并写入 margin、virtual 模式关闭开关并删除 margin；原生未裁剪策略
+会拒绝缺少/关闭开关或 margin 的配置。更换有效 YAML 后需重新配置本机启动信息。
 所有 WBC 部署必须显式设置 `actions.EXTERNAL.params.interpolation.enabled: false`；
 开启或省略该设置会在请求控制权前被拒绝。配置生成脚本统一关闭命令插值。
 离线检查及模拟接口测试不代表实机稳定性验收。

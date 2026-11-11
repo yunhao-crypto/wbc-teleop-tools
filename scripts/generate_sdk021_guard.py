@@ -14,11 +14,12 @@ import subprocess
 import zipfile
 
 ORIGINAL = (
-    '__init__.py', '_body_codec.py', '_gripper_codec.py', '_gripper_lifecycle.py',
-    '_hand_codec.py', '_motor_codec.py', 'body_types.py', 'brainco_capture.py',
-    'controller.py', 'gripper.py', 'gripper_types.py', 'hand.py', 'hand_types.py',
-    'transport.py', 'types.py',
+    '__init__.py', '_body_codec.py', '_ee_pull.py', '_end_effector_codec.py', '_group.py',
+    '_motor_codec.py', '_policy_state.py', '_state_stream.py', 'body_types.py',
+    'brainco_capture.py', 'controller.py', 'end_effector.py', 'end_effector_types.py',
+    'joy.py', 'state.py', 'transport.py', 'types.py', 'wbc_tracking_policy.py',
 )
+SDK_VERSION = '0.3.0'
 RUNTIME = ('pull.py', 'state_arrays.py', '_native_body_codec.py')
 
 
@@ -46,8 +47,8 @@ def generate(args):
             if len(metadata_names) != 1:
                 raise ValueError('Ambiguous wheel metadata')
             metadata = Parser().parsestr(wheel.read(metadata_names[0]).decode())
-            if metadata['Version'] != '0.2.1' or metadata['Name'].replace('_', '-') != 'locomotion-aorta':
-                raise ValueError('Expected the reviewed SDK 0.2.1 wheel')
+            if metadata['Version'] != SDK_VERSION or metadata['Name'].replace('_', '-') != 'locomotion-aorta':
+                raise ValueError('Expected the reviewed SDK ' + SDK_VERSION + ' wheel')
             for name, source in sources.items():
                 if wheel.read('locomotion_aorta/' + name) != source:
                     raise ValueError('Wheel differs from reviewed Git source: ' + name)
@@ -72,7 +73,7 @@ def generate(args):
                         'bytes': args.sdk_wheel.stat().st_size}
     result = {
         'status': 'SEALED_FROM_REVIEWED_WHEEL',
-        'sdk_commit': args.sdk_commit, 'sdk_version': '0.2.1', 'wheel': wheel_record,
+        'sdk_commit': args.sdk_commit, 'sdk_version': SDK_VERSION, 'wheel': wheel_record,
         'source_sha256': {n: hashlib.sha256(sources[n]).hexdigest() for n in ORIGINAL},
         'runtime_source_sha256': {n: hashlib.sha256(sources[n]).hexdigest() for n in RUNTIME},
         'native_sha256': native_sha256,

@@ -42,10 +42,14 @@ class MotionToolsTests(unittest.TestCase):
         self.assertTrue(a['actions']['EXTERNAL']['params']['allow_position_targets_outside_mechanical_range'])
         self.assertFalse(b['actions']['EXTERNAL']['params']['allow_position_targets_outside_mechanical_range'])
         self.assertFalse(b['actions']['EXTERNAL']['params']['ankle_virtual_pd_intent'])
+        self.assertEqual(a['actions']['EXTERNAL']['params']['position_target_margin_rad'],3.14159)
+        self.assertNotIn('position_target_margin_rad',b['actions']['EXTERNAL']['params'])
         b['actions']['EXTERNAL']['params']['ankle_command_space']='motor_theta'
         b['actions']['EXTERNAL']['params']['allow_position_targets_outside_mechanical_range']=True
+        b['actions']['EXTERNAL']['params']['position_target_margin_rad']=3.14159
         self.assertEqual(a,b)
         original['actions']['EXTERNAL']['params']['allow_position_targets_outside_mechanical_range']=True
+        original['actions']['EXTERNAL']['params']['position_target_margin_rad']=3.14159
         original['actions']['EXTERNAL']['params']['interpolation']['enabled']=False
         self.assertEqual(a,original)
         for enabled in (True, False):
@@ -55,7 +59,12 @@ class MotionToolsTests(unittest.TestCase):
         # Source already opted in: a virtual-wire rewrite must reset the flag.
         rewritten=prepare(yaml.safe_dump(original,sort_keys=False),'virtual_pitch_roll',False)
         self.assertFalse(yaml.safe_load(rewritten)['actions']['EXTERNAL']['params']['allow_position_targets_outside_mechanical_range'])
+        self.assertNotIn('position_target_margin_rad',yaml.safe_load(rewritten)['actions']['EXTERNAL']['params'])
         with self.assertRaises(ValueError):prepare(source,'motor_theta',True)
+        for margin in (0,-1.,3.2,float('nan'),True):
+            with self.subTest(margin=margin),self.assertRaises(ValueError):prepare(source,'motor_theta',False,margin)
+        custom=yaml.safe_load(prepare(source,'motor_theta',False,3.12))
+        self.assertEqual(custom['actions']['EXTERNAL']['params']['position_target_margin_rad'],3.12)
 
     def trial(self,space):
         header=dict(reference_source='npz',policy='morphmimic',model={'sha256':'model'},comparison_config_sha256='cfg',

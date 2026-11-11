@@ -37,12 +37,12 @@
       "sha256": "53e87f274a726e64fe36403be7b24aacb283fb954a4b7c71d877b08f3124769b"
     }
   },
-  "sdk_version": "0.2.1",
-  "sdk_commit": "95268c7d957242383b42341ddef1c084e6229322",
+  "sdk_version": "0.3.0",
+  "sdk_commit": "535cbbc02c5baa22157520491128aa211b61c997",
   "sdk_sources": {
     "wbc_tracking_policy.py": "8bf9ecbcce9d06fde34eaaa817fe7966354958be012f74af159cfd711ce53b9e",
-    "_policy_state.py": "c416d610d85aec54ac78a3b786aba412273dde945c7dd84329c01d3f0b4aad82",
-    "body_types.py": "1b4fdc11b96d851a0a348b90d8fce8a4d6cfb24ded35827c5b9b7268ea5a16ec"
+    "_policy_state.py": "779b3ee099a8955b2d10518f19cf8db6201a092605df6d689d2ca24546d1cac0",
+    "body_types.py": "bf8cefde2dee078109da498938f3511da0aa1906fa8af410c5dd9d6740c1a452"
   },
   "body_profile": {
     "joint_limits": {

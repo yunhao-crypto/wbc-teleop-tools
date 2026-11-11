@@ -155,6 +155,7 @@ def trial(options,label,index,receiver_pid):
         scheduler=control_scheduler()
         source=PullStateSource(node_name=f'gmr-shadow-{index:02d}-{label}')
         require_readonly_source(source)
+        source.get_robot_info(3.)  # Binds the runtime whose BodyState is accepted.
         source.wait_state(3.)
         validator=Inputs(runtime,source,None,time)
         runtime.infer_motion(runtime.math.Motion.hold(runtime.model.contract.default),

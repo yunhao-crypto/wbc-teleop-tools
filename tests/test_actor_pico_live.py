@@ -64,6 +64,8 @@ def robot_config(runtime=None):
         if space == 'motor_theta':
             config['parallel_ankle']['caps'].update(qd_motor_max=12.25, tau_motor_max=50.)
             config['parallel_ankle']['pd'].update(kp_motor_max=600., kd_motor_max=60.)
+    if config['actions']['EXTERNAL']['params']['allow_position_targets_outside_mechanical_range']:
+        config['actions']['EXTERNAL']['params']['position_target_margin_rad'] = 3.14159
     return config
 
 
@@ -126,12 +128,17 @@ class ManualPico:
 class Loopback:
     """Feed PREPARE/COMMIT/CANCEL ACKs to the shipped PullController.
 
-    This is a mock server, not evidence of firmware or physical safety.
+    Mirrors the SDK FakeTransport guard contract (``_publish_control``/
+    ``_publish_body``). This is a mock server, not evidence of firmware or
+    physical safety.
     """
+    RUNTIME_ID = 100
+    CONTROL_ID = 55
+
     def __init__(self, runtime, clock):
-        from locomotion_aorta import ControlStatus, ExternalPhase
+        from locomotion_aorta import ControlStatus, ExternalPhase, ServiceStatus
         from locomotion_aorta.body_types import (BodyJointCapability, BodyInfo, RobotInfo,
-                                                 GetRobotInfoResponse)
+                                                 GetRobotInfoResponse, EndEffectorCapability)
         self.runtime, self.clock = runtime, clock
         self.callbacks, self.requests, self.commands = {}, [], []
         self.after_publish = lambda command: None
@@ -139,11 +146,19 @@ class Loopback:
         self.exit_action = 'PASSIVE'
         self.status_fault = lambda s:s
         self.closed = False
-        self.value = ControlStatus(1, 'PASSIVE', ExternalPhase.IDLE)
-        caps = tuple(BodyJointCapability(i, 1, False, i != 14, 31, 31,
+        self.value = ControlStatus(1, 'PASSIVE', ExternalPhase.IDLE, runtime_id=self.RUNTIME_ID)
+        caps = tuple(BodyJointCapability(i, 1, i == 14, 0 if i == 14 else 31, 0 if i == 14 else 31,
                 -4., 4., -25., 25., -100., 100., 0., 500., 0., 50.) for i in range(31))
         body = BodyInfo(1, 31, tuple(runtime.policy.order), caps, ())
-        self.reply = GetRobotInfoResponse(0, RobotInfo(1, 1, body, ()), '')
+        endpoints = tuple(EndEffectorCapability(side, True, None, False,
+                          ServiceStatus.UNAVAILABLE, 'no device') for side in (1, 2))
+        self.reply = GetRobotInfoResponse(ServiceStatus.SUCCESS, RobotInfo(2, 1, body, endpoints), '',
+                                          self.RUNTIME_ID)
+
+    def _ensure_open(self):
+        if self.closed:
+            from locomotion_aorta import ControllerClosedError
+            raise ControllerClosedError('Aorta transport is closed')
 
     def subscribe(self, topic, callback):
         self.callbacks.setdefault(topic, []).append(callback)
@@ -151,7 +166,7 @@ class Loopback:
 
     def get_robot_info(self, timeout): return self.reply
 
-    def poll_control_status(self):
+    def poll_control_status(self, timeout=0):
         from locomotion_aorta.transport import CONTROL_STATUS_TOPIC
         self.value = replace(self.value, status_seq=self.value.status_seq+1,
                              stamp_monotonic_ns=round(self.clock.monotonic()*1e9))
@@ -174,41 +189,61 @@ class Loopback:
                 slots = self.runtime.model.contract.ankle.slots
                 q[self.runtime.policy.mapping[slots]] = self.runtime.model.contract.default[slots]
         imu = np.zeros((1, 13), np.float32); imu[0, 0] = 1
+        last = self.commands[-1] if self.commands else None
         state = BodyStateArrays(state_id=stamp, q=q, dq=np.zeros(31, np.float32),
             tau_est=np.zeros(31, np.float32), joint_stamps_us=np.full((31, 3), stamp, np.uint64),
             error_code=np.zeros(31, np.uint32), imu_values=imu,
             imu_stamps_us=np.full((1, 4), stamp, np.uint64), imu_location=np.array([0]),
-            imu_status=np.array([1]), imu_state_present=np.array([True]), protocol_version=2,
+            imu_status=np.array([1]), imu_state_present=np.array([True]), protocol_version=3,
             roster_version=1, ts_state_real_us=stamp, ts_state_pub_us=stamp,
-            ts_consumed_us=stamp, attitude_valid=True, applied_session_id=0,
-            applied_sequence=0, ts_first_output_us=0,
+            ts_consumed_us=stamp, attitude_valid=True,
+            applied_session_id=last.session_id if last else 0,
+            applied_sequence=last.sequence if last else 0, ts_first_output_us=0,
+            runtime_id=self.RUNTIME_ID, ts_control_us=stamp, applied_key_valid=last is not None,
+            association_source_type=0,
             received_monotonic_ns=round(self.clock.monotonic()*1e9), received_realtime_ns=self.clock.time_ns())
         return self.state_fault(state) if self.state_fault else state
 
-    def publish(self, topic, message):
-        from locomotion_aorta import ControlAck, ControlOperation, ExternalPhase
-        from locomotion_aorta.transport import CONTROL_REQUEST_TOPIC, CONTROL_ACK_TOPIC, BODY_CMD_TOPIC
-        if topic == BODY_CMD_TOPIC:
+    def _wait_body_state(self, timeout):
+        return self.wait_state(timeout).body_state()
+
+    def _prepare_body_output(self):
+        self._ensure_open()
+
+    def _publish_body(self, message, guard):
+        def submit():
             self.commands.append(message)
-            self.after_publish(message)
-            return
-        if topic != CONTROL_REQUEST_TOPIC: raise AssertionError(topic)
+        guard(submit)
+        self.after_publish(message)
+
+    def _publish_control(self, message, guard):
+        guard(lambda: None)
+        self.publish_control(message)
+
+    def publish(self, topic, message):
+        raise AssertionError('SDK 0.3 publishes only through guarded transport hooks: '+topic)
+
+    def publish_control(self, message):
+        from locomotion_aorta import ControlAck, ControlOperation, ExternalPhase
+        from locomotion_aorta.transport import CONTROL_ACK_TOPIC
+        self._ensure_open()
         self.requests.append(message)
-        lease = 'mock-lease'
         op = message.operation
+        if message.runtime_id != self.RUNTIME_ID:
+            raise AssertionError('control request is not bound to the discovered runtime')
         if op == ControlOperation.COMMIT:
             if self.entry_fault: raise RuntimeError('injected entry failure')
             self.value = replace(self.value, current_action='EXTERNAL', phase=ExternalPhase.RUNNING,
-                                 lease_id=lease, client_id=message.client_id, generation=7)
+                                 control_id=self.CONTROL_ID, client_id=message.client_id, generation=7)
         if op == ControlOperation.CANCEL:
             if self.exit_fault: raise RuntimeError('injected exit failure')
             self.value = replace(self.value, current_action=self.exit_action, phase=ExternalPhase.IDLE)
-        ack = ControlAck(message.request_id, op, True, lease_id=lease)
+        ack = ControlAck(message.request_id, op, True, control_id=self.CONTROL_ID,
+                         runtime_id=self.RUNTIME_ID, client_id=message.client_id)
         for callback in self.callbacks.get(CONTROL_ACK_TOPIC, []): callback(ack)
         self.poll_control_status()
 
     def close(self): self.closed = True
-
 
 class LiveTests(unittest.TestCase):
     @classmethod
@@ -223,7 +258,7 @@ class LiveTests(unittest.TestCase):
         self.config.write_text(json.dumps(robot_config(self.runtime)))  # JSON is YAML, no parser stubs.
         self.clock, self.stop, self.rows = Clock(), threading.Event(), []
         self.transport = Loopback(self.runtime, self.clock)
-        self.controller = PullController(group='default', client_id='mock-client', _transport=self.transport)
+        self.controller = PullController(group='default', client_id=0x5eed, _transport=self.transport)
         self.addCleanup(self.controller.close)
         self.pico = Pico(self.runtime, self.clock)
         self.args = NS(robot_config=self.config, robot_id='TEST-ONLY', startup_timeout=5.,
@@ -247,7 +282,9 @@ class LiveTests(unittest.TestCase):
         self.assertTrue(result['exit_confirmed'])
         self.assertGreater(result['actions_sent'], 150)
         self.assertEqual([r.operation.value for r in self.transport.requests], ['PREPARE', 'COMMIT', 'CANCEL'])
-        self.assertTrue(all(r.requested_lease_ms == 0 for r in self.transport.requests))
+        self.assertTrue(all(r.runtime_id == Loopback.RUNTIME_ID for r in self.transport.requests))
+        self.assertTrue(all(c.runtime_id == Loopback.RUNTIME_ID and c.control_id == Loopback.CONTROL_ID
+                            for c in self.transport.commands))
         self.assertEqual([c.sequence for c in self.transport.commands], list(range(1, result['actions_sent']+1)))
         self.assertTrue(all(c.session_id == 7 and c.input_state_id > 0 for c in self.transport.commands))
         self.assertTrue(any(r.get('stage') == 'pico_tracking' for r in self.rows))
@@ -332,6 +369,70 @@ class LiveTests(unittest.TestCase):
             if n == request_after: return 'track'
             return None
         return worker, command
+
+    def gripper_trial(self, fail_after=None):
+        import multiprocessing
+        from deployment.vita_s100_aorta_30dof import actor_pico_gripper
+        worker, command = self.manual_trial()
+        worker.controls = multiprocessing.Array('d', [0.]*7)
+        self.args.gripper_config = ROOT/'config/pico_op3_gripper.example.json'
+        events, test = [], self
+
+        class Runner:
+            def __init__(self, config, shared, *, connection):
+                test.assertIs(shared, worker.controls)
+                test.assertIs(connection, test.controller)
+                test.assertEqual(config['device_model'], 'AGILINK_OP3')
+                self.checks, self.rows = 0, [dict(record_type='gripper_ready', side='left')]
+                events.append(('init', [r.operation.value for r in test.transport.requests]))
+            def start(self):
+                events.append(('start', [r.operation.value for r in test.transport.requests]))
+            def drain(self):
+                rows, self.rows = self.rows, []
+                return rows
+            def check(self):
+                self.checks += 1
+                if fail_after is not None and self.checks > fail_after:
+                    raise RuntimeError('PICO OP3 gripper control failed')
+            def close(self):
+                events.append(('close', [r.operation.value for r in test.transport.requests], self.checks))
+                self.rows.append(dict(record_type='gripper_closed'))
+        return patch.object(actor_pico_gripper, 'GripperRunner', Runner), worker, command, events
+
+    def test_gripper_runner_brackets_external_ownership(self):
+        patcher, worker, command, events = self.gripper_trial()
+        with patcher:
+            result = self.run_trial(manual_pico=worker, poll_command=command)
+        self.assertTrue(result['exit_confirmed'])
+        self.assertEqual(events[0], ('init', []))
+        self.assertEqual(events[1], ('start', ['PREPARE', 'COMMIT']))
+        self.assertEqual(events[2][:2], ('close', ['PREPARE', 'COMMIT']))
+        self.assertGreater(events[2][2], 150)
+        kinds = [r.get('record_type') for r in self.rows]
+        self.assertLess(kinds.index('gripper_ready'), kinds.index('external_entered'))
+        self.assertLess(kinds.index('gripper_closed'), kinds.index('external_exit'))
+        self.assertEqual([r.operation.value for r in self.transport.requests], ['PREPARE', 'COMMIT', 'CANCEL'])
+
+    def test_gripper_stop_session_fault_cancels_external(self):
+        patcher, worker, command, events = self.gripper_trial(fail_after=20)
+        with patcher, self.assertRaisesRegex(RuntimeError, 'gripper control failed'):
+            self.run_trial(manual_pico=worker, poll_command=command)
+        self.assertEqual(events[-1][:2], ('close', ['PREPARE', 'COMMIT']))
+        self.assertLessEqual(len(self.transport.commands), 21)
+        self.assert_cancelled()
+
+    def test_gripper_requires_manual_pico_and_grip_array(self):
+        patcher, worker, command, events = self.gripper_trial()
+        with patcher:
+            self.args.manual_pico = False
+            with self.assertRaisesRegex(ValueError, 'manual Pico'):
+                self.run_trial(manual_pico=worker)
+            self.args.manual_pico = True
+            worker.controls = [0.]*3
+            with self.assertRaisesRegex(ValueError, '7-slot'):
+                self.run_trial(manual_pico=worker)
+        self.assertEqual(events, [])
+        self.assertEqual(self.transport.requests, [])
 
     def test_manual_mode_enters_stand_without_any_pico(self):
         worker, _ = self.manual_trial()
@@ -842,7 +943,7 @@ class LiveTests(unittest.TestCase):
 
     def test_reject_drop_timeout_and_ownership_changes_stop_publication(self):
         for change in (dict(reject_count=1), dict(timeout_hold=True),
-                       dict(client_id='other'), dict(generation=8)):
+                       dict(client_id=0xbad), dict(control_id=56), dict(generation=8)):
             with self.subTest(change=change):
                 self.setUp()
                 self.transport.after_publish = lambda c:setattr(self.transport, 'status_fault',
@@ -954,13 +1055,50 @@ class LiveTests(unittest.TestCase):
         self.assertEqual(self.controller.status.current_action, 'EXTERNAL')
 
     def test_mock_actuator_or_missing_roster_rejected_before_prepare(self):
-        body = self.transport.reply.info.body
-        caps = list(body.joints); caps[0] = replace(caps[0], is_mock=True)
-        self.transport.reply = replace(self.transport.reply,
-            info=replace(self.transport.reply.info, body=replace(body, joints=tuple(caps))))
-        with self.assertRaisesRegex(ValueError, 'Physical ACTIVE'): self.run_trial()
-        self.assertEqual(self.transport.requests, [])
+        for change, error, message in ((dict(is_mock=True), RuntimeError, 'MOCK waist_roll'),
+                                       (dict(slot_role=2), ValueError, 'Physical ACTIVE')):
+            with self.subTest(change=change):
+                self.setUp()  # A changed body description retires an SDK connection.
+                reply = self.transport.reply; body = reply.info.body
+                caps = list(body.joints); caps[0] = replace(caps[0], **change)
+                self.transport.reply = replace(reply,
+                    info=replace(reply.info, body=replace(body, joints=tuple(caps))))
+                with self.assertRaisesRegex(error, message): self.run_trial()
+                self.assertEqual(self.transport.requests, [])
 
+    def test_sdk_exempts_only_opted_in_unclipped_targets(self):
+        # SDK 0.3.0 checks every target q against RobotInfo before transmission.
+        # With the robot opt-in, the declared unclipped policy targets are exempt
+        # and pass a narrowed advertised range; without the exemption the SDK
+        # refuses the first such target, nothing out of range leaves, and entry
+        # is cancelled.
+        from locomotion_aorta import InvalidCommandError
+        self.assertIs(getattr(self.runtime.policy, 'clip_target_positions', True), False)
+        default = float(self.runtime.model.contract.default[
+            list(self.runtime.model.contract.names).index('left_knee_joint')])
+        def narrow():
+            reply = self.transport.reply; body = reply.info.body
+            slot = body.joint_names.index('left_knee_joint')
+            caps = list(body.joints)
+            caps[slot] = replace(caps[slot], q_min=default-.05, q_max=default+.05)
+            self.transport.reply = replace(reply, info=replace(reply.info, body=replace(body, joints=tuple(caps))))
+            return slot
+        slot = narrow()
+        self.run_trial()
+        self.assertTrue(any(not default-.05 <= c.joints[slot].q <= default+.05 for c in self.transport.commands))
+        self.assert_cancelled()
+
+        self.setUp(); slot = narrow()
+        publish = self.controller.publish
+        def without_exemption(*a, **kw):
+            kw['q_limit_exempt_names'] = ()
+            return publish(*a, **kw)
+        with patch.object(self.controller, 'publish', without_exemption):
+            with self.assertRaisesRegex(InvalidCommandError, 'target q outside limit: %d' % slot):
+                self.run_trial()
+        self.assertTrue(self.transport.commands)
+        self.assertTrue(all(default-.05 <= c.joints[slot].q <= default+.05 for c in self.transport.commands))
+        self.assert_cancelled()
     def test_config_changed_during_preflight_refuses_entry(self):
         original=self.runtime.infer_motion
         def changed(*a,**kw):
@@ -1274,6 +1412,50 @@ class LiveTests(unittest.TestCase):
 
     def auto_trial(self, **kwargs):
         return self.run_trial(manual_pico=self.worker,request_action=self.request_action,**kwargs)
+
+    def test_auto_delayed_fixed_status_after_retired_damping(self):
+        self.auto_setup('PASSIVE')
+        original = self.transport.state_fault
+        requested_at = []
+        def action(name):
+            self.startup_calls.append((name, self.clock.monotonic()))
+            if name == 'FIXED_STAND':
+                requested_at.append(self.clock.monotonic())
+                self.transport.value = replace(self.transport.value, current_action='')
+            else:
+                self.transport.value = replace(self.transport.value, current_action='PASSIVE')
+        def feedback(state):
+            if requested_at and not self.transport.requests:
+                name = 'FIXED_STAND' if self.clock.monotonic()-requested_at[0] > .1 else ''
+                self.transport.value = replace(self.transport.value, current_action=name)
+            return original(state)
+        self.request_action = action
+        self.transport.state_fault = feedback
+        self.auto_trial()
+        self.assertEqual([x[0] for x in self.startup_calls], ['FIXED_STAND'])
+        self.assertTrue(any(r.get('record_type') == 'fixed_stand_confirmed' for r in self.rows))
+        self.assert_cancelled()
+
+    def test_auto_empty_action_after_fixed_stand_was_seen_refuses(self):
+        self.auto_setup('PASSIVE')
+        original = self.transport.state_fault
+        requested_at = []
+        def action(name):
+            self.startup_calls.append((name, self.clock.monotonic()))
+            if name == 'FIXED_STAND':
+                requested_at.append(self.clock.monotonic())
+                self.transport.value = replace(self.transport.value, current_action='FIXED_STAND')
+        def feedback(state):
+            # FIXED_STAND was reported, then the action name disappears.
+            if requested_at:
+                self.transport.value = replace(self.transport.value, current_action=
+                    'FIXED_STAND' if self.clock.monotonic()-requested_at[0] < .05 else '')
+            return original(state)
+        self.request_action = action
+        self.transport.state_fault = feedback
+        with self.assertRaisesRegex(RuntimeError, 'Unexpected action during FIXED_STAND activation'):
+            self.auto_trial()
+        self.assertEqual(self.transport.requests, [])
 
     def test_auto_waits_full_damping_once_then_fixed_and_continuous_onnx_without_pico(self):
         self.auto_setup()
@@ -1622,6 +1804,7 @@ class LiveTests(unittest.TestCase):
             imu[0,:4]=[np.cos(.1),0.,np.sin(.1),0.]
             return replace(state,imu_values=imu)
         self.transport.state_fault=leaned
+        self.controller.get_robot_info(1.)  # run_live discovers the runtime first.
         params,_=load_robot_config(self.config)
         envelope=CommandEnvelope(self.runtime,self.transport.reply,params)
         plan=StartupPlan(self.runtime,envelope,self.config)
@@ -1665,6 +1848,7 @@ class LiveTests(unittest.TestCase):
 
     def test_status_freeze_is_detected(self):
         guard = StatusGuard(self.clock)
+        self.controller.get_robot_info(1.)  # status is accepted only from the discovered runtime
         status = self.controller.status
         guard.check(status)
         self.clock.sleep(.51)

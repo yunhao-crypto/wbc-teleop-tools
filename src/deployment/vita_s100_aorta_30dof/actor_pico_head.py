@@ -81,7 +81,7 @@ class PicoHeadControl:
         limits = []
         for name, configured in zip(NECK_NAMES, self.settings.limits):
             cap = body.joints[body.joint_names.index(name)]
-            if not cap.populated or cap.is_mock or cap.valid_limits != 31:
+            if cap.is_mock or cap.valid_limits != 31:
                 raise ValueError('Head control needs physical neck command limits: '+name)
             pair = (max(configured[0], cap.q_min), min(configured[1], cap.q_max))
             if not pair[0] < 0 < pair[1]:

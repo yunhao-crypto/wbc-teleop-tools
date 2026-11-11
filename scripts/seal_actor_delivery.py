@@ -69,6 +69,9 @@ def main():
                    'scripts/import_actor_motion.py', 'scripts/compare_actor_motion.py',
                    'tests/test_actor_motion_tools.py']
     additional += ['tests/test_morph_reference_feasibility.py']
+    additional += ['src/deployment/vita_s100_aorta_30dof/actor_pico_gripper.py',
+                   'config/pico_op3_gripper.example.json', 'tests/test_actor_pico_gripper.py',
+                   'deploy/actor_s100/PICO_OP3_GRIPPER.md']
     additional += ['src/deployment/vita_s100_aorta_30dof/actor_pico_gmr_profile.py',
                    'scripts/export_gmr_calibration_profile.py',
                    'config/gmr_calibration/vita02a_neutral_20261110_h180.json',
