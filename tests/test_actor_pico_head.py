@@ -78,11 +78,20 @@ class HeadTests(unittest.TestCase):
                 self.assertEqual(combined['pico_timestamp_ns'],1_000_000_000)
                 self.now+=.02;self.stamp+=20_000_000
 
-    def test_stale_independent_head_input_cannot_hide_behind_fresh_body_reference(self):
+    def test_stale_independent_head_holds_neck_without_changing_body_targets(self):
         with patch.object(self.runtime,'head',self.head):
             combined=dict(self.snapshot(),head_snapshot=self.snapshot(age=self.head.maximum_age+.01))
-            with self.assertRaisesRegex(TimeoutError,'head input is stale'):
-                self.runtime.apply_head(self.command,{},now=self.now,snapshot=combined,tracking=True)
+            measured = np.zeros(31); measured[self.slots] = [.2, -.1]
+            row = {}
+            command, candidate = self.runtime.apply_head(self.command, row, now=self.now,
+                measured_q=measured, snapshot=combined, tracking=True)
+            self.assertIsNone(self.head.state)  # Preview remains transactional.
+            self.assertEqual(row['head_control']['mode'], 'hold')
+            self.assertTrue(row['head_control']['input_expired'])
+            np.testing.assert_array_equal(candidate.q, [.2, -.1])
+            for i, joint in enumerate(command.joints):
+                if i not in self.slots:
+                    self.assertEqual(joint, self.command.joints[i])
 
     def test_world_turn_cancels_and_each_engagement_calibrates_current_pose(self):
         neutral = Rotation.from_euler('XYZ', [.1, -.4, .2]).as_matrix()
@@ -154,15 +163,31 @@ class HeadTests(unittest.TestCase):
         _, diag, state = self.tick(self.snapshot(yaw=.8))
         self.assertEqual(diag['mode'], 'tracking')
         self.assertGreater(state.q[0], before.q[0])
-        with self.assertRaises(TimeoutError):
-            self.tick(self.snapshot(age=.61))
+        _, diag, expired = self.tick(self.snapshot(age=.61))
+        self.assertEqual(diag['mode'], 'hold')
+        self.assertTrue(diag['input_expired'])
+        np.testing.assert_array_equal(expired.q, state.q)
+        _, diag, resumed = self.tick(self.snapshot(yaw=.8))
+        self.assertEqual(diag['mode'], 'tracking')
+        self.assertGreater(resumed.q[0], expired.q[0])
+
+    def test_future_head_receipt_holds_without_advancing_filter_or_neutral(self):
+        self.tick(self.snapshot())
+        _, _, previous = self.tick(self.snapshot(yaw=.5))
+        for age in (-1., .61, 10.):
+            _, diag, held = self.tick(self.snapshot(yaw=-.5, age=age))
+            self.assertEqual(diag['mode'], 'hold')
+            np.testing.assert_array_equal(held.q, previous.q)
+            np.testing.assert_array_equal(held.filtered, previous.q)
+            np.testing.assert_array_equal(held.neutral, previous.neutral)
+            self.assertEqual(held.stamp, previous.stamp)
 
     def test_invalid_missing_future_and_regressed_input_fail_without_state_change(self):
         self.tick(self.snapshot())
         previous = self.head.state
         invalid = []
         for field, value in [('raw_body_poses', None), ('pico_timestamp_ns', None),
-                             ('pico_timestamp_ns', 1), ('received_monotonic', self.now+1.)]:
+                             ('pico_timestamp_ns', 1)]:
             bad = self.snapshot(); bad[field] = value; invalid.append(bad)
         for component, value in [(3, float('nan')), (6, 0.)]:
             bad = self.snapshot(); bad['raw_body_poses'][15, component] = value; invalid.append(bad)

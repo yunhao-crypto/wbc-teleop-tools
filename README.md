@@ -13,16 +13,17 @@
 ## 适用环境和验证范围
 
 - S100 本机：Linux aarch64、Python **3.10**、glibc ≥2.35、venv/ensurepip、Bash、`ip`、`flock`、`ldd`。
-- SDK `0.3.0`（humanoid-sdk `535cbbc`，即 main `abe21ab` 加 PR #22 的显式 q 范围豁免），Aorta/messages `0.0.0+g7649a87ebb03`，
+- SDK `0.3.0`（humanoid-sdk 官方 main `a0b50cef`，已合入 PR #23），Aorta/messages `0.0.0+g7649a87ebb03`，
   控制协议 4、Body31 协议 3、RobotInfo 协议 2、roster 1，28 策略关节加 2 颈关节。
   需要支持这些协议的机器人固件（vita-robot master `896385d5b` 或更新）；此前验证的
   `1.6.0-200` / `c9b4e80c` 只支持 SDK 0.2.1 协议，不能运行本交付。SDK 0.3.0 尚无真机运行记录。
   其他机器人发行版须先核对接口和有效配置；不能仅凭包日期选择 wheel。
 - **越界 PD 目标约定**：SONIC/SuperMimic/MorphMimic 发送未裁剪的 PD 目标（主要是踝），会超出 RobotInfo q 范围。
-  SDK 只对机器人配置显式开启 `allow_position_targets_outside_mechanical_range: true` 时、策略声明的
-  未裁剪目标关节跳过 q 范围检查；其余关节和其余字段仍按 RobotInfo 检查，越界即 `InvalidCommandError`、
-  CANCEL、PASSIVE。固件需支持同一约定（vita-robot PR #13086，含 `position_target_margin_rad`）。
-  SDK PR #22 与固件 PR #13086 尚未合入，也没有 HIL 验收。
+  官方 SDK 将 BodyCmd 的 q/dq/tau/kp/kd 设备范围处理交给固件，不需要逐次豁免参数；仍校验有限 float32、
+  声明字段、MOCK、能力和控制身份。WTT 保留策略命令包络与实测姿态检查，并要求机器人显式开启
+  `allow_position_targets_outside_mechanical_range: true` 及有限的 `position_target_margin_rad`，
+  否则固件仍会裁剪 q（vita-robot PR #13164）。SDK #22 已由 #23 替代；固件 #13164 尚未合入，没有 HIL 验收。
+  随包 wheel 为基于官方源码的本地开发重打包：native 输入未变、native 库逐字节保留，尚非官方 SDK 发行包。
 - 目标机提供 `/app/script/env.sh`、部署自有 `/app_param/zenoh/s100_session_peer.json5`
   和完整 A-sample 有效 YAML。当前无夹爪配置应与真实硬件一致，不自动修改末端选择或将执行器设为 MOCK。
 - 通过的交付/只读检查不等于运动验收。**真实 Pico 跟随质量、无支撑站立稳定性仍未完成验收。**
@@ -126,8 +127,8 @@ bash scripts/start_actor_pico.sh configure \
 bash scripts/start_actor_pico.sh sonic        # GR00T G1 (SONIC) 策略
 bash scripts/start_actor_pico.sh supermimic   # SuperMimic 策略
 bash scripts/start_actor_pico.sh              # 终端菜单选择 1) sonic 2) supermimic，无默认
-# 身高默认 1.80 米（与随附 GMR 标定档案一致，三种策略默认启用标定与落地脚）。
-# 其他操作者可覆盖身高；身高与档案不一致时自动关闭标定与落地脚并打印 ACTOR_WARNING：
+# 身高默认 1.80 米；三种策略均默认关闭 GMR 标定与落地脚，需在策略配置中显式指定。
+# 使用 --human-height 指定实际操作者身高；仅设置为 1.80 米不会启用标定：
 # bash scripts/start_actor_pico.sh supermimic --human-height 1.68
 ```
 

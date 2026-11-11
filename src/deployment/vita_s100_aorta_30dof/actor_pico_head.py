@@ -135,22 +135,21 @@ class PicoHeadControl:
             if snapshot is None:
                 raise ValueError('Head tracking requires a Pico snapshot')
             age = now-float(snapshot['received_monotonic'])
-            if not 0 <= age <= self.maximum_age:
-                raise TimeoutError('Pico head input is stale/future')
-            current_stamp = snapshot.get('pico_timestamp_ns')
-            if type(current_stamp) is not int or current_stamp <= 0:
-                raise ValueError('Head tracking requires a positive Pico timestamp')
-            if stamp is not None and current_stamp < stamp:
-                raise ValueError('Pico head timestamp regressed')
-            relative = self.relative_rotation(snapshot.get('raw_body_poses'))
-            stamp = current_stamp
-            if age > self.hold_age:
+            if not 0 <= age <= self.hold_age:
                 # Freeze the emitted pose as well as the filter; do not keep
-                # chasing the last target after this head sample becomes old.
+                # chasing an old/future target. Head timing cannot cancel the
+                # body EXTERNAL session, even past the body reference deadline.
                 mode = 'hold'
                 filtered = q.copy()
                 desired = q.copy()
             else:
+                current_stamp = snapshot.get('pico_timestamp_ns')
+                if type(current_stamp) is not int or current_stamp <= 0:
+                    raise ValueError('Head tracking requires a positive Pico timestamp')
+                if stamp is not None and current_stamp < stamp:
+                    raise ValueError('Pico head timestamp regressed')
+                relative = self.relative_rotation(snapshot.get('raw_body_poses'))
+                stamp = current_stamp
                 if neutral is None:
                     neutral = relative.copy()
                     calibrated = True
@@ -177,14 +176,16 @@ class PicoHeadControl:
             joints[slot] = replace(joints[slot], q=float(value), dq=0., tau=0.)
         candidate = HeadState(q, filtered, angles, neutral, tracking, stamp, now)
         diagnostics = dict(mode=mode, calibrated=calibrated, pico_age_s=age,
+                           input_expired=tracking and not 0 <= age <= self.maximum_age,
                            pico_timestamp_ns=stamp, joint_names=list(NECK_NAMES),
                            target_q=q.tolist(), desired_q=desired.tolist(),
                            effective_limits=limits.tolist())
         if tracking:
             diagnostics.update(source=snapshot.get('source', 'gmr_snapshot'),
                 reader_frame_sequence=snapshot.get('reader_frame_sequence'),
-                reader_monotonic_ns=snapshot.get('reader_monotonic_ns'),
-                chest_head_xyzw=np.asarray(snapshot['raw_body_poses'])[[9, 15], 3:7].tolist())
+                reader_monotonic_ns=snapshot.get('reader_monotonic_ns'))
+            if mode == 'tracking':
+                diagnostics['chest_head_xyzw'] = np.asarray(snapshot['raw_body_poses'])[[9, 15], 3:7].tolist()
         return replace(command, joints=tuple(joints)), diagnostics, candidate
 
     def commit(self, candidate):

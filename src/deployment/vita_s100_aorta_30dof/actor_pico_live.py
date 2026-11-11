@@ -326,11 +326,6 @@ class CommandEnvelope:
             self.limits.append(ranges)
         self.target_names = tuple(name for name, cap in zip(self.body.joint_names, self.body.joints)
                                   if not cap.is_mock)
-        # Only the robot's explicit opt-in keeps such targets; otherwise the
-        # SDK range check stays active for every declared target.
-        self.q_limit_exempt_names = (
-            tuple(name for name in self.target_names if name in self.unbounded_target_joints)
-            if params.get('allow_position_targets_outside_mechanical_range') is True else ())
         if runtime.head is not None:
             runtime.head.bind_body_info(self.body)
         # A fixed model/gain profile, including both necks, must fit BEFORE entry.
@@ -844,6 +839,10 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
             tracking = False
             auto_pico = False
             pico_reengage_blocked = True
+            # Required-Pico mode now stands using robot feedback only. A
+            # terminal worker snapshot must not keep failing Inputs.read().
+            # Manual re-engagement reads its separate manual_pico source.
+            inputs.pico = None
             lead = runtime.hold_motion().lead_in(q, root, runtime.config['body_profile']['lead_in'])
             offset = runtime.math.yaw(root)
             stand_tick = 0
@@ -1108,8 +1107,7 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
             before = clock.monotonic()
             # SDK alone owns session + sequence, shared with end-effector output.
             sent = controller.publish(command, target_names=envelope.target_names,
-                                      required_fields=BODY_FIELDS_ALL,
-                                      q_limit_exempt_names=envelope.q_limit_exempt_names)
+                                      required_fields=BODY_FIELDS_ALL)
             runtime.policy.last_action = pending_action
             if runtime.head is not None:
                 runtime.head.commit(pending_head)

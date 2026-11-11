@@ -39,10 +39,10 @@
     }
   },
   "sdk_version": "0.3.0",
-  "sdk_commit": "535cbbc02c5baa22157520491128aa211b61c997",
+  "sdk_commit": "a0b50cef329181b138239f5576238fcb9e0c02ca",
   "sdk_sources": {
     "wbc_tracking_policy.py": "8bf9ecbcce9d06fde34eaaa817fe7966354958be012f74af159cfd711ce53b9e",
-    "_policy_state.py": "779b3ee099a8955b2d10518f19cf8db6201a092605df6d689d2ca24546d1cac0",
+    "_policy_state.py": "d28cacb350f3c838848ba6978745cb943a2406585a26d35e06b1b1d4828f1c67",
     "body_types.py": "bf8cefde2dee078109da498938f3511da0aa1906fa8af410c5dd9d6740c1a452"
   },
   "body_profile": {
@@ -256,21 +256,7 @@
     "source_commit": "763f5607c3f0accb61a415cfd676af54b72e1232",
     "human_height_m": 1.8,
     "robot": "vita02a",
-    "offset_to_ground": true,
-    "calibration_profile": {
-      "path": "config/gmr_calibration/vita02a_neutral_20261110_h180.json",
-      "sha256": "048f0591b38a813104164e98a385144972677c33ff11ad110095ff60a34616a6"
-    },
-    "foot_support": {
-      "enter_height_m": 0.03,
-      "exit_height_m": 0.05,
-      "enter_speed_m_s": 0.15,
-      "exit_speed_m_s": 0.35,
-      "enter_hold_s": 0.05,
-      "blend_s": 0.15,
-      "speed_cutoff_hz": 4.0,
-      "note": "Planted-foot targets (level sole on calibrated ground, rigid toe/ankle). Needs the calibration profile; both switch off with a warning when the launch height differs from the profile's 1.80 m."
-    }
+    "offset_to_ground": true
   },
   "reference_window": {
     "past_frames": 8,

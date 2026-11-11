@@ -1,11 +1,11 @@
 {
   "status": "SEALED_FROM_REVIEWED_WHEEL",
-  "sdk_commit": "535cbbc02c5baa22157520491128aa211b61c997",
+  "sdk_commit": "a0b50cef329181b138239f5576238fcb9e0c02ca",
   "sdk_version": "0.3.0",
   "wheel": {
     "filename": "locomotion_aorta-0.3.0-cp310-cp310-manylinux_2_35_aarch64.whl",
-    "sha256": "232b6d947a7921e9c89515411054688660d61db2aa88c730dd7b83b286a33849",
-    "bytes": 9893430
+    "sha256": "44291215509f63888f432c949d8439dc6f86d0736290410345563e85235be5f1",
+    "bytes": 9893216
   },
   "source_sha256": {
     "__init__.py": "065ff16877575a589d1ff9745d1874ea43b38e02976f015bdcf5ebc23cf43b54",
@@ -14,11 +14,11 @@
     "_end_effector_codec.py": "215fde4700489ca8a7687d784bff21928a3dbe4b0d3ddae1a8cd1714bcdba978",
     "_group.py": "11381672a06c1615e58c523dadb729e0d64635716b696262ca56107121f429b7",
     "_motor_codec.py": "9067a3ddc1d21fe7beabb08389c143372d19915d91ab322d6721af18e92a4bf3",
-    "_policy_state.py": "779b3ee099a8955b2d10518f19cf8db6201a092605df6d689d2ca24546d1cac0",
+    "_policy_state.py": "d28cacb350f3c838848ba6978745cb943a2406585a26d35e06b1b1d4828f1c67",
     "_state_stream.py": "6b0d71efe78f2cdb74483aadc0eaea80049c6a13d6e2d7d4e988dbfc79f9d569",
     "body_types.py": "bf8cefde2dee078109da498938f3511da0aa1906fa8af410c5dd9d6740c1a452",
     "brainco_capture.py": "436319bd20f5c7a9b138bcc0e823c75a97318b98e1ef276c8e3503d961f9fa9b",
-    "controller.py": "918f769e67a5c89da7b18f544bb221384b8dd2d63f67fbeda509d4c58d647665",
+    "controller.py": "290a7909811cb0821505b1f6b636dc57ae0905bb80c97b208dcbc7eea85967b5",
     "end_effector.py": "5a20f811e9898410064a51a5365429db358c16ed954d81197af34bdf70a6cf19",
     "end_effector_types.py": "4deccfc09477f5cd721c28c122f5e3b513e452d7219e952198018c257c6cb532",
     "joy.py": "65e57b42cec72d3b061b643e3f5046ce2dcb54f1bf4e499a38e6537f9e835792",
@@ -59,5 +59,23 @@
     "aorta_version": "0.0.0+g7649a87ebb03",
     "humanoid_msgs_version": "0.0.0+g35ce9eb82d5b",
     "flatbuffers_version": "25.12.19"
+  },
+  "build_provenance": {
+    "method": "python_source_repack_over_unchanged_reviewed_native_payload",
+    "sdk_commit": "a0b50cef329181b138239f5576238fcb9e0c02ca",
+    "base_sdk_commit": "535cbbc02c5baa22157520491128aa211b61c997",
+    "base_wheel_sha256": "232b6d947a7921e9c89515411054688660d61db2aa88c730dd7b83b286a33849",
+    "wheel_sha256": "44291215509f63888f432c949d8439dc6f86d0736290410345563e85235be5f1",
+    "python_sources_verified": 22,
+    "changed_python_modules": [
+      "locomotion_aorta/_policy_state.py",
+      "locomotion_aorta/controller.py"
+    ],
+    "native_payload_byte_identical": true,
+    "native_build_inputs_and_dependency_manifest_unchanged": true,
+    "official_sdk_release": false,
+    "native_build": "not_measured",
+    "arm_execution": "not_measured",
+    "robot_hil": "not_measured"
   }
 }

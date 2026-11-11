@@ -309,10 +309,10 @@ other versions raise at startup instead of silently running the slower pinned
 engine. Log headers record `gmr_engine`. The input worker no longer
 sleeps 5 ms after each solved frame; it polls every 1 ms only while idle.
 
-Operator height defaults to **1.80 metres**, the height the shipped GMR
-calibration profile was fitted at. Override it for every other operator
-(this switches the profile and planted feet off, see
-[GMR calibration profile and planted feet](#gmr-calibration-profile-and-planted-feet-default-on)):
+Operator height defaults to **1.80 metres**. Override it for the actual operator.
+Calibration and planted feet are off by default; the height alone does not enable
+them. Select a matching profile explicitly as described in
+[GMR calibration profile and planted feet](#gmr-calibration-profile-and-planted-feet-opt-in):
 
 ```bash
 bash scripts/start_actor_pico.sh sonic --human-height 1.68
@@ -610,8 +610,11 @@ Standby smoothly returns the neck to zero. The first live tick starts from
 measured neck position. When the head reader sample exceeds `pico_hold_age_s`
 (0.25 s), neck position freezes; fresh input resumes following. Body reference
 hold uses the GMR sample's own age, so a delayed solve does not freeze a fresh
-head sample. Either input exceeding `pico_max_age_s` (0.6 s) still reaches the
-existing live fault path and cancels EXTERNAL.
+head sample. Head input older than `pico_max_age_s` (0.6 s), or with a future
+receipt time, keeps the neck held and records `head_control.input_expired`;
+it does not cancel EXTERNAL. Fresh head input resumes following. Body input
+loss follows `pico_loss_action` (default: return to ONNX stand); robot-feedback
+and firmware faults retain their existing cancellation behavior.
 Missing/invalid head data also fails the trial. Calibration/filter/slew state
 advances only after a successful live publication. Logs include `head_control`
 diagnostics (including the actual head sample's timestamp, reader sequence,
@@ -1075,12 +1078,25 @@ the SuperMimic margin and filters but without `root_max_tilt_deg`: in
 closed-loop simulation the 25 deg clamp made SONIC 49000 fall during deep
 forward bends, while all runs completed without it.
 
-## GMR calibration profile and planted feet (default on)
+## GMR calibration profile and planted feet (opt-in)
 
 Two `retargeting` keys change the GMR targets without modifying the vendored
 solver, its IK configuration or the MJCF. All three shipped configs (SONIC,
-SuperMimic, MorphMimic) set both, with `human_height_m: 1.8` to match the
-profile.
+SuperMimic, MorphMimic) omit both keys, so the default path uses plain GMR
+offsets without planted-foot targets. Setting `--human-height 1.8` does not
+select the supplied profile. To opt in, explicitly add the following keys to
+`retargeting` in the selected policy configuration, after validating the profile
+for the operator:
+
+```json
+"calibration_profile": {
+  "path": "config/gmr_calibration/vita02a_neutral_20261110_h180.json",
+  "sha256": "048f0591b38a813104164e98a385144972677c33ff11ad110095ff60a34616a6"
+},
+"foot_support": {"enter_height_m": 0.03, "exit_height_m": 0.05,
+                 "enter_speed_m_s": 0.15, "exit_speed_m_s": 0.35,
+                 "enter_hold_s": 0.05, "blend_s": 0.15, "speed_cutoff_hz": 4.0}
+```
 
 The profile only holds for the height it was fitted at. When `--human-height`
 (or the config) differs from the profile's `human_height_m`, startup prints

@@ -67,10 +67,13 @@ Retain the original license/notices associated with each dependency.
 - A Pico headset client with full-body tracking, calibrated trackers and Send
   enabled. The headset client and robot firmware are separate installed products.
 
-The pinned SDK build follows humanoid-sdk `535cbbc02c5baa22157520491128aa211b61c997`
-(main `abe21ab` plus PR #22, which adds `publish(..., q_limit_exempt_names=...)`;
-only `controller.py` differs from the main wheel; development build, not a separately published SDK release; its manifest marks the
-native inputs as not ABI-validated). The wheel and native library identities are
+The pinned SDK build follows official main `a0b50cef329181b138239f5576238fcb9e0c02ca`
+(merged PR #23, which delegates BodyCmd device ranges to robot EXTERNAL).
+This is a local development repack, not an official SDK release: all 22 Python
+modules match that commit; `controller.py` and `_policy_state.py` replace the
+previous build's modules. Native build inputs, dependency pins and native library
+bytes are unchanged; no new native build or ARM execution is claimed. Repack
+provenance and the wheel and native library identities are
 sealed in `config/sdk021-wheel-guard.json` (file name kept from 0.2.1); update the
 per-deployment venv as well as the source/config files. Changing `/userdata/sdk-demo`
 alone does not update a WBC trial environment.
@@ -87,14 +90,17 @@ A different firmware requires an interface/configuration review before live use.
 **Out-of-range PD targets for the motor-theta / unclipped policies (SONIC,
 SuperMimic, MorphMimic).** These policies send unclipped PD setpoints that leave
 the advertised RobotInfo q range (on the robot-42 SONIC log about a fifth of
-steps, mainly the ankles). The SDK checks every BodyCmd target q against that
-range before sending, except the joints passed in `q_limit_exempt_names`. The
-actor passes the policy's unclipped target joints only when the robot YAML sets
-`allow_position_targets_outside_mechanical_range: true` together with a finite
-`position_target_margin_rad` in (0, pi]; any other out-of-range target raises
-`InvalidCommandError`, after which the actor cancels EXTERNAL and the robot goes
-to PASSIVE. The firmware must implement the same opt-in (vita-robot PR #13086).
-Neither SDK PR #22 nor firmware PR #13086 is merged or HIL-accepted. Device-owned peer
+steps, mainly the ankles). Official SDK #23 does not enforce RobotInfo device
+ranges for q/dq/tau/kp/kd and has no per-call exemption API. It still rejects
+non-numeric or non-finite-float32 values and checks target/field declarations,
+MOCK, capabilities and control identity. WTT retains its policy envelope, gain,
+fixed-joint and measured-pose checks. Unclipped policies still require the robot
+YAML to set `allow_position_targets_outside_mechanical_range: true` together
+with a finite `position_target_margin_rad` in (0, pi]; firmware #13164 preserves
+q within travel plus that margin. SDK submission alone does not prove acceptance
+or unclipped output: the actor monitors EXTERNAL ownership and rejection/drop
+counters, while firmware clipping can occur without a rejection.
+SDK PR #22 is retired; firmware PR #13164 remains unmerged and HIL-unaccepted. Device-owned peer
 credentials and the active effective A-sample YAML are external prerequisites,
 not files to copy from the developer's machine. Live scheduling requires
 permission for SCHED_RR priority 1.
@@ -164,9 +170,11 @@ that selection on another robot. No hardware configuration is changed here.
 The launcher subsequently requests FIXED_STAND and EXTERNAL motion with
 `bash scripts/start_actor_pico.sh sonic` or `supermimic`; it has no default policy.
 That requires current on-site authorization/support, independent of configuration.
-Height defaults to 1.80 m, the height of the shipped GMR calibration profile
-(enabled with planted feet for every policy). Use `--human-height` for the
-actual operator; a different height switches both off with `ACTOR_WARNING`.
+Height defaults to 1.80 m. Calibration and planted-foot targets are off for
+every policy unless explicitly selected in its `retargeting` configuration.
+Use `--human-height` for the actual operator; setting the height alone does
+not enable calibration. An explicitly selected profile at a different height
+switches both features off with `ACTOR_WARNING`.
 See the [run guide](../../README_ACTOR_PICO.md#default-local-startup).
 
 ## Upgrade and rollback
