@@ -79,16 +79,19 @@ class HeadTests(unittest.TestCase):
                 self.now+=.02;self.stamp+=20_000_000
 
     def test_stale_independent_head_holds_neck_without_changing_body_targets(self):
+        self.tick(self.snapshot())
+        self.tick(self.snapshot(yaw=.5))
+        previous = self.head.state
         with patch.object(self.runtime,'head',self.head):
             combined=dict(self.snapshot(),head_snapshot=self.snapshot(age=self.head.maximum_age+.01))
             measured = np.zeros(31); measured[self.slots] = [.2, -.1]
             row = {}
             command, candidate = self.runtime.apply_head(self.command, row, now=self.now,
                 measured_q=measured, snapshot=combined, tracking=True)
-            self.assertIsNone(self.head.state)  # Preview remains transactional.
+            self.assertIs(self.head.state, previous)  # Preview remains transactional.
             self.assertEqual(row['head_control']['mode'], 'hold')
             self.assertTrue(row['head_control']['input_expired'])
-            np.testing.assert_array_equal(candidate.q, [.2, -.1])
+            np.testing.assert_array_equal(candidate.q, previous.q)
             for i, joint in enumerate(command.joints):
                 if i not in self.slots:
                     self.assertEqual(joint, self.command.joints[i])
@@ -102,9 +105,42 @@ class HeadTests(unittest.TestCase):
         _, diag, _ = self.tick(self.snapshot(yaw=.5, pitch=.2, chest=world, neutral=neutral))
         np.testing.assert_allclose(diag['desired_q'], [.5, .2], atol=1e-12)
         self.tick(tracking=False)
+        for _ in range(30):
+            self.tick(tracking=False)
         _, diag, _ = self.tick(self.snapshot(yaw=.5, chest=world))
         self.assertTrue(diag['calibrated'])
         np.testing.assert_allclose(diag['desired_q'], 0., atol=1e-12)
+
+    def test_entry_waits_for_measured_neutral_before_calibrating_head(self):
+        measured = np.zeros(31); measured[self.slots] = [.5, -.3]
+        for _ in range(20):
+            _, diag, candidate = self.tick(self.snapshot(yaw=.8), measured=measured)
+            self.assertEqual(diag['mode'], 'recenter')
+            self.assertFalse(diag['calibrated'])
+            self.assertIsNone(candidate.neutral)
+            np.testing.assert_array_equal(diag['desired_q'], [0., 0.])
+        # A zero command alone is insufficient while physical feedback is off-center.
+        self.assertLess(np.max(np.abs(candidate.q)), .001)
+        measured[self.slots] = [0., 0.]
+        _, diag, candidate = self.tick(self.snapshot(yaw=.8), measured=measured)
+        self.assertEqual(diag['mode'], 'tracking')
+        self.assertTrue(diag['calibrated'])
+        np.testing.assert_allclose(diag['desired_q'], [0., 0.], atol=1e-12)
+        _, diag, _ = self.tick(self.snapshot(yaw=1.), measured=measured)
+        np.testing.assert_allclose(diag['desired_q'], [.2, 0.], atol=1e-12)
+
+    def test_reengagement_recenters_after_only_one_standby_tick(self):
+        self.tick(self.snapshot())
+        for _ in range(30):
+            self.tick(self.snapshot(yaw=.6))
+        self.tick(tracking=False)
+        _, diag, candidate = self.tick(self.snapshot(yaw=-.4))
+        self.assertEqual(diag['mode'], 'recenter')
+        self.assertIsNone(candidate.neutral)
+        for _ in range(30):
+            _, diag, _ = self.tick(self.snapshot(yaw=-.4))
+        self.assertEqual(diag['mode'], 'tracking')
+        np.testing.assert_allclose(diag['desired_q'], [0., 0.], atol=1e-12)
 
     def test_rate_limits_first_measured_pose_and_standby_return(self):
         self.head.settings = replace(self.head.settings, max_velocity=.8, filter_tau=.12)

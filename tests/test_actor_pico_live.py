@@ -332,6 +332,28 @@ class LiveTests(unittest.TestCase):
             self.assertEqual(row['body_targets'], row['sent_body_targets'])
         self.assertEqual([r.operation.value for r in self.transport.requests], ['PREPARE', 'COMMIT', 'CANCEL'])
 
+    def test_head_engagement_waits_for_measured_neck_to_center(self):
+        worker, request = self.manual_trial()
+        self.args.seconds = 4.5
+        slots = [self.runtime.policy.order.index(n) for n in ('neck_yaw_joint', 'neck_pitch_joint')]
+        def feedback(state):
+            if 155 <= len(self.transport.commands) < 175:
+                q = state.q.copy(); q[slots] = [.4, -.2]
+                return replace(state, q=q)
+            return state
+        self.transport.state_fault = feedback
+        report = self.run_trial(manual_pico=worker, poll_command=request)
+        rows = [row for row in self.rows if row.get('stage') == 'pico_tracking']
+        pending = [row for row in rows if row['actions_sent'] <= 175]
+        self.assertGreater(len(pending), 10)
+        self.assertTrue(all(row['head_control']['mode'] == 'recenter' for row in pending))
+        self.assertFalse(any(row['head_control']['calibrated'] for row in pending))
+        ready = [row for row in rows if row['head_control']['calibrated']]
+        self.assertEqual(len(ready), 1)
+        self.assertGreater(ready[0]['actions_sent'], 175)
+        np.testing.assert_allclose(ready[0]['head_control']['desired_q'], [0., 0.], atol=1e-12)
+        self.assertTrue(report['exit_confirmed'])
+
     def test_invalid_head_after_engagement_cancels_the_session(self):
         worker, request = self.manual_trial()
         original = worker.snapshot

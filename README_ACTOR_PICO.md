@@ -607,7 +607,13 @@ intersected with actual RobotInfo limits. Positive pitch tilts forward/down in
 the URDF frame. The existing fixed-joint KP/KD (20/1) are preserved.
 
 Standby smoothly returns the neck to zero. The first live tick starts from
-measured neck position. When the head reader sample exceeds `pico_hold_age_s`
+measured neck position. Every engagement, including re-engagement after a short
+pause, first returns yaw/pitch toward zero using the existing filter and optional
+slew limit. Head calibration/following waits until both commanded and measured
+neck positions are within 1 degree of zero; the fresh Pico pose at that point
+becomes the new head neutral. Until then logs show `head_control.mode: recenter`.
+This head-only phase leaves the body policy running and does not cancel EXTERNAL.
+When the head reader sample exceeds `pico_hold_age_s`
 (0.25 s), neck position freezes; fresh input resumes following. Body reference
 hold uses the GMR sample's own age, so a delayed solve does not freeze a fresh
 head sample. Head input older than `pico_max_age_s` (0.6 s), or with a future
