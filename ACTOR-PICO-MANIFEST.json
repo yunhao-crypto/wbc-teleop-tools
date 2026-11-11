@@ -6,14 +6,14 @@
   "files": [
     {
       "path": "README_ACTOR_PICO.md",
-      "sha256": "29fdcdf2e0a6cd3cb73560d6f43477653221223351f80ca092c47cddfd7859d4",
-      "bytes": 76419,
+      "sha256": "7031e4ab6da389a3c72891aa72fc7cae15866e8b79f227f88b1b2dc8abcc5a07",
+      "bytes": 77443,
       "mode": "0o644"
     },
     {
       "path": "config/actor_pico.json",
-      "sha256": "2a122b792774fea8c2f2bd42ea477a17e6244dfd974fa2be1c4a8a96d89c811b",
-      "bytes": 8668,
+      "sha256": "8f7a89f9a71a949998a7e56eebddd15ab8a860cfc823eed525c9694c2ae5f57a",
+      "bytes": 8699,
       "mode": "0o644"
     },
     {
@@ -42,8 +42,8 @@
     },
     {
       "path": "src/deployment/vita_s100_aorta_30dof/actor_pico_runtime.py",
-      "sha256": "22b4ccca090c58119674a4ce487438b8c7c64c3bcedc7b60c770ebb1de3e46a9",
-      "bytes": 16600,
+      "sha256": "49dae32cb3c2db5f56a390df12b11601c982d4c550ad53e1ca14d2544814ee75",
+      "bytes": 16791,
       "mode": "0o644"
     },
     {
@@ -72,14 +72,14 @@
     },
     {
       "path": "src/deployment/vita_s100_aorta_30dof/actor_pico_live.py",
-      "sha256": "3521eedc43d2c46ce7fe830fcf14ac14368151474ed2f4529c0a7344ad728be3",
-      "bytes": 64959,
+      "sha256": "5d6dc9d8ae917ba039cb6bcb67902a1326e449badc42c947bcdc741b5eb1271a",
+      "bytes": 68711,
       "mode": "0o644"
     },
     {
       "path": "tests/test_actor_pico_live.py",
-      "sha256": "13d63f6631426c532d8485321c6d33c03801b5b4566a211330653dbe8b4d71e1",
-      "bytes": 118471,
+      "sha256": "5ab0c333cbbaae83689cfcf1867c45b2b1419cbe9d3006a4b637bfc107493498",
+      "bytes": 123577,
       "mode": "0o644"
     },
     {
@@ -216,8 +216,8 @@
     },
     {
       "path": "config/actor_pico_supermimic.json",
-      "sha256": "1d49ae5bf991b4524011d286336c36a1380e4720ec69f1b8f8b12c5f1696aef8",
-      "bytes": 9469,
+      "sha256": "95f31ecef3c91f101cac5df42968e7b16e749d7864770b6aa99efb45882a80f4",
+      "bytes": 9500,
       "mode": "0o644"
     },
     {
@@ -318,8 +318,8 @@
     },
     {
       "path": "config/actor_pico_morphmimic.json",
-      "sha256": "c273c73c2f4507220630d7a1ed290168a2d5fd23fb86b5c22c94677b24eb79f4",
-      "bytes": 9206,
+      "sha256": "5f249666a3d5ef29b7ac611be615340d3ea3b061552278b272bcfb401e1292f9",
+      "bytes": 9237,
       "mode": "0o644"
     },
     {

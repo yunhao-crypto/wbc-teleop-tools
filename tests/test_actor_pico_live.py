@@ -487,17 +487,18 @@ class LiveTests(unittest.TestCase):
         self.assertTrue(any(r.get('record_type')=='pico_switch_rejected' for r in self.rows))
         self.assertFalse(any(r.get('stage')=='pico_tracking' for r in self.rows))
 
-    def test_pico_loss_after_manual_switch_cancels_instead_of_returning_to_stand(self):
+    def test_pico_loss_after_manual_switch_returns_to_stand_by_default(self):
         worker, command=self.manual_trial()
         def fault_after_publish(c):
             if len(self.transport.commands)>160:
                 worker.fault=lambda:dict(state='failed',error='injected disconnect')
         self.transport.after_publish=fault_after_publish
-        with self.assertRaisesRegex(ValueError,'not ready'):
-            self.run_trial(manual_pico=worker,poll_command=command)
+        self.run_trial(manual_pico=worker,poll_command=command)
+        self.assertTrue(any(r.get('record_type')=='pico_loss_stand' and
+                            'not ready' in r['error'] for r in self.rows))
         self.assert_cancelled()
         stages=[r['stage'] for r in self.rows if 'stage' in r]
-        self.assertEqual(stages[-1],'pico_tracking')
+        self.assertEqual(stages[-1],'prepare_stand')
 
     def test_fresh_head_does_not_bypass_expired_body_reference(self):
         worker,command=self.manual_trial()
@@ -511,9 +512,14 @@ class LiveTests(unittest.TestCase):
                 if len(self.transport.commands)>160:
                     value['received_monotonic']=self.clock.monotonic()-.601
             return value
-        with patch.object(worker,'snapshot',snapshot),self.assertRaisesRegex(TimeoutError,'reference worker snapshot'):
+        # Fresh head data must not keep the expired body reference following:
+        # the run returns to ONNX stand instead of tracking or cancelling.
+        with patch.object(worker,'snapshot',snapshot):
             self.run_trial(manual_pico=worker,poll_command=command)
         self.assertTrue(any(r.get('stage')=='pico_tracking' for r in self.rows))
+        loss=next(i for i,r in enumerate(self.rows) if r.get('record_type')=='pico_loss_stand')
+        self.assertFalse(any(r.get('stage')=='pico_tracking' for r in self.rows[loss:]))
+        self.assertTrue(any(r.get('stage')=='prepare_stand' for r in self.rows[loss:]))
         self.assert_cancelled()
 
     def test_holomotion_600ms_budget_accepts_300ms_old_reference_and_sparse_frames(self):
@@ -662,6 +668,89 @@ class LiveTests(unittest.TestCase):
                 next_command=next(r for r in self.rows[index+1:] if 'sent_body_targets' in r)
                 self.assertEqual((next_command['stage'],next_command['reference_frame']),('prepare_stand',0))
         self.assert_cancelled()
+
+    def test_pico_loss_returns_to_stand_and_only_fresh_trigger_reengages(self):
+        self.online_setup(); self.args.wait_pico = True; self.args.seconds = 6.5
+        original = self.worker.snapshot
+        edges = [155, 260]
+        event_times = {}
+        def snapshot():
+            value = original(); count = len(self.transport.commands)
+            event = sum(count >= edge for edge in edges)
+            if event not in event_times: event_times[event] = self.clock.monotonic()
+            value.update(trigger_event_seq=event, trigger_event_monotonic=event_times[event],
+                         controller_received_monotonic=self.clock.monotonic())
+            if 185 <= count < 230:
+                # Pico stream lost while following, then recovers by itself.
+                value['received_monotonic'] = self.clock.monotonic()-10.
+            return value
+        with patch.object(self.worker, 'snapshot', snapshot):
+            report = self.auto_trial()
+        self.assertEqual(sum(r.get('record_type') == 'pico_loss_stand' for r in self.rows), 1)
+        self.assertEqual(report['pico_losses'], 1)
+        starts = [i for i, r in enumerate(self.rows) if r.get('record_type') == 'tracking_started']
+        toggles = [i for i, r in enumerate(self.rows) if r.get('record_type') == 'pico_trigger_toggle']
+        self.assertEqual((len(starts), len(toggles)), (2, 2))
+        self.assertLess(toggles[0], starts[0])
+        self.assertLess(toggles[1], starts[1])  # Recovery alone never resumed following.
+        loss_index = next(i for i, r in enumerate(self.rows) if r.get('record_type') == 'pico_loss_stand')
+        between = self.rows[loss_index:starts[1]]
+        self.assertFalse(any(r.get('stage') == 'pico_tracking' for r in between))
+        self.assertTrue(any(r.get('stage') == 'prepare_stand' for r in between))
+        self.assertTrue(report['exit_confirmed'])
+        self.assert_cancelled()
+
+    def test_required_pico_loss_stands_and_never_auto_reengages(self):
+        self.args.seconds = 6.5
+        original = self.pico.step
+        def step():
+            if 180 <= len(self.transport.commands) < 240:
+                return None
+            return original()
+        self.pico.step = step
+        report = self.run_trial()
+        self.assertEqual(sum(r.get('record_type') == 'tracking_started' for r in self.rows), 1)
+        loss_index = next(i for i, r in enumerate(self.rows) if r.get('record_type') == 'pico_loss_stand')
+        after = self.rows[loss_index:]
+        self.assertTrue(any(r.get('stage') == 'prepare_stand' for r in after))
+        self.assertFalse(any(r.get('stage') == 'pico_tracking' for r in after))
+        self.assertEqual(report['pico_losses'], 1)
+        self.assertTrue(report['exit_confirmed'])
+        self.assert_cancelled()
+
+    def test_pico_loss_action_cancel_still_aborts_to_passive(self):
+        worker, command = self.manual_trial()
+        original = worker.snapshot
+        def snapshot():
+            value = original()
+            if len(self.transport.commands) >= 165:
+                value['received_monotonic'] = self.clock.monotonic()-10.
+            return value
+        previous = self.runtime.config.get('pico_loss_action')
+        self.runtime.config['pico_loss_action'] = 'cancel'
+        self.addCleanup(self.runtime.config.__setitem__, 'pico_loss_action', previous)
+        with patch.object(worker, 'snapshot', snapshot):
+            with self.assertRaises(TimeoutError):
+                self.run_trial(manual_pico=worker, poll_command=command)
+        self.assertFalse(any(r.get('record_type') == 'pico_loss_stand' for r in self.rows))
+        self.assert_cancelled()
+
+    def test_shipped_configs_default_pico_loss_to_onnx_stand(self):
+        from deployment.vita_s100_aorta_30dof.actor_pico_runtime import POLICY_CONFIGS
+        for policy, path in POLICY_CONFIGS.items():
+            with self.subTest(policy=policy):
+                config = json.loads((ROOT/path).read_text())
+                self.assertEqual(config['pico_loss_action'], 'stand')
+
+    def test_invalid_pico_loss_action_rejected(self):
+        from deployment.vita_s100_aorta_30dof.actor_pico_runtime import load_actor_config
+        config = json.loads((ROOT/'config/actor_pico.json').read_text())
+        for value in ('foo', True, 1, None):
+            with self.subTest(value=value), tempfile.TemporaryDirectory() as tmp:
+                (Path(tmp)/'config').mkdir()
+                (Path(tmp)/'config/actor_pico.json').write_text(json.dumps(dict(config, pico_loss_action=value)))
+                with self.assertRaisesRegex(ValueError, 'pico_loss_action'):
+                    load_actor_config(tmp)
 
     def test_stale_trigger_edge_cannot_be_queued_for_later_engagement(self):
         self.online_setup();self.args.wait_pico=True

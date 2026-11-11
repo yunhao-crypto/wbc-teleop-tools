@@ -136,6 +136,9 @@ bash scripts/start_actor_pico.sh              # 终端菜单选择 1) sonic 2) s
 
 流程为等待阻尼结束 → FIXED_STAND → EXTERNAL → 持续 ONNX 站姿推理并等待 Pico。
 双扳机同时按过 0.7 切入跟随，释放后再次同时按下返回 ONNX 站姿。
+跟随中 Pico 断连/超时（默认 `pico_loss_action: "stand"`）会自动回到 ONNX 站姿并保持 EXTERNAL，
+打印 `ACTOR_WARNING`、记录 `pico_loss_stand`；恢复后需重新双扳机接入，不会自动重连。
+机器人反馈/固件/动作包络等其它故障仍立即 CANCEL → PASSIVE；配置 `"cancel"` 可恢复旧的丢失即停机行为。
 `STOP`/Ctrl-C 尝试 CANCEL → PASSIVE；PASSIVE 下承重肢体可能下落，软件退出不能代替急停。
 EXTERNAL 没有自动到期释放；进程故障也不能假定控制权已释放。
 可用 `--seconds 5` 限定客户端试验时长（如 `bash scripts/start_actor_pico.sh supermimic --seconds 5`）；故障后不自动重试运动。
