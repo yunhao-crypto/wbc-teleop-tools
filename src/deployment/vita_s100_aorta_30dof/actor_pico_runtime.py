@@ -52,6 +52,8 @@ def load_actor_config(root, policy='sonic'):
     if (isinstance(hold, bool) or not isinstance(hold, (int, float)) or not np.isfinite(hold)
             or not 0 < hold < config['pico_max_age_s']):
         raise ValueError('Pico reference hold age must be positive and below pico_max_age_s')
+    if config.get('pico_loss_action', 'stand') not in ('stand', 'cancel'):
+        raise ValueError("pico_loss_action must be 'stand' (return to ONNX stand) or 'cancel' (CANCEL -> PASSIVE)")
     stream_settings(config)
     worker_settings(config)
     head_settings(config)

@@ -760,8 +760,9 @@ The sequence is:
    EXTERNAL. A hold fires once; both must release to/below 0.7 to re-arm, with
    300 ms debounce. The local default never auto-switches to following. The session,
    command sequence and policy history are preserved. Early/invalid requests
-   are rejected and not queued; source loss after handoff cancels without
-   automatic motion retry/reconnection.
+   are rejected and not queued; source loss after handoff returns to ONNX stand
+   (`pico_loss_stand`) and only a fresh double-trigger re-engages, never an
+   automatic retry/reconnection.
 
 The live control thread uses the original onboard HoloMotion entry's
 `SCHED_RR` priority 1. This is process-local; no robot service priorities or
@@ -823,9 +824,18 @@ finite/shape/quaternion checks and strictly increasing source timestamps remain.
 While following, a reference older than `pico_hold_age_s` (250 ms) holds its
 current frame with zero velocity (the training rule beyond a reference's end)
 instead of replaying a frozen moving window; rows record `reference_hold`.
-Pico age exceeding 600 ms or other genuine input faults stop following through
-the existing checked exit; changing input thresholds does not copy HoloMotion's
-separate Velocity-policy fallback into this single-actor deployment.
+Pico age exceeding 600 ms while following returns to **ONNX stand in the
+same EXTERNAL session** (default `pico_loss_action: "stand"`, all three
+policies): an `ACTOR_WARNING` is printed, a `pico_loss_stand` row records the
+transition, and stand resumes from a measured-pose cosine lead-in with policy
+history preserved, exactly like the operator's double-trigger standby. There
+is **no automatic re-engagement**: manual mode needs a fresh double-trigger
+once Pico recovers; the immediate-following (`requires_pico`) mode keeps
+standing until STOP. Setting `pico_loss_action: "cancel"` restores the
+previous abort-to-CANCEL/PASSIVE behaviour. Robot-feedback, firmware and
+command-envelope faults are unaffected and always cancel. Changing input
+thresholds does not copy HoloMotion's separate Velocity-policy fallback into
+this single-actor deployment.
 
 The trigger interaction follows motion-stream-bridge `sources/pico.py` at
 763f560 (`_TRIGGER_ENGAGE=0.7`, `_TOGGLE_DEBOUNCE_S=0.3`, both-release latch).
@@ -834,8 +844,9 @@ age in an independent input thread, then carries a monotonic event counter to
 the control loop. Cached/stale inputs cannot engage; startup/recovery additionally
 requires a fresh release. Returning to stand seeds the existing profile's
 cosine lead-in from measured joints/orientation and preserves policy history.
-This is an intentional reference transition; input faults during following still
-cancel and never automatically resume. Trigger toggling is not an emergency stop.
+This is an intentional reference transition; input faults during following
+return to stand the same way by default and never automatically resume.
+Trigger toggling is not an emergency stop.
 No bridge repository/runtime is needed on S100. Terminal `PICO` remains an
 optional diagnostic entry command; normal operation needs no typed handoff.
 
@@ -938,7 +949,10 @@ the manual mode, without the controller-trigger reader. It connects on the first
 Body31 feedback during preflight; the control loop never runs GMR and only reads
 the latest reference snapshot. Preflight waits for a ready reference window, and
 following starts after the stand preparation with yaw aligned to the measured
-robot heading. A failed worker or stale snapshot cancels the trial.
+robot heading. A failed worker or stale snapshot before engagement cancels the
+trial; once following has started, the same loss returns to ONNX stand
+(`pico_loss_stand`) and the run keeps standing until STOP, without automatic
+re-engagement.
 
 To enter ONNX stand first and manually attach Pico in the **same EXTERNAL
 session**, use the separately armed interactive mode (on S100, from the actual
@@ -967,8 +981,10 @@ vendor initialization cannot hold the control interpreter's GIL. The process
 starts idle, opens no robot controller, and initializes Pico only on CONNECT.
 Its bounded snapshot queue retains original source receipt timestamps. Switching
 preserves the policy history/last action and the SDK session/increasing sequence.
-After following begins, a stale/failed Pico input cancels the trial; there is
-no automatic reconnection or fallback motion. Full-loop timing and hardware
+After following begins, a stale/failed Pico input returns to ONNX stand in
+the same session (default `pico_loss_action: "stand"`; `"cancel"` restores
+the old abort). Re-engagement requires a fresh double-trigger; there is no
+automatic reconnection. Full-loop timing and hardware
 handoff remain unmeasured until a separately authorized supported trial.
 
 These commands create SDK control handles but send no control request until

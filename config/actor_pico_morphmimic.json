@@ -221,6 +221,7 @@
   },
   "pico_max_age_s": 0.6,
   "pico_hold_age_s": 0.25,
+  "pico_loss_action": "stand",
   "provenance": {
     "exporter": "MorphMimic training-side ONNX exporter",
     "checkpoint_sha256": "c8d84f6e3124d5d6ef71776a311d222cf5bc19767a2bd775e9588cc87470de57",

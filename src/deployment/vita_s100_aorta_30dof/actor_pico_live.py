@@ -36,6 +36,10 @@ MEASURED_Q_MARGIN = .03
 BODY_FIELDS_ALL = 0x1f  # q|dq|tau|kp|kd, declared on every BodyCmd publish
 
 
+class PicoWorkerError(RuntimeError):
+    """The Pico input worker reported a terminal failure."""
+
+
 class StaleStateError(TimeoutError):
     """BodyState too old (or from the future) for this policy tick."""
 
@@ -419,7 +423,7 @@ class Inputs:
             self.pico.connect(root)  # Idempotent; the worker starts on first feedback.
             snapshot = self.pico.snapshot()
             if snapshot.get('state') == 'failed':
-                raise RuntimeError('Pico input worker failed: '+str(snapshot.get('error')))
+                raise PicoWorkerError('Pico input worker failed: '+str(snapshot.get('error')))
             if 'received_monotonic' in snapshot:
                 self.last_pico_received = float(snapshot['received_monotonic'])
             self.snapshot = snapshot
@@ -581,6 +585,7 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
         write(dict(record_type='robot_configuration', robot_config=receipt, actions_sent=0))
     envelope = CommandEnvelope(runtime, controller.get_robot_info(args.startup_timeout), params)
     pico_max_age = runtime.config['pico_max_age_s']
+    pico_loss_action = runtime.config.get('pico_loss_action', 'stand')
     auto = bool(getattr(args, 'auto_start', False))
     if getattr(args, 'entry_policy', 'policy-online') != 'policy-online':
         raise ValueError('Only policy-online startup is supported; joint-ramp was removed')
@@ -678,6 +683,7 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
         reference_delay_s=runtime.reference.delay if motion_source is None else 0.,
         human_height_m=runtime.config['retargeting']['human_height_m'] if motion_source is None else None,
         gmr_calibration=runtime.gmr_calibration if motion_source is None else None,
+        pico_loss_action=pico_loss_action if motion_source is None else None,
         pico_stream=runtime.config.get('pico_stream') if motion_source is None else None,
         pico_worker=runtime.config.get('pico_worker'),
         head_control=runtime.config.get('head_control') if runtime.head is not None else None)), flush=True)
@@ -743,7 +749,7 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
     report = dict(mode='live', actions_sent=0, control_handles_created=1, entered=False,
                   exit_confirmed=False, robot_id=args.robot_id, stand_only=args.stand_only,
                   auto_start=auto, onnx_control_enabled=False,
-                  missed_policy_ticks=0, duration_limit_s=args.seconds)
+                  missed_policy_ticks=0, duration_limit_s=args.seconds, pico_losses=0)
     grippers = None
 
     def write_gripper_events():
@@ -787,6 +793,8 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
         policy_tick = 0
         stand_tick = 0
         tracking = False
+        pico_losses = 0
+        pico_reengage_blocked = False
         motion_complete = False
         if runtime.head is not None and not args.stand_only and motion_source is None:
             print('PICO_HEAD: look straight ahead relative to your chest when enabling following; '
@@ -820,6 +828,38 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
             if cancel:
                 raise StaleStateError(f'BodyState stale for {stale_ticks} consecutive policy ticks: {error}')
 
+        def handle_pico_loss(error, q, root):
+            """Pico lost while following: return to ONNX stand, same EXTERNAL session.
+
+            Only an unusable Pico reference during tracking takes this path;
+            robot-feedback, firmware and envelope faults still cancel. After a
+            fault there is no automatic re-engagement: manual mode needs a fresh
+            double-trigger (same as PICO_STANDBY), requires_pico mode keeps
+            standing until STOP. q/root are the latest validated measurement.
+            """
+            nonlocal tracking, auto_pico, lead, offset, stand_tick, preparation
+            nonlocal pico_losses, pico_reengage_blocked
+            if not tracking or motion_source is not None or pico_loss_action != 'stand':
+                return False
+            tracking = False
+            auto_pico = False
+            pico_reengage_blocked = True
+            lead = runtime.hold_motion().lead_in(q, root, runtime.config['body_profile']['lead_in'])
+            offset = runtime.math.yaw(root)
+            stand_tick = 0
+            preparation = max(.3, (len(lead.q)-1)*runtime.model.contract.period)
+            pico_losses += 1
+            report['pico_losses'] = pico_losses
+            print('ACTOR_WARNING: Pico lost during following: '+str(error)+
+                  '; returning to ONNX stand, EXTERNAL session stays active. '+
+                  ('Re-engage with a fresh double-trigger once Pico recovers; '
+                   if manual else 'No re-engagement this run; ')+
+                  'STOP/Ctrl-C still cancels to PASSIVE.', file=sys.stderr, flush=True)
+            write(dict(record_type='pico_loss_stand', error=str(error), loss_count=pico_losses,
+                       transition_start_q=q.tolist(), policy_history_reset=False,
+                       actions_sent=sent_count))
+            return True
+
         def advance(current):
             following, missed = next_policy_deadline(current, clock.monotonic(), runtime.model.contract.period)
             report['missed_policy_ticks'] += missed
@@ -833,8 +873,12 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
                 poll_command()  # Terminal STOP/EOF sets the same cancellation event.
                 if stop.is_set():
                     break
-            if requires_pico and not service_alive():
-                raise RuntimeError('Pico service exited')
+            if requires_pico and not service_alive() and not pico_reengage_blocked:
+                error = RuntimeError('Pico service exited')
+                if not handle_pico_loss(error, q, root):
+                    raise error
+                deadline = advance(deadline)
+                continue
             clock.sleep(max(0., deadline-clock.monotonic()))
             if stop.is_set() or clock.monotonic() >= end:
                 break
@@ -854,6 +898,12 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
                 state, q, dq, root, gyro = inputs.read(0)
             except StaleStateError as error:
                 skip_stale('at_read', error)
+                deadline = advance(deadline)
+                continue
+            except PicoWorkerError as error:
+                # q/root are the previous tick's validated measurement here.
+                if not handle_pico_loss(error, q, root):
+                    raise
                 deadline = advance(deadline)
                 continue
             state_age_at_read = inputs.ages(state)
@@ -877,8 +927,14 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
                         unchanged_age_ms=unchanged_ms, action='skip_tick', actions_sent=sent_count))
                 deadline = advance(deadline)
                 continue
-            if requires_pico:
-                inputs.require_pico()
+            if requires_pico and not pico_reengage_blocked:
+                try:
+                    inputs.require_pico()
+                except TimeoutError as error:
+                    if not handle_pico_loss(error, q, root):
+                        raise
+                    deadline = advance(deadline)
+                    continue
             # Match SDK ReferenceSession: one reference frame per successful
             # inference/publication, independent of wall-clock scheduling jitter.
             elapsed = stand_tick*runtime.model.contract.period
@@ -923,8 +979,8 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
                                receipt_gap_s=snapshot.get('receipt_gap_s'),
                                retarget_ms=snapshot.get('retarget_ms'),actions_sent=sent_count))
                 if request == 'toggle' and tracking:
-                    # An intentional standby transition is distinct from a
-                    # source fault. Faulted following still cancels, never falls back.
+                    # An intentional standby transition; a source fault takes
+                    # handle_pico_loss (pico_loss_action) instead of this path.
                     manual_reference(runtime,snapshot,clock.monotonic())
                     tracking = False
                     auto_pico = False
@@ -963,37 +1019,43 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
                         write(dict(record_type='tracking_started',actions_sent=sent_count,
                                    reference_yaw_offset=tracking_yaw))
             published_action = runtime.policy.last_action.copy()
-            if motion_source is not None and elapsed >= preparation:
-                if not tracking:
-                    motion_source.begin(q, root)
-                    tracking = True
-                    write(dict(record_type='motion_started', actions_sent=sent_count,
-                        motion=motion_source.metadata, lead_frames=motion_source.lead_frames,
-                        total_ticks=motion_source.total_ticks, policy_history_reset=False))
-                    print('MOTION_PLAYING: one pass, live robot feedback; STOP/Ctrl-C cancels.',flush=True)
-                if motion_source.finished:
-                    motion_complete = True
-                    break
-                reference_frame = motion_source.tick
-                reference_time = reference_frame*runtime.model.contract.period
-                command, obs, row = motion_source.infer(q=q, dq=dq, root=root, gyro=gyro)
-            elif manual and tracking:
-                command, obs, row = pico_reference_command(runtime, snapshot, clock.monotonic(),
-                    q=q, dq=dq, root=root, gyro=gyro, yaw_offset=tracking_yaw)
-            elif requires_pico and elapsed >= preparation:
-                if not tracking:
-                    if not inputs.reference_ready():
-                        raise TimeoutError('Pico reference window not ready after preparation')
-                    motion, _ = manual_reference(runtime, inputs.snapshot, clock.monotonic())
-                    tracking_yaw = reference_yaw(runtime, motion, root)
-                    tracking = True
-                    write(dict(record_type='tracking_started', actions_sent=sent_count,
-                               reference_yaw_offset=tracking_yaw))
-                command, obs, row = pico_reference_command(runtime, inputs.snapshot, clock.monotonic(),
-                    q=q, dq=dq, root=root, gyro=gyro, yaw_offset=tracking_yaw)
-            else:
-                command, obs, row = runtime.infer_motion_command(lead, q=q, dq=dq,
-                    root=root, gyro=gyro, ref_time=reference_time, yaw_offset=offset)
+            try:
+                if motion_source is not None and elapsed >= preparation:
+                    if not tracking:
+                        motion_source.begin(q, root)
+                        tracking = True
+                        write(dict(record_type='motion_started', actions_sent=sent_count,
+                            motion=motion_source.metadata, lead_frames=motion_source.lead_frames,
+                            total_ticks=motion_source.total_ticks, policy_history_reset=False))
+                        print('MOTION_PLAYING: one pass, live robot feedback; STOP/Ctrl-C cancels.',flush=True)
+                    if motion_source.finished:
+                        motion_complete = True
+                        break
+                    reference_frame = motion_source.tick
+                    reference_time = reference_frame*runtime.model.contract.period
+                    command, obs, row = motion_source.infer(q=q, dq=dq, root=root, gyro=gyro)
+                elif manual and tracking:
+                    command, obs, row = pico_reference_command(runtime, snapshot, clock.monotonic(),
+                        q=q, dq=dq, root=root, gyro=gyro, yaw_offset=tracking_yaw)
+                elif requires_pico and not pico_reengage_blocked and elapsed >= preparation:
+                    if not tracking:
+                        if not inputs.reference_ready():
+                            raise TimeoutError('Pico reference window not ready after preparation')
+                        motion, _ = manual_reference(runtime, inputs.snapshot, clock.monotonic())
+                        tracking_yaw = reference_yaw(runtime, motion, root)
+                        tracking = True
+                        write(dict(record_type='tracking_started', actions_sent=sent_count,
+                                   reference_yaw_offset=tracking_yaw))
+                    command, obs, row = pico_reference_command(runtime, inputs.snapshot, clock.monotonic(),
+                        q=q, dq=dq, root=root, gyro=gyro, yaw_offset=tracking_yaw)
+                else:
+                    command, obs, row = runtime.infer_motion_command(lead, q=q, dq=dq,
+                        root=root, gyro=gyro, ref_time=reference_time, yaw_offset=offset)
+            except (ValueError, TimeoutError) as error:
+                if not handle_pico_loss(error, q, root):
+                    raise
+                deadline = advance(deadline)
+                continue
             last_inferred_identity = identity
             last_inferred_receipt_ns = int(state.received_monotonic_ns)
             # SDK decode updates last_action. Commit that candidate only after
@@ -1018,14 +1080,24 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
                     compute_ms=(compute_end-cycle)*1000, policy_ms=row.get('total_ms'))
                 deadline = advance(deadline)
                 continue
-            if requires_pico:
-                inputs.require_pico()
+            if requires_pico and not pico_reengage_blocked:
+                try:
+                    inputs.require_pico()
+                except TimeoutError as error:
+                    if not handle_pico_loss(error, q, root):
+                        raise
+                    deadline = advance(deadline)
+                    continue
             if manual and tracking:
-                # Recheck source age immediately before publishing; do not
-                # continue stand or reconnect automatically after tracking loss.
+                # Recheck source age immediately before publishing. On loss,
+                # handle_pico_loss returns to stand without auto reconnect.
                 age = clock.monotonic()-float(snapshot['received_monotonic'])
                 if not 0 <= age <= pico_max_age:
-                    raise TimeoutError('Pico reference expired before publication')
+                    error = TimeoutError('Pico reference expired before publication')
+                    if not handle_pico_loss(error, q, root):
+                        raise error
+                    deadline = advance(deadline)
+                    continue
             guard.check(controller.status, entered)
             if stop.is_set():
                 break
