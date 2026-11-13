@@ -279,7 +279,7 @@ class RunnerTests(unittest.TestCase):
             self.assertEqual(client.ready_waited, self.config['startup_timeout_s'])
             close, opened = runner.targets[side][True], runner.targets[side][False]
             self.assertEqual((close.pos, close.current, close.vel_limit), ((0.,), (1.,), (.1,)))
-            self.assertEqual(opened.pos, (.08,))
+            self.assertEqual(opened.pos, (.112,))
             self.assertEqual(close.mode, (2,))
             self.assertEqual(close.command_fields, (Field.POS | Field.VEL_LIMIT | Field.CURRENT,))
         self.assertEqual(runner.publishes, dict(left=0, right=0))
@@ -292,7 +292,7 @@ class RunnerTests(unittest.TestCase):
             current=dict(supported_command_fields=(Field.POS | Field.VEL_LIMIT,)),
             limits=dict(valid_limits=(Field.POS | Field.VEL_LIMIT,)),
             feedback=dict(supported_state_fields=(Field.CURRENT,)),
-            current_range=dict(current_max=(.5,)), opening_range=dict(pos_max=(.05,)))
+            current_range=dict(current_max=(.5,)), opening_range=dict(pos_min=(.02,)))
         for name, change in cases.items():
             with self.subTest(name=name):
                 FakeClient.created, FakeClient.infos = [], dict(left=info('left', **change))

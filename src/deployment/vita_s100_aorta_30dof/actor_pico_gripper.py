@@ -1,8 +1,10 @@
 """Opt-in PICO side-grip control of AgiLink OP3 grippers, off the body policy clock.
 
-Left and right are independent. Holding a side grip closes that gripper with
-the configured current limit; releasing it opens. Missing, stale, frozen or
-invalid input opens. Ending the session sends nothing more, so each gripper
+Left and right are independent. Holding a side grip closes that gripper to
+close_m with the configured current limit. Releasing it, and the command
+before any grip sample, opens to the maximum opening that gripper's Info
+declares. Missing, stale, frozen or invalid input opens the same way. Ending
+the session sends nothing more, so each gripper
 keeps its last command (a held object stays held); only a side fault opens.
 Control goes through the humanoid-sdk EndEffectorClient on
 the same EXTERNAL connection as the body; an SDK without that client is refused
@@ -240,11 +242,17 @@ class GripperRunner:
                 self._check_info(side, side_id, info)
                 self.infos[side] = info
                 fields = sdk.Field.POS | sdk.Field.VEL_LIMIT | sdk.Field.CURRENT
+                # Open to the declared maximum. close_m stays the explicit close,
+                # including 0, and is still checked against the same Info limits.
+                open_m = float(info.pos_max[0])
+                if not spec['close_m'] < open_m:
+                    raise ValueError(f'{side}: close_m={spec["close_m"]} is not below the '
+                                     f'OP3 maximum opening {open_m}')
                 try:
                     self.targets[side] = {
                         closed: codec.prepare_target(info, sdk.EndEffectorTarget(
                             (self.mode,), (fields,),
-                            pos=(spec['close_m' if closed else 'open_m'],),
+                            pos=(spec['close_m'] if closed else open_m,),
                             vel_limit=(spec['vel_limit_m_s'],), current=(spec['current_a'],)))
                         for closed in (False, True)}
                 except ValueError as error:
@@ -260,7 +268,7 @@ class GripperRunner:
                     firmware=info.firmware, serial=info.serial, axis=info.axis_names[0],
                     control_mode=config['control_mode'], pos_limits_m=[info.pos_min[0], info.pos_max[0]],
                     current_limits_a=[info.current_min[0], info.current_max[0]],
-                    vel_limit_max_m_s=info.vel_limit_max[0], open_m=spec['open_m'], close_m=spec['close_m'],
+                    vel_limit_max_m_s=info.vel_limit_max[0], open_m=open_m, close_m=spec['close_m'],
                     current_a=spec['current_a'], initial_opening_m=self._opening(state)))
         except BaseException:
             for client in self.clients.values():
