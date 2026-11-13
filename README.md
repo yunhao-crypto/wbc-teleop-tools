@@ -1,5 +1,7 @@
 # Vita02A / S100 actor + Pico
 
+Native SONIC action14 reference-only Pico/GMR design, explicit fixed-neck mode and current deployment safety limitations: [README_SONIC_ACTION14.md](README_SONIC_ACTION14.md). Existing EXTERNAL actor path remains unchanged.
+
 部署链路：Pico → **motion-stream-bridge Vita02A GMR** → Vita02A 关节参考 →
 已审核的关节参考策略模型 → SDK 0.3.0 Body31。GMR 的算法、模型和参数固定自
 `763f560`，已移除自写姿态 IK；它与 HoloMotion 的 SMPL 输入双策略是不同的链路。
