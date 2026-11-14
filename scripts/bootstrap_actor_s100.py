@@ -109,19 +109,18 @@ def configured_model(root, policy='sonic'):
     return json.loads((root/POLICY_CONFIGS[policy]).read_text())['artifacts']['model']
 
 
-def provision_model(root, manifest, source=None, policy='sonic'):
+def provision_external(root, manifest, configured, source=None, *, label='model', config_name='actor configuration'):
     """Validate an explicit external asset before atomically placing it locally."""
-    configured = configured_model(root, policy)
     matches = [item for item in manifest['external_resources'] if item['path'] == configured['path']]
     if len(matches) != 1 or matches[0]['sha256'] != configured['sha256']:
-        raise RuntimeError('External model manifest disagrees with actor configuration')
+        raise RuntimeError('External model manifest disagrees with '+config_name)
     item, = matches
     destination = inside(root, item['path'])
     source = Path(source).resolve() if source else destination
     if not source.is_file():
-        raise RuntimeError('Model is not in Git. Supply --model /path/to/actor_g1.onnx')
+        raise RuntimeError('Model is not in Git. Supply --'+label+' /path/to/model.onnx')
     if source.stat().st_size != item['bytes'] or sha(source) != item['sha256']:
-        raise RuntimeError('External model size/SHA256 does not match '+POLICY_CONFIGS[policy])
+        raise RuntimeError('External model size/SHA256 does not match '+config_name)
     if destination.exists():
         if not destination.is_file() or sha(destination) != item['sha256']:
             raise RuntimeError('Preserving different existing model: '+str(destination))
@@ -138,6 +137,20 @@ def provision_model(root, manifest, source=None, policy='sonic'):
             temporary.replace(destination)
         finally:
             temporary.unlink(missing_ok=True)
+
+
+def provision_model(root, manifest, source=None, policy='sonic'):
+    return provision_external(root, manifest, configured_model(root, policy), source,
+                              label='model', config_name=POLICY_CONFIGS[policy])
+
+
+def provision_planner_assets(root, manifest, planner=None, bridge=None):
+    config_name = 'config/actor_sonic_planner.json'
+    settings = json.loads((root/config_name).read_text())
+    for key, source in (('planner', planner), ('bridge', bridge)):
+        if source is not None:
+            provision_external(root, manifest, settings[key], source,
+                               label=key+'-model', config_name=config_name)
 
 
 def environment(root):
@@ -193,7 +206,7 @@ def install(root, manifest, *, build_pico=False, policy='sonic'):
     code = ('from deployment.vita_s100_aorta_30dof.sdk021_guard import verify_vendor_sources; '
             'verify_vendor_sources(); import aorta, flatbuffers; '
             'from locomotion_aorta import _body_cmd_native; import xrobotoolkit_sdk as x; '
-            'assert callable(x.get_body_pose_snapshot); assert callable(x.get_controller_trigger_snapshot); print("SDK and Pico binding verification passed")')
+            'assert callable(x.get_body_pose_snapshot); assert callable(x.get_controller_trigger_snapshot); assert callable(x.get_controller_teleop_snapshot); import onnxruntime; print("SDK and Pico binding verification passed")')
     subprocess.run([str(python), '-c', code], cwd=root, env=env, check=True)
     service = root/'vendor_packages/xrobotoolkit-arm64/opt/apps/roboticsservice/RoboticsServiceProcess'
     for executable in [service, root/'build/pico'/f'xrobotoolkit_sdk.cpython-310-aarch64-linux-gnu.so']:
@@ -221,6 +234,8 @@ def main():
     modes.add_argument('--unpack-only', action='store_true')
     parser.add_argument('--build-pico', action='store_true', help='Rebuild from tracked C++ sources on S100')
     parser.add_argument('--model', type=Path, help='External model of --policy; verified before copying locally')
+    parser.add_argument('--planner-model', type=Path, help='External SONIC planner ONNX; verified before copying locally')
+    parser.add_argument('--bridge-model', type=Path, help='External map bridge ONNX; verified before copying locally')
     parser.add_argument('--policy', choices=tuple(POLICY_CONFIGS), default='sonic',
                         help='Actor whose pinned model --model supplies and the install check runs')
     parser.add_argument('--root', type=Path, default=ROOT)
@@ -228,14 +243,15 @@ def main():
     root = args.root.resolve()
     manifest = verify(root)
     if args.verify_only:
-        if args.model:
-            parser.error('--model requires installation or --unpack-only')
+        if args.model or args.planner_model or args.bridge_model:
+            parser.error('External models require installation or --unpack-only')
         result = dict(status='PASS_DELIVERY_FILES', files=len(manifest['files']),
                       external_model='separate asset; not checked by --verify-only',
                       s100_execution='not_measured', actions_sent=0)
     elif args.unpack_only:
         if args.model:
             provision_model(root, manifest, args.model, args.policy)
+        provision_planner_assets(root, manifest, args.planner_model, args.bridge_model)
         unpack(root, manifest)
         result = dict(status='PASS_RUNTIME_UNPACK', s100_execution='not_measured', actions_sent=0)
     else:
@@ -247,6 +263,7 @@ def main():
             except BlockingIOError as exc:
                 raise RuntimeError('Another operator is using this deployment; installation is blocked') from exc
             provision_model(root, manifest, args.model, args.policy)
+            provision_planner_assets(root, manifest, args.planner_model, args.bridge_model)
             result = install(root, manifest, build_pico=args.build_pico, policy=args.policy)
     print(json.dumps(result, indent=2))
 

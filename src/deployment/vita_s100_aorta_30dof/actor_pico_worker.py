@@ -214,7 +214,7 @@ class PicoReferenceProcess:
         self.commands, self.output = context.Queue(maxsize=1), context.Queue(maxsize=2)
         self.stop = context.Event()
         # [trigger count, event time, controller receipt, grip receipt, grip stamp, left grip, right grip]
-        self.controls = context.Array('d',[0.]*7) if buttons else None
+        self.controls = context.Array('d',[0.]*14) if buttons else None
         self.head_pose = LatestPicoPose(context)
         # The reader can own an optional raw-frame writer process. A daemon
         # cannot spawn it; close() owns and reaps the entire process group.
@@ -254,8 +254,11 @@ class PicoReferenceProcess:
             return result
         with self.controls.get_lock():
             count,event_time,controller_time = self.controls[:3]
-        return dict(result,trigger_event_seq=int(count),
-                    trigger_event_monotonic=event_time,controller_received_monotonic=controller_time)
+            sticks = list(self.controls[7:11])
+            mode_count,mode_time,mode_receipt=self.controls[11:14]
+        return dict(result,planner_sticks=sticks,trigger_event_seq=int(count),
+                    trigger_event_monotonic=event_time,controller_received_monotonic=controller_time,
+                    mode_event_seq=int(mode_count),mode_event_monotonic=mode_time,mode_received_monotonic=mode_receipt)
 
     def close(self):
         if self.closed:

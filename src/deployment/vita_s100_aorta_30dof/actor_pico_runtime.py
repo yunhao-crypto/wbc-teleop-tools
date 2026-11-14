@@ -34,11 +34,13 @@ def digest(path):
     return h.hexdigest()
 
 
-def load_actor_config(root, policy='sonic'):
+def load_actor_config(root, policy='sonic', config_path=None):
     root = Path(root).resolve()
     if policy not in POLICY_CONFIGS:
         raise ValueError('Unknown actor policy: '+str(policy))
-    config = json.loads((root/POLICY_CONFIGS[policy]).read_text())
+    path=(root/(config_path or POLICY_CONFIGS[policy])).resolve()
+    if not path.is_relative_to(root):raise ValueError('Actor config must be inside deployment root')
+    config = json.loads(path.read_text())
     if config['schema'] != 'vita_actor_pico_shadow_v1':
         raise ValueError('Unsupported actor/Pico configuration')
     if config.get('policy_kind', 'groot_vita02a_tracking') != {
@@ -130,13 +132,13 @@ class ActorModel:
 
 class ActorPicoRuntime:
     def __init__(self, root, *, backend='auto', threads=1, human_height=None, policy='sonic',
-                 reference_source='pico', ankle_command_space=None):
+                 reference_source='pico', ankle_command_space=None, actor_config=None):
         if reference_source not in ('pico', 'npz'):
             raise ValueError('Unknown actor reference source')
         self.reference_source = reference_source
         self.root = Path(root).resolve()
         self.policy_name = policy
-        self.config = load_actor_config(root, policy)
+        self.config = load_actor_config(root, policy,actor_config)
         if ankle_command_space is not None:
             if reference_source != 'npz' or ankle_command_space not in ('motor_theta', 'virtual_pitch_roll'):
                 raise ValueError('Explicit ankle command-space selection requires NPZ playback')

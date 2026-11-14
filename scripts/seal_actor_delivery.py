@@ -27,6 +27,11 @@ def main():
         model = json.loads((root/config).read_text())['artifacts']['model']
         external.append(dict(path=model['path'], sha256=model['sha256'], bytes=model['bytes'],
                              provision=f'Supply separately using bootstrap_actor_s100.py --policy {policy} --model'))
+    planner_config = json.loads((root/'config/actor_sonic_planner.json').read_text())
+    for key in ('planner', 'bridge'):
+        model = planner_config[key]
+        external.append(dict(path=model['path'], sha256=model['sha256'], bytes=model['bytes'],
+                             provision=f'Supply separately using bootstrap_actor_s100.py --{key}-model'))
     models = {item['path'] for item in external}
     actor['files'] = [item for item in actor['files'] if item['path'] not in models]
     actor['external_resources'] = external
@@ -80,6 +85,11 @@ def main():
                    'tests/fixtures/actor_pico/morphmimic_sonic_137670_contract.json',
                    'tests/fixtures/actor_pico/supermimic_v2_contract.json',
                    'tests/test_actor_candidate_contracts.py']
+    additional += ['config/actor_sonic_planner.json', 'deploy/actor_s100/SONIC_ONNX_PLANNER.md',
+                   'src/deployment/vita_s100_aorta_30dof/actor_sonic_planner.py',
+                   'src/deployment/vita_s100_aorta_30dof/actor_teleop_modes.py',
+                   'tests/test_actor_sonic_planner.py', 'tests/test_actor_teleop_modes.py',
+                   'tests/fixtures/actor_pico/r3_stand_rejection_20261112.json']
     additional += ['scripts/pico_camera_bridge.py', 'scripts/check_pico_camera_stream.py',
                    'scripts/pico_session_services.py', 'tests/test_pico_session_services.py',
                    'scripts/prepare_pico_camera_viewer.py', 'scripts/build_pico_camera_viewer.sh',
@@ -105,6 +115,7 @@ def main():
         raise RuntimeError('Remove the external models from the Git index before sealing')
     required = ['artifacts/output_envelopes.motion.urdf',
                 'config/actor_pico.json', 'config/actor_pico_supermimic.json', 'config/actor_pico_morphmimic.json',
+                'config/actor_sonic_planner.json',
                 'src/deployment/vita_s100_aorta_30dof/actor_morphmimic.py', 'config/sdk021-wheel-guard.json',
                 'scripts/bootstrap_actor_s100.py', 'scripts/configure_actor_s100.py', 'scripts/start_actor_pico.sh',
                 'src/deployment/vita_s100_aorta_30dof/actor_pico_live.py',
