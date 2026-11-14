@@ -684,6 +684,62 @@ does not open the Pico service or check hardware inputs.
 protocol, roster and freshness. It creates no control handles or Pico service.
 No feedback/timeout is reported as a failed check; it never starts robot services.
 
+### Opt-in body and OP3 profiling
+
+Profiling is **off by default**. Add `--profiling` to an already reviewed live
+command to record the existing BodyState reads, BodyCmd publications and both
+OP3 publication calls. For example, after the usual local configuration and
+motion authorization:
+
+```bash
+bash scripts/start_actor_pico.sh sonic --profiling
+# The same launch with no additional profiling:
+bash scripts/start_actor_pico.sh sonic --no-profiling
+```
+
+`--profiling-log outputs/trial` selects the prefix and requires `--profiling`.
+Otherwise the prefix comes from the unique normal actor log. The extra files
+are `<prefix>.body.jsonl` and `<prefix>.ee.jsonl`, created exclusively: existing
+files are never overwritten. Profiling is limited to `live`; it does not grant
+motion permission or change startup, freshness, stale-tick or CANCEL guards.
+
+When off, the recorder module is not loaded, no profiling file is opened and
+no profiling timestamps, serialization, statistics or extra feedback reads
+are taken. SDK publish timing is also disabled for that launch. The control
+paths retain constant `None` checks and call the original SDK directly; no
+thread, subscriber, scheduling delay or rate change is added. The existing
+normal actor log and its existing inference diagnostics remain unchanged.
+
+When on, the body control thread writes `.body.jsonl` and the existing gripper
+thread writes `.ee.jsonl`. Both carry one run ID and the normal policy-log path.
+Body records include the exact state ID, producer/publication/local receipt
+timestamps, SDK dequeue stamp when available, q/dq, target q, required fields,
+input read ID and actual session/sequence keys. Even a stale snapshot rejected
+by the existing guard is recorded before that rejection. OP3 records reuse the
+same cached feedback, receipt time and sample reference used for publication;
+there is no second read. Missing optional timestamps are `NOT_MEASURED`.
+
+The body command row copies existing `observation_ms`, `inference_ms` and
+`total_ms` diagnostics into `model_timing_ms`. The normal actor log also retains
+`compute_ms` and `publish_ms`. For an external planner that reports its latest
+`planner_inference_ms`, use its replan counter in that policy log to deduplicate
+planner invocations; repeated body ticks are not separate planner runs.
+
+`publish_call_ns` measures the synchronous SDK call; `feedback_age_ns` measures
+cached local receipt to command publication. Summaries give publication rates
+and p50/p95/p99/max durations per endpoint. These rates describe calls made by
+the actor, not the complete SDK reception stream. Source, publication and local
+realtime stamps need a verified common clock before computing cross-host
+latency; they do not prove CAN transmission, motor execution or target arrival.
+
+Profiling writes and flushes JSONL synchronously, so enabling it can affect
+cadence. `logging_overhead` records the cycle write cost, and the final summary
+includes writing both the cycle and overhead records. Percentile samples are
+retained until close: use bounded test durations for long captures. The normal
+actor `publish_ms` includes the profiling wrapper; the extra `publish_call_ns`
+isolates the SDK call. Write failures retain the existing fault/CANCEL path;
+logging or close failures never replace an already raised SDK/control fault.
+
 The bootstrap creates the interpreter with the proper permissions and restores
 executable mode on the service from the sealed archive. The actor shadow entry
 requires no Xbox configuration or Wi-Fi controller key.

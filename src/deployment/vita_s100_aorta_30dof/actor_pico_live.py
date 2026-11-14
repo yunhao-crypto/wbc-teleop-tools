@@ -374,8 +374,9 @@ class Inputs:
     ``pico`` is a PicoReferenceProcess-like worker (connect/snapshot). GMR and
     the reference window run in that process; reading never retargets here.
     """
-    def __init__(self, runtime, controller, pico, clock):
+    def __init__(self, runtime, controller, pico, clock, profiling=None):
         self.runtime, self.controller, self.pico, self.clock = runtime, controller, pico, clock
+        self.profiling, self.profile_read = profiling, None
         self.previous_stamp = 0
         self.last_pico_received = None
         self.snapshot = None
@@ -412,7 +413,11 @@ class Inputs:
             raise StaleStateError('BodyState publication is stale or S100 clock contract differs: '+detail)
 
     def read(self, timeout=0):
-        state = self.controller.wait_state(timeout)
+        if self.profiling is None:
+            state = self.controller.wait_state(timeout)
+        else:
+            state, self.profile_read = self.profiling.body.read_body(
+                self.controller, timeout, phase='wtt_inputs_read')
         q, dq, root, gyro = self.validate_state(state)
         if self.pico is not None:
             self.pico.connect(root)  # Idempotent; the worker starts on first feedback.
@@ -567,7 +572,7 @@ def record_period_overrun(write, phase_name, elapsed, actions_sent, **details):
 
 def run_live(runtime, args, write, controller, pico, stop, service_alive,
              clock=time, manual_pico=None, poll_command=lambda:None,
-             request_action=None, motion_source=None):
+             request_action=None, motion_source=None, profiling=None):
     """One trial only. Every attempted entry is followed by checked CANCEL.
 
     Fake I/O in unit tests exercises this same runner; actual transport and
@@ -579,6 +584,8 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
     if motion_source is not None:
         write(dict(record_type='robot_configuration', robot_config=receipt, actions_sent=0))
     envelope = CommandEnvelope(runtime, controller.get_robot_info(args.startup_timeout), params)
+    if profiling is not None:
+        profiling.body.describe_body(envelope.body)
     pico_max_age = runtime.config['pico_max_age_s']
     pico_loss_action = runtime.config.get('pico_loss_action', 'stand')
     auto = bool(getattr(args, 'auto_start', False))
@@ -601,7 +608,7 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
     # explicitly requests FIXED_STAND and verifies measured targets afterward;
     # an empty name alone is never treated as completed fixed stand.
     initial_actions = ('PASSIVE', 'QUIET_PASSIVE', 'FIXED_STAND', '') if auto else ('PASSIVE',)
-    inputs = Inputs(runtime, controller, pico if requires_pico else None, clock)
+    inputs = Inputs(runtime, controller, pico if requires_pico else None, clock, profiling=profiling)
     guard = StatusGuard(clock, initial_actions=initial_actions)
     if manual and manual_pico is None:
         raise ValueError('Manual Pico mode requires an idle capture worker')
@@ -757,7 +764,9 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
         if gripper_config is not None:
             # Info, State and output preparation complete before entry; output
             # permission is only checked once the gripper thread starts.
-            grippers = GripperRunner(gripper_config, manual_pico.controls, connection=controller)
+            gripper_options = dict(profiling=profiling) if profiling is not None else {}
+            grippers = GripperRunner(gripper_config, manual_pico.controls, connection=controller,
+                                     **gripper_options)
             write_gripper_events()
         attempted = True
         entered = controller.enter_external(timeout=5.)
@@ -1106,8 +1115,14 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
             state_age_before_publish = inputs.ages(state)
             before = clock.monotonic()
             # SDK alone owns session + sequence, shared with end-effector output.
-            sent = controller.publish(command, target_names=envelope.target_names,
-                                      required_fields=BODY_FIELDS_ALL)
+            if profiling is None:
+                sent = controller.publish(command, target_names=envelope.target_names,
+                                          required_fields=BODY_FIELDS_ALL)
+            else:
+                sent = profiling.body.publish_body(controller, command, state, inputs.profile_read,
+                    phase='wtt_pico_tracking' if tracking else 'wtt_prepare_stand',
+                    target_names=envelope.target_names, required_fields=BODY_FIELDS_ALL,
+                    model_timing=row)
             runtime.policy.last_action = pending_action
             if runtime.head is not None:
                 runtime.head.commit(pending_head)

@@ -280,6 +280,11 @@ def live(runtime, args, write):
     previous = {n:signal.signal(n, lambda *_:stop.set()) for n in (signal.SIGINT, signal.SIGTERM)}
     try:
         with ExitStack() as resources:
+            profiling = None
+            if args.profiling:
+                from deployment.vita_s100_aorta_30dof.actor_pico_profiling import ProfilingSession
+                profiling = resources.enter_context(ProfilingSession(
+                    args.profiling_log, policy_log=args.log, policy=args.policy))
             lock_path = runtime.root/'build/operator.lock'
             lock_path.parent.mkdir(parents=True, exist_ok=True)
             # Reuse the shell's inherited lock description when present.
@@ -331,7 +336,8 @@ def live(runtime, args, write):
             return run_live(runtime, args, write, controller, pico, stop,
                             service_alive=service_alive, manual_pico=manual,
                             motion_source=motion_source,
-                            poll_command=TerminalCommands(args.robot_id, stop).poll)
+                            poll_command=TerminalCommands(args.robot_id, stop).poll,
+                            profiling=profiling)
     finally:
         for n, handler in previous.items():
             signal.signal(n, handler)
@@ -359,6 +365,14 @@ def main():
     parser.add_argument('--ankle-command-space', choices=('motor_theta', 'virtual_pitch_roll'),
                         help='NPZ trials only: select command path; robot EXTERNAL configuration must match')
     parser.add_argument('--log', type=Path)
+    profiling = parser.add_mutually_exclusive_group()
+    profiling.add_argument('--profiling', action='store_true',
+                           help='live only: opt in to per-cycle body/OP3 timing JSONL')
+    profiling.add_argument('--no-profiling', dest='profiling', action='store_false',
+                           help='disable extra profiling (default); retain the normal actor log')
+    parser.set_defaults(profiling=False)
+    parser.add_argument('--profiling-log', type=Path,
+                        help='prefix for .body.jsonl and .ee.jsonl; requires --profiling')
     parser.add_argument('--record-observations', action='store_true')
     parser.add_argument('--confirm-motion', action='store_true', help='live only; explicit motion selection, with no typed MOVE prompt')
     parser.add_argument('--robot-id', help='live target identity, verified on-site; never inferred from old configs')
@@ -376,6 +390,12 @@ def main():
     parser.add_argument('--gripper-config', type=Path,
                         help='live manual-Pico only: explicit OP3 gripper JSON; side grips close/open each gripper')
     args = parser.parse_args()
+    if args.profiling_log is not None and not args.profiling:
+        parser.error('--profiling-log requires --profiling')
+    if args.profiling and args.mode != 'live':
+        parser.error('--profiling applies only to live')
+    if args.mode == 'live':
+        os.environ['LOCOMOTION_AORTA_PUBLISH_TIMING'] = '1' if args.profiling else '0'
     if args.ankle_command_space is not None and args.motion_config is None:
         parser.error('--ankle-command-space requires --motion-config')
     if args.motion_config is not None:
@@ -439,6 +459,8 @@ def main():
               "calibration and planted-foot support are OFF for this run. Refit the profile for this operator.",
               file=sys.stderr, flush=True)
     args.log = args.log or args.root/'outputs'/f'actor_pico_{args.mode}_{time.time_ns()}.jsonl'
+    if args.profiling:
+        args.profiling_log = args.profiling_log or args.log.with_suffix('')
     comparable_config = copy.deepcopy(runtime.config)
     comparable_config['body_profile'].pop('ankle_command_space', None)
     comparison_hash = hashlib.sha256(json.dumps(comparable_config, sort_keys=True).encode()).hexdigest()
