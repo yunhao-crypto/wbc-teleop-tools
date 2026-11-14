@@ -14,18 +14,17 @@ class Tests(unittest.TestCase):
         stick=StickCommand(speed=cfg['forward_speed'],backward_speed=cfg['backward_speed'],
             yaw_rate=cfg['yaw_rate'],turn_speed_limit=cfg['turn_speed_limit'])
         tick=0
-        def drive(y,x,n=150):
+        def drive(y,x):
             nonlocal tick
-            for _ in range(n):
-                tick+=1;command=stick.update([tick*.02,tick,y,x],tick*.02)
-            return command
-        drive(0,0,1)
+            tick+=1
+            return stick.update([tick*.02,tick,y,x],tick*.02)
+        drive(0,0)
         self.assertAlmostEqual(drive(1,0).speed,.5)
         self.assertAlmostEqual(drive(1,1).speed,.5)
-        self.assertEqual(drive(0,0,1).speed,0.)
+        self.assertEqual(drive(0,0).speed,0.)
         back=drive(-1,0);self.assertTrue(back.backward);self.assertAlmostEqual(back.speed,.5)
         self.assertAlmostEqual(drive(-1,-1).speed,.5)
-        self.assertEqual(drive(0,0,1).speed,0.)
+        self.assertEqual(drive(0,0).speed,0.)
 
     def test_half_radian_yaw_limit_ramp_both_directions_and_release(self):
         s=StickCommand(yaw_rate=.5);s.update([0,1,0,0],0)
@@ -41,20 +40,6 @@ class Tests(unittest.TestCase):
         for i in range(203,304):s.update([i*.02,i,0,-1],i*.02)
         self.assertAlmostEqual(s.turn_rate,.5)
         with self.assertRaises(ValueError):StickCommand(yaw_rate=.501)
-
-    def test_release_requests_idle_and_freezes_heading_without_waiting_for_ramp(self):
-        s=StickCommand();s.update([0,1,0,0],0)
-        for i in range(1,100):s.update([i*.02,i+1,.8,-1],i*.02)
-        self.assertGreater(s.speed,0);heading=s.heading
-        stopped=s.update([2,101,0,0],2)
-        self.assertEqual(stopped.speed,0);self.assertEqual(s.turn_rate,0)
-        self.assertEqual(s.heading,heading)
-        self.assertEqual(s.update(None,2.02).speed,0)
-
-    def test_legacy_ramp_available_for_stop_ab_test(self):
-        s=StickCommand(release_mode='ramp');s.update([0,1,0,0],0)
-        for i in range(1,100):s.update([i*.02,i+1,.8,0],i*.02)
-        self.assertGreater(s.update([2,101,0,0],2).speed,0)
 
     def test_sticks_require_center_after_start_and_loss(self):
         stick=StickCommand()
@@ -152,21 +137,22 @@ class Tests(unittest.TestCase):
         np.testing.assert_allclose(p.bridge.features[10,:29],motion[10,7:]-2/3,atol=2e-6)
         np.testing.assert_allclose(q,motion[:,7+p.g1]+np.array(p.order))
 
-    def test_planner_uses_official_mask_direct_speed_and_fixed_seed(self):
-        p=PlannerPipeline.__new__(PlannerPipeline);p.seed=1234;p.allowed_counts=(36,40,44)
+    def test_planner_inputs_prediction_mask_seed_and_speed_limits(self):
+        p=PlannerPipeline.__new__(PlannerPipeline);p.seed=1234;p.rng=np.random.default_rng(p.seed);p.allowed_counts=(48,52,56,60,64)
         class Model:
             def run(self,outputs,inputs):
                 self.inputs=inputs
                 q=np.zeros((1,64,36),np.float32);q[:,:,3]=1
-                return q,np.array([44],np.int32)
+                return q,np.array([64],np.int32)
+        expected_rng=np.random.default_rng(1234)
         p.planner=Model();p.infer(np.tile(np.r_[0,0,.8,1,np.zeros(32)],(4,1)),Command(.25,.3,True))
         self.assertAlmostEqual(float(p.planner.inputs['target_vel'][0]),.25,places=6)
         self.assertEqual(p.planner.inputs['mode'][0],1)
-        self.assertEqual(p.planner.inputs['random_seed'][0],1234)
-        np.testing.assert_array_equal(p.planner.inputs['allowed_pred_num_tokens'],[[0,0,0,1,1,1,0,0,0,0,0]])
+        self.assertEqual(p.planner.inputs['random_seed'][0],int(expected_rng.integers(0,2**31-1)))
+        np.testing.assert_array_equal(p.planner.inputs['allowed_pred_num_tokens'],[[0,0,0,0,0,0,1,1,1,1,1]])
         np.testing.assert_array_equal(p.planner.inputs['movement_direction'],-p.planner.inputs['facing_direction'])
         p.infer(np.tile(np.r_[0,0,.8,1,np.zeros(32)],(4,1)),Command(.1))
-        self.assertEqual(p.planner.inputs['random_seed'][0],1234)
+        self.assertEqual(p.planner.inputs['random_seed'][0],int(expected_rng.integers(0,2**31-1)))
         self.assertAlmostEqual(float(p.planner.inputs['target_vel'][0]),.1,places=6)
         with self.assertRaises(ValueError):p.infer(np.zeros((4,36)),Command(1))
         p.max_speed=.45
@@ -175,7 +161,7 @@ class Tests(unittest.TestCase):
         p.infer(np.tile(np.r_[0,0,.8,1,np.zeros(32)],(4,1)),Command(.45,0.,True))
         with self.assertRaises(ValueError):p.infer(np.zeros((4,36)),Command(.451))
 
-    def test_official_start_uses_measured_joints_identity_root_and_only_idle(self):
+    def test_start_uses_measured_joints_identity_root_and_only_idle(self):
         p=PlannerPipeline.__new__(PlannerPipeline);p.g1=G1_INDEX
         contexts=[];commands=[]
         def infer(context,command):
@@ -184,8 +170,8 @@ class Tests(unittest.TestCase):
         p.infer=infer;p.map=lambda motion,origin:(motion[:,7:],motion[:,:3],motion[:,3:7])
         # Official startup deliberately uses identity even with measured tilt.
         quat=[np.cos(.4)*np.cos(.1),np.cos(.4)*np.sin(.1),np.sin(.4)*np.sin(.1),np.sin(.4)*np.cos(.1)]
-        measured=np.arange(28)*.01;command=Command(.2)
-        p.start(measured,quat,command)
+        measured=np.arange(28)*.01
+        p.start(measured,quat)
         np.testing.assert_allclose(contexts[0][0,7+G1_INDEX],measured,atol=1e-8)
         np.testing.assert_allclose(contexts[0][0,3:7],[1,0,0,0],atol=1e-7)
         self.assertEqual(commands,[Command()]);self.assertEqual(p.replans,0)
@@ -195,7 +181,7 @@ class Tests(unittest.TestCase):
         p.active=True;p.steps=11;p.cursor=cursor;p.origin=0;p.last_request=0
         p.last_command=Command();p.heading=.7;p.stop_started=None
         p.lead=None;p.lead_cursor=0
-        p.control_tick=0;p.future_initial=False;p.reference_yaw=0.
+        p.control_tick=0;p.future_initial=False;p.reference_yaw=0.;p.replan_ticks=20
         p.pipeline=NS(replans=1,last_inference_ms=20.,accept=lambda result,cursor:result)
         p.stick=NS(update=lambda *args,**kwargs: Command())
         p.fusion=ArmFusion(VITA_NAMES,np.zeros(28))
@@ -239,15 +225,16 @@ class Tests(unittest.TestCase):
         self.assertEqual(p.cursor,1);self.assertEqual(diag['planner_state'],'tracking')
         np.testing.assert_allclose(motion.q[0,:14],.5)
 
-    def test_replan_uses_two_frame_context_and_preserves_bridge_history(self):
+    def test_short_lookahead_preserves_bridge_history(self):
         p=PlannerPipeline.__new__(PlannerPipeline);p.origin=0;p.replans=0
+        p.moving_lookahead=p.idle_lookahead=2
         p.motion=np.zeros((120,36));p.motion[:,3]=1;p.motion[:,0]=np.arange(120)*.01
         def infer(context,command):
             self.assertAlmostEqual(context[0,0],.32)
             seq=np.repeat(context[:1],80,axis=0);seq[:,0]+=np.arange(80)*.02
             return seq
         p.infer=infer;p.map=lambda motion,origin:(motion[:,7:],motion[:,:3],motion[:,3:7])
-        previous=p.motion.copy();mapped,origin=p.replan(30,Command(.2))
+        previous=p.motion.copy();mapped,origin=p.accept(p.predict(30,Command(.2)),30)
         self.assertEqual(origin,23);self.assertEqual(len(p.motion),89)
         np.testing.assert_array_equal(p.motion[:10],previous[23:33])
 
@@ -270,8 +257,8 @@ class Tests(unittest.TestCase):
             self.assertEqual(diag['planner_tail_frames'],1)
             np.testing.assert_array_equal(motion[0],0)
 
-    def test_cpu_direct_command_keeps_neutral_interlock_and_immediate_release(self):
-        s=StickCommand(speed=.375,backward_speed=.4,direct_speed=True)
+    def test_direct_command_keeps_neutral_interlock_and_immediate_release(self):
+        s=StickCommand(speed=.375,backward_speed=.4)
         self.assertEqual(s.update([0,1,1,0],0).speed,0)
         s.update([.02,2,0,0],.02)
         self.assertEqual(s.update([.04,3,1,0],.04).speed,.375)
@@ -280,9 +267,9 @@ class Tests(unittest.TestCase):
         self.assertEqual(s.update([.08,5,0,0],.08).speed,0)
         self.assertEqual(s.update(None,.10).speed,0);self.assertFalse(s.armed)
 
-    def test_cpu_lookahead_and_late_arrival_preserve_seam(self):
+    def test_lookahead_and_late_arrival_preserve_seam(self):
         p=PlannerPipeline.__new__(PlannerPipeline)
-        p.profile='latency_reference';p.moving_lookahead=18;p.idle_lookahead=18
+        p.moving_lookahead=18;p.idle_lookahead=18
         p.blend_frames=8;p.origin=0;p.replans=0
         p.motion=np.zeros((120,36));p.motion[:,3]=1;p.motion[:,0]=np.arange(120)*.01
         def infer(context,command):
@@ -296,8 +283,8 @@ class Tests(unittest.TestCase):
         np.testing.assert_array_equal(mapped[0][15:],1)
         self.assertEqual(origin,48)
 
-    def test_cpu_replan_interval_never_overlaps_pending_work(self):
-        p=self.pending_reference(30);p.future=None;p.pipeline.profile='latency_reference'
+    def test_replan_interval_never_overlaps_pending_work(self):
+        p=self.pending_reference(30);p.future=None
         p.pipeline.blend_frames=8;p.replan_ticks=20;p.pipeline.predict=lambda *args:None
         p.last_command=Command(.2);p.stick=NS(update=lambda *args,**kwargs:Command(.2))
         submitted=[]
