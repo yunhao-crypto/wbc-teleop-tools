@@ -77,13 +77,14 @@ bash scripts/start_actor_motion.sh supermimic --record-observations
 ## 首次部署：以下命令在目标 S100 执行
 
 在 `/userdata` 下使用新目录，保留旧部署以便回退；`/root` 可能随机器人系统切换而丢失。
-有网络时按下面获取，离线时将相同 Git 版本的完整归档复制到目标机。
+先在构建主机的已提交源码目录运行 `python3 scripts/build_actor_delivery.py --variant base`，
+将 `outputs/actor_delivery/` 下的压缩包和 SHA256 文件复制到 S100。
+planner 功能改用 `--variant planner`。详见[离线包构建说明](deploy/actor_s100/README.md#build-offline-packages)。
 
 ```bash
-git clone --branch main --single-branch \
-  https://github.com/yunhao-crypto/wbc-teleop-tools.git /userdata/vita_actor_pico
-cd /userdata/vita_actor_pico
-git rev-parse HEAD
+sha256sum -c actor-s100-base-<commit>-<payload>.tar.gz.sha256
+tar -xzf actor-s100-base-<commit>-<payload>.tar.gz -C /userdata
+cd /userdata/actor-s100-base-<commit>-<payload>
 source /app/script/env.sh
 python3.10 scripts/bootstrap_actor_s100.py --policy sonic --model /absolute/path/policy.onnx
 # 使用 SuperMimic 时再安装它的模型（同一目录可重跑，已有 venv 会续用）：
@@ -101,7 +102,7 @@ bash scripts/start_actor_pico.sh sonic shadow --seconds 30 --human-height 1.80
 
 模型版本、文件大小、SHA256 和安装目标路径统一记录在
 [`config/actor_pico.json`](config/actor_pico.json) 与
-[`deploy/actor_s100/manifest.json`](deploy/actor_s100/manifest.json) 中。
+包内构建生成的 `deploy/actor_s100/manifest.json` 中。
 示例使用通用文件名 `policy.onnx`；安装器按交付清单校验模型内容并复制到配置指定的位置，
 随后离线解析全部 wheel 依赖、创建独立 `venv`，解包 Pico 运行库，检查 SDK/绑定/动态库，并运行无动作模型检查。
 不会启动机器人服务或发布动作。不同的已有模型、第三方虚拟环境和运行库会被保留并报错；
@@ -152,7 +153,7 @@ EXTERNAL 没有自动到期释放；进程故障也不能假定控制权已释�
 
 ## 维护者验证提交内容
 
-可只检查文件完整性：`python3 scripts/bootstrap_actor_s100.py --verify-only`。
+在解压后的交付包内，可只检查文件完整性：`python3 scripts/bootstrap_actor_s100.py --verify-only`。
 该检查不验证单独交付的模型，也不代表连接或运动验收。
 
 完整干净导出检查在 Linux x86_64 主机执行，需要 g++；主机依赖与目标 ARM wheel 分开：
@@ -160,10 +161,7 @@ EXTERNAL 没有自动到期释放；进程故障也不能假定控制权已释�
 ```bash
 python3.10 -m venv /tmp/vita-actor-host-check
 /tmp/vita-actor-host-check/bin/python -m pip install -r deploy/actor_s100/requirements-host-check.txt
-# 暂存本次修改后更新清单，再验证实际 Git 暂存区导出：
-git add <intended-files>
-python3 scripts/seal_actor_delivery.py
-git add ACTOR-PICO-MANIFEST.json deploy/actor_s100/manifest.json
+# 从已提交源码构建并验证基础包、planner 包；开发中可加 --allow-dirty：
 /tmp/vita-actor-host-check/bin/python scripts/verify_actor_delivery.py \
   --host-inference --model /absolute/path/policy.onnx
 ```

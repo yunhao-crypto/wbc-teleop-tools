@@ -6,15 +6,19 @@ motion reference to the existing SONIC actor. It does not load an HBM model.
 The feature is selected only with `--planner-config`; the ordinary Pico path is
 unchanged. The included configuration uses the 9700-step actor from
 `config/actor_pico.json`, the new map bridge, 0.5 m/s forward/backward and
-0.5 rad/s turn commands. These speeds are experimental. This branch has no new
-S100 timing or tracking acceptance result.
+0.5 rad/s turn commands. These speeds are experimental. S100 offline installation
+and synthetic model checks are recorded in the [delivery guide](README.md#s100-offline-validation).
+Live tracking and motion acceptance remain unmeasured.
 
 ## External models
 
 All three ONNX weights stay outside Git. Their installation paths, byte counts
 and SHA256 identities are pinned in `config/actor_pico.json` and
 `config/actor_sonic_planner.json`; the delivery manifest records them too.
-Supply exact matching files at install time:
+First build with `python3 scripts/build_actor_delivery.py --variant planner`,
+then copy and extract that complete package on S100. Its requirements include
+Python ONNX Runtime; the base package excludes that dependency.
+From the extracted planner directory, supply exact matching files at install time:
 
 ```bash
 python3.10 scripts/bootstrap_actor_s100.py \
@@ -27,7 +31,7 @@ The installer checks size and SHA256 before copying any supplied asset. The
 planner also checks both assets before requesting robot control. A normal actor
 installation can omit planner and bridge models; the optional planner then
 cannot start until they are provisioned with a later installer run. Use a fresh
-checkout for different pinned model identities.
+package directory for different pinned model identities.
 
 ## Checks and selection
 
@@ -51,8 +55,8 @@ transition. In joystick mode, right-stick Y requests forward/backward speed and
 right-stick X requests turning; the stick must return to center before arming.
 `--seconds 0` is the live default and runs until STOP or a safety exit.
 
-For Git delivery validation, run `scripts/seal_actor_delivery.py`, stage both
-manifests, then `scripts/verify_actor_delivery.py --host-inference --model
+For source and package validation, run
+`scripts/verify_actor_delivery.py --host-inference --model
 /path/to/actor_9700.onnx`. The host check covers planner command/fusion and
 teleop switching invariants with synthetic inputs. It does not measure S100
 latency or robot tracking.

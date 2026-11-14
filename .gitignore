@@ -83,3 +83,7 @@ __pycache__/
 # Model weights, export reports and checkpoint receipts are supplied separately.
 /artifacts/morphmimic/
 /artifacts/sonic/
+
+# Delivery manifests are generated inside built packages.
+/ACTOR-PICO-MANIFEST.json
+/deploy/actor_s100/manifest.json

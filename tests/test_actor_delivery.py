@@ -103,7 +103,7 @@ class InstallerTests(unittest.TestCase):
             bridge = dict(path='artifacts/sonic/bridge.onnx', bytes=6,
                           sha256=hashlib.sha256(b'bridge').hexdigest())
             (root/'config/actor_sonic_planner.json').write_text(json.dumps(dict(planner=planner, bridge=bridge)))
-            manifest = dict(external_resources=[planner, bridge])
+            manifest = dict(variant='planner', external_resources=[planner, bridge])
             source = root/'source.onnx'; source.write_bytes(b'planner')
             bootstrap.provision_planner_assets(root, manifest, planner=source)
             self.assertEqual((root/planner['path']).read_bytes(), b'planner')
@@ -120,7 +120,7 @@ class InstallerTests(unittest.TestCase):
             delivery = root/'deploy/actor_s100'
             delivery.mkdir(parents=True)
             (root/'required').write_bytes(b'changed')
-            data = dict(schema='vita_actor_s100_delivery_v1', archives=[], required_inputs=['required'],
+            data = dict(schema='vita_actor_s100_delivery_v2', archives=[],
                         files=[dict(path='required', bytes=4, sha256=hashlib.sha256(b'good').hexdigest())])
             (delivery/'manifest.json').write_text(json.dumps(data))
             with self.assertRaisesRegex(RuntimeError, 'changed delivery input'):
@@ -143,9 +143,9 @@ class InstallerTests(unittest.TestCase):
             with tarfile.open(p, 'w:gz') as tar:
                 link = tarfile.TarInfo('linked'); link.type = tarfile.SYMTYPE; link.linkname = '/etc/passwd'
                 tar.addfile(link)
-            data = dict(schema='vita_actor_s100_delivery_v1', required_inputs=['bad.tar.gz'],
+            data = dict(schema='vita_actor_s100_delivery_v2',
                         files=[dict(path='bad.tar.gz', bytes=p.stat().st_size, sha256=bootstrap.sha(p))],
-                        archives=[dict(path='bad.tar.gz', required_members=[])])
+                        archives=[dict(path='bad.tar.gz', destination='unpacked', required_members=[])])
             (delivery/'manifest.json').write_text(json.dumps(data))
             with self.assertRaisesRegex(ValueError, 'link, special file'):
                 bootstrap.verify(root)

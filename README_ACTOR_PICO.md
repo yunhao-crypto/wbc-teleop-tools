@@ -210,8 +210,8 @@ bash scripts/start_actor_pico.sh sonic check --steps 10
 ```
 
 Switching SONIC between the two types is a model change: export the ONNX,
-update `config/actor_pico.json` (model path, `sha256`, `bytes`), reseal the
-manifests and install it with
+update `config/actor_pico.json` (model path, `sha256`, `bytes`), rebuild the offline
+package and install it with
 `bootstrap_actor_s100.py --policy sonic --model /path/to/actor_g1.onnx`; then
 change the robot YAML to the matching row above.
 ## MorphMimic Vita02A
@@ -257,7 +257,7 @@ used in training. There is no SDK modification.
 Export and training-input parity checks belong to the training repository.
 Supply an ONNX containing the `morphmimic.tracking_contract.v1` metadata,
 update the model path/SHA256/size in `config/actor_pico_morphmimic.json`, and
-reseal the delivery manifests. Training export reports are external evidence.
+rebuild the offline delivery package. Training export reports are external evidence.
 The deployment checks the supplied model's contract and runs offline inference:
 
 ```bash
@@ -339,7 +339,7 @@ parity does not establish live tracking quality or physical stability.
 Use the host Python, which has NumPy and ONNX Runtime. The ARM venv interpreter
 cannot run on x86. Offline mode reads the installed SDK's Python math and DTOs
 without loading its ARM inference extension or constructing any Aorta node.
-For a fresh clone without an installed SDK, use the staged-export verifier:
+For a fresh clone without an installed SDK, use the isolated package verifier:
 `python3 scripts/verify_actor_delivery.py --host-inference --model /path/to/policy.onnx`.
 It uses the explicit, hash-verified external model and versioned wheels/resources,
 and materializes SDK sources in a temporary
@@ -637,6 +637,12 @@ do not establish physical tracking quality or balance.
 ## Run on S100
 
 Clone the repository into a new directory on S100, then run:
+
+Build an offline package from committed source using
+`python3 scripts/build_actor_delivery.py --variant base`, copy the archive and
+checksum to S100, and extract into a fresh directory. Run the following inside
+that extracted package. Use `--variant planner` for the optional planner chain.
+See [package build instructions](deploy/actor_s100/README.md#build-offline-packages).
 
 ```bash
 source /app/script/env.sh
