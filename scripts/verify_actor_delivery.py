@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Check the staged Git export without borrowing untracked deployment inputs.
+"""Build and check isolated S100 packages without borrowing local deployment inputs.
 
 --host-inference additionally needs host NumPy and ONNX Runtime. ARM wheels
 are resolved offline, and only their SDK Python/schema payload is used on x86.
@@ -8,14 +8,17 @@ This is not ARM execution, live Pico reception, or robot control validation.
 import argparse
 import json
 import os
+import shutil
 import re
-import hashlib
 from pathlib import Path
 import subprocess
 import sys
 import tempfile
 import zipfile
 from urllib.parse import unquote
+
+from build_actor_delivery import build, extract_bundle, git, source_revision
+from bootstrap_actor_s100 import provision_model
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -59,11 +62,13 @@ def verify_doc_links(root):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--allow-dirty', action='store_true', help='Validate explicitly marked development packages')
     parser.add_argument('--host-inference', action='store_true')
     parser.add_argument('--model', type=Path, help='Explicit external actor model for host inference')
     parser.add_argument('--supermimic-model', type=Path,
                         help='Also verify the SuperMimic actor with this explicit external model')
     args = parser.parse_args()
+    source = source_revision(ROOT, args.allow_dirty)
     if args.host_inference and not args.model:
         parser.error('--host-inference requires --model /path/to/actor_g1.onnx (not stored in Git)')
     if args.supermimic_model and not args.host_inference:
@@ -85,35 +90,45 @@ def main():
     with tempfile.TemporaryDirectory(prefix='actor-git-export-') as temporary:
         export = Path(temporary)/'checkout'
         export.mkdir()
-        run(['git', 'checkout-index', '--all', '--prefix', str(export)+'/'], cwd=ROOT, env=env)
-        # Neither extracted vendor runtime nor Python environment comes from
-        # the source working directory; verify before materializing anything.
-        for name in ['venv', 'vendor_packages', 'model_dependencies_readonly', 'reference',
-                     'artifacts/actor_g1/actor_g1.onnx', 'artifacts/supermimic/supermimic_vita02a.onnx']:
+        # Export the current source, including new development files only when
+        # explicitly allowed. Ignore local environments, outputs and model assets.
+        names = git(ROOT, 'ls-files', '--cached', '--others', '--exclude-standard').splitlines()
+        for name in names:
+            original = ROOT/name
+            if not original.exists():
+                continue
+            if original.is_symlink() or not original.is_file():
+                raise RuntimeError('Source export requires regular files: '+name)
+            destination = export/name
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(original, destination)
+        for name in ['venv', 'vendor_packages', 'model_dependencies_readonly', 'reference', 'build']:
             if (export/name).exists():
-                raise RuntimeError('Unexpected untracked input in Git export: '+name)
-        run([sys.executable, 'scripts/bootstrap_actor_s100.py', '--verify-only'], cwd=export, env=env)
+                raise RuntimeError('Unexpected local input in source export: '+name)
         documentation_links = verify_doc_links(export)
-        wheelhouse = export/'deploy/actor_s100/wheelhouse'
-        resolved = Path(temporary)/'resolved_wheels'
-        # Resolve the full dependency graph for the target ABI, offline.
-        run([sys.executable, '-m', 'pip', 'download', '--no-index',
-             '--find-links', str(wheelhouse), '--dest', str(resolved),
-             '--only-binary=:all:', '--platform', 'manylinux_2_35_aarch64', '--platform', 'manylinux_2_28_aarch64',
-             '--platform', 'manylinux_2_17_aarch64', '--platform', 'manylinux2014_aarch64',
-             '--platform', 'linux_aarch64', '--python-version', '310', '--abi', 'cp310',
-             '--implementation', 'cp', '-r', 'deploy/actor_s100/requirements.txt'], cwd=export, env=env)
-        wheel_count = len(list(wheelhouse.glob('*.whl')))
-        if len(list(resolved.glob('*.whl'))) != wheel_count:
-            raise RuntimeError('Offline wheel closure differs from the bundled wheels')
-        command = [sys.executable, 'scripts/bootstrap_actor_s100.py', '--unpack-only']
+        packages = {}
+        for variant in ('base', 'planner'):
+            built = build(export, Path(temporary)/'packages', variant,
+                          allow_dirty=True, source=source)
+            package = extract_bundle(Path(built['archive']), Path(temporary)/variant)
+            run([sys.executable, 'scripts/bootstrap_actor_s100.py', '--verify-only'], cwd=package, env=env)
+            command = [sys.executable, 'scripts/bootstrap_actor_s100.py', '--unpack-only']
+            if args.model:
+                command += ['--model', str(args.model)]
+            run(command, cwd=package, env=env)
+            packages[variant] = dict(built, root=package)
+        planner = packages['planner']['root']
+        wheelhouse = planner/'deploy/actor_s100/wheelhouse'
+        wheel_count = packages['planner']['offline_wheels']
+        # Host unit tests remain in source, not in the installed payload.
+        manifest = json.loads((planner/'deploy/actor_s100/manifest.json').read_text())
         if args.model:
-            command += ['--model', str(args.model)]
-        run(command, cwd=export, env=env)
+            provision_model(export, manifest, args.model)
         if args.supermimic_model:
-            run([sys.executable, 'scripts/bootstrap_actor_s100.py', '--unpack-only', '--policy', 'supermimic',
-                 '--model', str(args.supermimic_model)], cwd=export, env=env)
+            provision_model(export, manifest, args.supermimic_model, 'supermimic')
         installer_tests = run_tests('tests/test_actor_delivery.py', cwd=export, env=env)
+        package_tests = run_tests('tests/test_actor_delivery_package.py', cwd=export,
+                                 env=dict(env, ACTOR_DELIVERY_TEST_SOURCE=json.dumps(source)))
         for entry in ['scripts/bootstrap_actor_s100.py', 'scripts/configure_actor_s100.py',
                       'scripts/bench_pico_gmr_live.py', 'scripts/bench_pico_full_load.py']:
             run([sys.executable, entry, '--help'], cwd=export, env=env)
@@ -125,16 +140,17 @@ def main():
         # Compile actual callback/parser/getter source without Python or ARM
         # libraries; no vendor SDK init or service is run by this regression.
         run([sys.executable, 'scripts/state_test_pico_snapshot.py'], cwd=export, env=env)
-        result = dict(status='PASS_STAGED_GIT_DELIVERY', offline_wheels=wheel_count,
+        result = dict(status='PASS_OFFLINE_PACKAGES', offline_wheels=wheel_count,
                       runtime_archives_verified=True, pico_snapshot_cpp='PASS',
-                      installer_tests=installer_tests, full_load_benchmark_tests=full_load_tests,
+                      installer_tests=installer_tests, package_tests=package_tests,
+                      full_load_benchmark_tests=full_load_tests,
                       camera_bridge_tests=camera_tests, gripper_tests=gripper_tests,
                       camera_viewer_prepare_tests=camera_prepare_tests,
                       pico_session_lifecycle_tests=camera_session_tests,
                       local_provision_tests='not_measured',
                       documentation_files=4, documentation_links=documentation_links,
                       external_model_supplied=bool(args.model),
-                      delivery_manifest_sha256=hashlib.sha256((export/'deploy/actor_s100/manifest.json').read_bytes()).hexdigest(),
+                      source=source, packages={v: {k: b[k] for k in ('sha256', 'payload_sha256', 'files', 'offline_wheels')} for v, b in packages.items()},
                       model_steps=0, replay_steps=0, actions_sent=0,
                       s100_install_execution='not_measured', live_inputs='not_measured')
         if args.host_inference:
@@ -148,6 +164,11 @@ def main():
                     continue
                 with zipfile.ZipFile(wheel) as archive:
                     archive.extractall(site)
+            for variant, built in packages.items():
+                package = built['root']
+                package_site = package/'venv/lib/python3.10/site-packages'
+                shutil.copytree(site, package_site)
+                run([sys.executable, 'scripts/actor_pico.py', 'check', '--steps', '10'], cwd=package, env=env)
             actor_tests = run_tests('tests/test_actor_pico.py', cwd=export, env=env)
             head_tests = run_tests('tests/test_actor_pico_head.py', cwd=export, env=env)
             provision_tests = run_tests('tests/test_actor_local_provision.py', cwd=export, env=env)

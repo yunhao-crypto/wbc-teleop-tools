@@ -1,6 +1,6 @@
 # S100 actor/Pico offline delivery
 
-This directory versions the actor dependencies. The separate `live` entry can
+This directory versions dependency locks and the inputs for S100 offline packages. The separate `live` entry can
 move the robot only after explicit on-site confirmation; see
 [supported trial instructions](../../README_ACTOR_PICO.md#supported-external-trial).
 Installation and validation never run that entry. Model weights are supplied
@@ -12,9 +12,10 @@ The optional SuperMimic actor has its own pinned model in
 `config/actor_pico_supermimic.json`; install it with
 `--policy supermimic --model /path/to/supermimic_vita02a.onnx` (see
 [policy selection](../../README_ACTOR_PICO.md#policy-selection)).
-Use a fresh checkout for a changed model delivery. A different existing
+Use a freshly extracted package directory for a changed model delivery. A different existing
 model/environment is preserved rather than overwritten.
-The URDF, source code, tests and configuration are tracked. No original `venv`, `reference`,
+The URDF, source code, tests and configuration are tracked. Tests and developer
+documentation stay in the source checkout; packages contain runtime inputs only. No original `venv`, `reference`,
 `model_dependencies_readonly`, `vendor_packages` or `build` directory is needed
 from the developer's machine.
 
@@ -33,6 +34,10 @@ FlatBuffers 25.12.19, NumPy 1.26.4, PyYAML 6.0.3 and pybind11 2.13.6, plus the c
 (mink 1.3.0, MuJoCo 3.11.0, SciPy 1.15.3, DAQP 0.10.3 and qpsolvers 4.13.0).
 The optional [SONIC ONNX planner and map bridge](SONIC_ONNX_PLANNER.md) add seven
 pinned ARM64 wheels, bringing the bundled closure to 28 wheels.
+`requirements.txt` selects the 21-wheel base runtime;
+`requirements-planner.txt` includes it and adds the seven planner wheels.
+The package variant selects the requirements automatically. The base installer
+does not install or import Python ONNX Runtime.
 The bootstrap uses pip's full dependency resolver with `--no-index` and runs
 `pip check`; there is no network or missing-dependency fallback.
 
@@ -107,9 +112,41 @@ credentials and the active effective A-sample YAML are external prerequisites,
 not files to copy from the developer's machine. Live scheduling requires
 permission for SCHED_RR priority 1.
 
+## Build offline packages
+
+On a build host with Python and pip, from a committed source checkout:
+
+```bash
+python3 scripts/build_actor_delivery.py --variant base
+python3 scripts/build_actor_delivery.py --variant planner
+```
+
+Outputs go to `outputs/actor_delivery/`: a `.tar.gz` and its `.sha256` sidecar.
+Each variant is a complete package; planner includes the base runtime. The
+builder resolves only the selected ARM64/Python 3.10 wheel closure, offline.
+It requires no installed SDK, external model weights or robot connection.
+`--allow-dirty` creates an explicitly marked development package; release builds
+require a clean checkout. `--output-dir` changes the output location.
+
+Each package has one generated `deploy/actor_s100/manifest.json`: source commit,
+development status, target ABI, selected requirements, runtime file sizes/modes
+and hashes, and separately provisioned model identities. Its `payload_sha256`
+identifies the runtime file list. Stable archive headers allow identical inputs
+to reproduce the archive. Tests and developer documentation are excluded, so
+editing them does not change that runtime file list. A new source commit still
+changes provenance. Do not edit or stage generated manifests.
+
 ## Install and verify
 
-From a fresh checkout of `main` on S100:
+Copy the archive and checksum to S100 and extract into a new directory:
+
+```bash
+sha256sum -c actor-s100-base-<commit>-<payload>.tar.gz.sha256
+tar -xzf actor-s100-base-<commit>-<payload>.tar.gz -C /userdata
+cd /userdata/actor-s100-base-<commit>-<payload>
+```
+
+Then run from that package directory (use the planner package for planner models):
 
 ```bash
 source /app/script/env.sh
@@ -143,7 +180,7 @@ Any machine can inspect the sealed delivery without executing ARM code:
 python3 scripts/bootstrap_actor_s100.py --verify-only
 ```
 
-This checks tracked inputs and archives only; it does not verify the separate model.
+Run this inside an extracted package. It checks sealed runtime inputs and archives only; it does not verify the separate model.
 
 `--unpack-only` also supports inspecting the runtime files on an x86 host, without
 starting the service or creating an environment. Normal installation deliberately
@@ -181,7 +218,7 @@ See the [run guide](../../README_ACTOR_PICO.md#default-local-startup).
 
 ## Upgrade and rollback
 
-Use a separate new checkout/directory per release; keep the old checkout,
+Use a separate extracted directory per release; keep the old directory,
 interpreter, model and device profile. The installer intentionally refuses
 unrelated environments and changed existing runtime libraries. Do not run an
 upgrade over an active operator, reset a running checkout, or copy private
@@ -204,18 +241,43 @@ database rows and replaces settings with a fresh template. Check its inputs
 before publishing a new delivery. Add/update matching wheels explicitly; do not
 pick a new SDK just by version date or bypass its schema guard.
 
-Stage intended changes, run `scripts/seal_actor_delivery.py`, stage the regenerated
-manifest and `ACTOR-PICO-MANIFEST.json`, then run
-`scripts/verify_actor_delivery.py --host-inference --model /path/to/policy.onnx`
-(add `--supermimic-model /path/to/supermimic_vita02a.onnx` to also check that actor).
-For host inference, first install the separate
-`requirements-host-check.txt` into a clean Linux x86_64 Python 3.10 venv; it
-includes NumPy, ONNX Runtime, GMR and their host dependencies, not ARM binaries.
-The latter exports only the Git index into a temporary directory, explicitly
-imports and verifies the supplied external model, fully resolves ARM wheel dependencies
-offline, verifies/unpacks archives, tests actual C++ snapshot source and runs
-real host inference. Its receipt is `outputs/actor_delivery_validation.json`.
+Run `scripts/verify_actor_delivery.py` from the source checkout. It exports
+current source into an isolated directory, builds and verifies both variants,
+resolves their ARM dependencies offline, checks runtime archives, tests the
+actual C++ snapshot source and runs installer/session regressions. Its receipt
+is `outputs/actor_delivery_validation.json`. Use `--allow-dirty` during development.
+
+For host numerical checks, install `requirements-host-check.txt` into a clean
+Linux x86_64 Python 3.10 venv, then add
+`--host-inference --model /path/to/policy.onnx` (and optionally
+`--supermimic-model /path/to/supermimic_vita02a.onnx`). The verifier checks each
+extracted package with synthetic host inference, then runs source regression
+suites. It never borrows an existing venv or unpacked vendor runtime.
+
+`scripts/seal_actor_delivery.py` is a compatibility alias for the builder; it
+now writes a package, not tracked manifests. Wheels and prebuilt binding inputs
+remain in Git for now; relocating them to release storage is a separate change.
 
 Passing that check establishes file/resource closure and host numerical behavior.
 It is not a claim of executing the ARM bootstrap, live Pico, robot feedback or
 50 Hz performance on S100. Those require a separate target run.
+
+## S100 offline validation
+
+On 2026-11-14, the base and planner development packages were installed into
+separate fresh directories on `10.100.100.67` (Ubuntu 22.04, aarch64, Python
+3.10.12, glibc 2.35). Both passed offline pip resolution/check, the actual SDK
+and Pico binding imports, the installer model check, and a further 100 actor
+inference steps using the SDK backend. Python ONNX Runtime was absent from the
+base venv and present in the planner venv. The base package rejected planner
+assets, and the planner package rejected the board's different existing bridge.
+
+The pinned planner and map bridge also passed real S100 ONNX generation and
+actor inference with synthetic standing feedback for forward, turning and
+backward commands. Four planner calls measured 260.7–297.7 ms; planner-reference
+initialization, including asset verification and sessions, took 4.38 s. These
+are small offline samples, not live scheduling or tracking measurements.
+The test opened no robot control handles and sent no actions. The full local
+receipt is `outputs/robot67_delivery_test/deployment_test_report.json`; raw logs
+stay outside the runtime package and Git. Live Pico, physical tracking and
+motion acceptance remain separate validation.

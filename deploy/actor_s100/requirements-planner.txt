@@ -1,0 +1,9 @@
+# SONIC planner package: base runtime plus the Python ONNX Runtime closure.
+-r requirements.txt
+onnxruntime==1.23.2
+coloredlogs==15.0.1
+humanfriendly==10.0
+packaging==26.3
+protobuf==7.36.2
+sympy==1.14.0
+mpmath==1.3.0

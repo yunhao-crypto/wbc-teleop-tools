@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Offline, hash-verified actor/Pico installation for a fresh S100 checkout.
+"""Offline, hash-verified actor/Pico installation from an extracted S100 package.
 
 Only --verify-only and --unpack-only are architecture independent. Installation
 requires Linux ARM64/Python 3.10. No robot node, control lease or publisher is
@@ -20,6 +20,8 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
 DELIVERY = Path('deploy/actor_s100')
+SCHEMA = 'vita_actor_s100_delivery_v2'
+TARGET = dict(os='Linux', architecture='aarch64', python='3.10', glibc_min='2.35')
 # Mirrors actor_pico_runtime.POLICY_CONFIGS; bootstrap runs before the venv exists.
 POLICY_CONFIGS = {'sonic': 'config/actor_pico.json', 'supermimic': 'config/actor_pico_supermimic.json',
                   'morphmimic': 'config/actor_pico_morphmimic.json'}
@@ -44,8 +46,12 @@ def inside(root, relative):
 
 
 def verify(root):
-    manifest = json.loads((root/DELIVERY/'manifest.json').read_text())
-    if manifest['schema'] != 'vita_actor_s100_delivery_v1':
+    try:
+        manifest = json.loads((root/DELIVERY/'manifest.json').read_text())
+    except FileNotFoundError as error:
+        raise RuntimeError('No built delivery manifest. Build with scripts/build_actor_delivery.py, '
+                           'then extract the package and run its bootstrap.') from error
+    if manifest['schema'] != SCHEMA:
         raise ValueError('Unknown actor delivery schema')
     seen = set()
     for item in manifest['files']:
@@ -56,11 +62,13 @@ def verify(root):
         p = inside(root, name)
         if not p.is_file() or p.stat().st_size != item['bytes'] or sha(p) != item['sha256']:
             raise RuntimeError('Missing or changed delivery input: '+name)
-    for name in manifest['required_inputs']:
-        if name not in seen:
-            raise RuntimeError('Required input is absent from sealed manifest: '+name)
+        if 'mode' in item and p.stat().st_mode & 0o777 != int(item['mode'], 8):
+            raise RuntimeError('Changed delivery file mode: '+name)
     # Validate member paths/types before extracting any file, on either host.
     for archive in manifest['archives']:
+        if archive['path'] not in seen:
+            raise RuntimeError('Runtime archive is absent from sealed manifest: '+archive['path'])
+        inside(root, archive['destination'])
         with tarfile.open(inside(root, archive['path']), 'r:gz') as tar:
             members = set()
             for member in tar:
@@ -70,6 +78,20 @@ def verify(root):
                 members.add(member.name)
             if not set(archive['required_members']) <= members:
                 raise RuntimeError('Incomplete runtime archive: '+archive['path'])
+    if manifest['target'] != TARGET:
+        raise ValueError('Delivery target must be S100 Linux aarch64 / Python 3.10 / glibc 2.35+')
+    source = manifest['source']
+    if (not isinstance(source['commit'], str) or len(source['commit']) != 40
+            or any(c not in '0123456789abcdef' for c in source['commit'])
+            or type(source['dirty']) is not bool):
+        raise ValueError('Invalid delivery source identity')
+    requirements = str(DELIVERY/('requirements-planner.txt' if manifest['variant'] == 'planner' else 'requirements.txt'))
+    if (manifest['variant'] not in ('base', 'planner') or manifest['requirements'] != requirements
+            or requirements not in seen or str(DELIVERY/'requirements.txt') not in seen):
+        raise RuntimeError('Invalid or unsealed package requirements')
+    payload = hashlib.sha256(json.dumps(manifest['files'], sort_keys=True).encode()).hexdigest()
+    if payload != manifest['payload_sha256']:
+        raise RuntimeError('Delivery payload identity mismatch')
     return manifest
 
 
@@ -112,7 +134,8 @@ def configured_model(root, policy='sonic'):
 def provision_external(root, manifest, configured, source=None, *, label='model', config_name='actor configuration'):
     """Validate an explicit external asset before atomically placing it locally."""
     matches = [item for item in manifest['external_resources'] if item['path'] == configured['path']]
-    if len(matches) != 1 or matches[0]['sha256'] != configured['sha256']:
+    if (len(matches) != 1 or matches[0]['sha256'] != configured['sha256']
+            or matches[0]['bytes'] != configured['bytes']):
         raise RuntimeError('External model manifest disagrees with '+config_name)
     item, = matches
     destination = inside(root, item['path'])
@@ -145,6 +168,10 @@ def provision_model(root, manifest, source=None, policy='sonic'):
 
 
 def provision_planner_assets(root, manifest, planner=None, bridge=None):
+    if planner is None and bridge is None:
+        return
+    if manifest.get('variant') != 'planner':
+        raise RuntimeError('Planner assets require a planner delivery package')
     config_name = 'config/actor_sonic_planner.json'
     settings = json.loads((root/config_name).read_text())
     for key, source in (('planner', planner), ('bridge', bridge)):
@@ -196,7 +223,7 @@ def install(root, manifest, *, build_pico=False, policy='sonic'):
     pip_env.pop('PYTHONPATH', None)
     subprocess.run([str(python), '-m', 'pip', 'install', '--no-index', '--no-cache-dir',
                     '--find-links', str(root/DELIVERY/'wheelhouse'),
-                    '-r', str(root/DELIVERY/'requirements.txt')], env=pip_env, check=True)
+                    '-r', str(root/manifest['requirements'])], env=pip_env, check=True)
     subprocess.run([str(python), '-m', 'pip', 'check'], env=pip_env, check=True)
     unpack(root, manifest, use_prebuilt=not build_pico)
     if build_pico:
@@ -206,7 +233,11 @@ def install(root, manifest, *, build_pico=False, policy='sonic'):
     code = ('from deployment.vita_s100_aorta_30dof.sdk021_guard import verify_vendor_sources; '
             'verify_vendor_sources(); import aorta, flatbuffers; '
             'from locomotion_aorta import _body_cmd_native; import xrobotoolkit_sdk as x; '
-            'assert callable(x.get_body_pose_snapshot); assert callable(x.get_controller_trigger_snapshot); assert callable(x.get_controller_teleop_snapshot); import onnxruntime; print("SDK and Pico binding verification passed")')
+            'assert callable(x.get_body_pose_snapshot); assert callable(x.get_controller_trigger_snapshot); '
+            'assert callable(x.get_controller_teleop_snapshot); ')
+    if manifest['variant'] == 'planner':
+        code += 'import onnxruntime; '
+    code += 'print("SDK and Pico binding verification passed")'
     subprocess.run([str(python), '-c', code], cwd=root, env=env, check=True)
     service = root/'vendor_packages/xrobotoolkit-arm64/opt/apps/roboticsservice/RoboticsServiceProcess'
     for executable in [service, root/'build/pico'/f'xrobotoolkit_sdk.cpython-310-aarch64-linux-gnu.so']:
@@ -217,7 +248,8 @@ def install(root, manifest, *, build_pico=False, policy='sonic'):
     subprocess.run([str(python), str(root/'scripts/actor_pico.py'), 'check', '--steps', '10',
                     '--policy', policy], cwd=root, env=env, check=True)
     receipt = dict(status='PASS_S100_OFFLINE_INSTALL_AND_MODEL_CHECK',
-                   delivery_version=manifest['version'], build_pico=build_pico,
+                   source=manifest['source'], payload_sha256=manifest['payload_sha256'],
+                   variant=manifest['variant'], build_pico=build_pico,
                    binding_sha256=sha(root/'build/pico/xrobotoolkit_sdk.cpython-310-aarch64-linux-gnu.so'),
                    policy=policy, model_sha256=sha(root/configured_model(root, policy)['path']),
                    python=str(python), pip_check='PASS', real_binding_import='PASS',
@@ -242,6 +274,8 @@ def main():
     args = parser.parse_args()
     root = args.root.resolve()
     manifest = verify(root)
+    if manifest['variant'] != 'planner' and (args.planner_model or args.bridge_model):
+        parser.error('Planner assets require a planner delivery package')
     if args.verify_only:
         if args.model or args.planner_model or args.bridge_model:
             parser.error('External models require installation or --unpack-only')
