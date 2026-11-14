@@ -1,7 +1,6 @@
 """SONIC reference generation and arm-only Pico fusion. No robot transport.
 
-SONIC 30->50 Hz generation with explicit official and CPU latency profiles.
-The CPU profile uses longer predictions and configurable lookahead/replanning.
+SONIC 30->50 Hz CPU generation with configurable lookahead and replanning.
 Vita adds bridge history and arm fusion.
 Quaternions are wxyz throughout. The actor remains the only motor policy.
 """
@@ -55,16 +54,8 @@ class Command:
 
 
 class StickCommand:
-    """Ramp engagement; neutral requests IDLE without waiting for a speed ramp.
-
-    Reference splicing, rather than a delayed stop intent, preserves pose
-    continuity. The legacy ramp is retained for controlled offline comparisons.
-    """
-    def __init__(self, speed=.25, yaw_rate=.35, release_mode='idle', backward_speed=.175, turn_speed_limit=None, direct_speed=False):
-        if release_mode not in ('idle','ramp'):
-            raise ValueError('release_mode must be idle or ramp')
-        self.release_mode=release_mode
-        self.direct_speed=bool(direct_speed)
+    """Direct translation and ramped turning; neutral immediately requests IDLE."""
+    def __init__(self, speed=.25, yaw_rate=.35, backward_speed=.175, turn_speed_limit=None):
         values=(speed,backward_speed,yaw_rate)
         if not np.isfinite(values).all() or not 0<speed<=.8 or not 0<backward_speed<=.8 or not 0<yaw_rate<=.5:
             raise ValueError('Invalid walking speed/yaw limits')
@@ -107,11 +98,9 @@ class StickCommand:
         target = axis(forward)*direction_limit if self.armed and enabled else 0.
         if self.turn_speed_limit is not None and abs(turn)>STICK_DEADZONE:
             target=float(np.clip(target,-self.turn_speed_limit,self.turn_speed_limit))
-        if target==0. and self.release_mode=='idle':self.speed=0.
-        elif self.direct_speed:self.speed = float(target)
-        else:self.speed += float(np.clip(target-self.speed,-.3*dt,.3*dt))
+        self.speed = float(target)
         target_turn = -axis(turn)*self.yaw_rate if self.armed and enabled else 0.
-        if target_turn==0. and self.release_mode=='idle':self.turn_rate=0.
+        if target_turn==0.:self.turn_rate=0.
         else:self.turn_rate += float(np.clip(target_turn-self.turn_rate,-.7*dt,.7*dt))
         self.heading += self.turn_rate*dt
         output_limit=self.backward_limit if self.speed<0 else self.limit
@@ -122,7 +111,7 @@ class StickCommand:
 
 
 class PlannerPipeline:
-    def __init__(self, planner, bridge, names, *, threads=4, seed=1234, profile='official_trt', max_speed=.3):
+    def __init__(self, planner, bridge, names, *, threads=4, seed=1234, max_speed=.3):
         import onnxruntime as ort
         if not np.isfinite(max_speed) or not 0<max_speed<=.8:raise ValueError('Invalid planner maximum speed')
         self.max_speed=float(max_speed)
@@ -136,11 +125,8 @@ class PlannerPipeline:
             opts.add_session_config_entry('session.intra_op.allow_spinning','0')
             return ort.InferenceSession(str(path),opts,providers=['CPUExecutionProvider'])
         self.planner, self.bridge = session(planner,threads),session(bridge,1)
-        if profile not in ('official_trt','official_ort','latency_reference'):
-            raise ValueError('Unknown official SONIC input profile')
-        self.seed=int(seed);self.profile=profile;self.rng=np.random.default_rng(self.seed)
-        self.allowed_counts=((48,52,56,60,64) if profile=='latency_reference' else
-            (36,40,44) if profile=='official_trt' else (24,28,32,36,40,44))
+        self.seed=int(seed);self.rng=np.random.default_rng(self.seed)
+        self.allowed_counts=(48,52,56,60,64)
         self.motion=None;self.origin=0;self.replans=0;self.last_inference_ms=0.
         self.moving_lookahead=22;self.idle_lookahead=2;self.blend_frames=8;self.walk_mode=1
 
@@ -152,9 +138,9 @@ class PlannerPipeline:
         moving=command.speed > 0
         inputs=dict(context_mujoco_qpos=np.asarray(context[None],np.float32),
             target_vel=np.array([command.speed if moving else -1],np.float32),
-            mode=np.array([getattr(self,'walk_mode',1) if moving else int(command.turning and getattr(self,'profile','official_trt')=='latency_reference')],np.int64),
+            mode=np.array([getattr(self,'walk_mode',1) if moving else int(command.turning)],np.int64),
             movement_direction=facing*(-1 if command.backward else 1) if moving else np.zeros((1,3),np.float32),
-            facing_direction=facing,random_seed=np.array([int(self.rng.integers(0,2**31-1)) if getattr(self,'profile','official_trt')=='latency_reference' else self.seed],np.int64),
+            facing_direction=facing,random_seed=np.array([int(self.rng.integers(0,2**31-1))],np.int64),
             has_specific_target=np.zeros((1,1),np.int64),specific_target_positions=np.zeros((1,4,3),np.float32),
             specific_target_headings=np.zeros((1,4),np.float32),
             allowed_pred_num_tokens=np.array([[int(24+4*i in self.allowed_counts) for i in range(11)]],np.int64),height=np.array([-1],np.float32))
@@ -171,7 +157,7 @@ class PlannerPipeline:
             raise ValueError('Invalid planner pose')
         return sample(seq,np.arange(n*5//3)*.6)
 
-    def start(self, q, quat=(1.,0.,0.,0.), command=Command()):
+    def start(self, q, quat=(1.,0.,0.,0.)):
         q=np.asarray(q,dtype=float);quat=np.asarray(quat,dtype=float)
         if q.shape!=(28,) or quat.shape!=(4,) or not np.isfinite(np.r_[q,quat]).all() or np.linalg.norm(quat)<.5:
             raise ValueError('Invalid measured planner start pose')
@@ -198,7 +184,7 @@ class PlannerPipeline:
 
     def predict(self, absolute_cursor, command):
         """Worker-only inference; the playing timeline is not modified here."""
-        gen=absolute_cursor+(self.moving_lookahead if command.speed>0 else self.idle_lookahead) if getattr(self,'profile','official_trt')=='latency_reference' else absolute_cursor+2
+        gen=absolute_cursor+(self.moving_lookahead if command.speed>0 else self.idle_lookahead)
         sequence=self.infer(sample(self.motion,gen-self.origin+np.arange(4)*50/30),command)
         return sequence,gen
 
@@ -219,10 +205,6 @@ class PlannerPipeline:
         mapped=self.map(motion,origin)
         self.motion,self.origin=motion,origin;self.replans+=1
         return mapped,origin
-
-    def replan(self, absolute_cursor, command):
-        """Synchronous diagnostic entry; live uses predict then accept on arrival."""
-        return self.accept(self.predict(absolute_cursor,command),absolute_cursor)
 
 
 class ArmFusion:
@@ -272,8 +254,7 @@ class PlannerReference:
         self.stick=StickCommand(speed=float(settings.get('forward_speed',.25)),
             backward_speed=float(settings.get('backward_speed',.175)),
             yaw_rate=float(settings.get('yaw_rate',.35)),
-            turn_speed_limit=settings.get('turn_speed_limit'),release_mode=settings.get('release_mode','idle'),
-            direct_speed=settings.get('profile','official_trt')=='latency_reference')
+            turn_speed_limit=settings.get('turn_speed_limit'))
         paths=[]
         for key in ('planner','bridge'):
             spec=settings[key];path=(root/spec['path']).resolve()
@@ -289,7 +270,7 @@ class PlannerReference:
         if self.steps>48 or abs(runtime.model.contract.period-.02)>1e-8:
             raise ValueError('Planner requires a 50 Hz SONIC actor with horizon <= 0.94s')
         self.pipeline=PlannerPipeline(*paths,runtime.model.contract.names,threads=settings.get('threads',4),
-            seed=settings.get('seed',1234),profile=settings.get('profile','official_trt'),
+            seed=settings.get('seed',1234),
             max_speed=max(.3,self.stick.limit,self.stick.backward_limit))
         self.replan_ticks=round(float(settings.get('replan_interval_s',.4))*50)
         self.pipeline.moving_lookahead=round(float(settings.get('moving_lookahead_s',.44))*50)
@@ -308,7 +289,7 @@ class PlannerReference:
         # Only called while inactive; an old worker result is discarded before restart.
         self.active=False;self.clip=None;self.cursor=0;self.origin=0;self.last_request=-100
         self.stick.reset();self.fusion=ArmFusion(self.pipeline.names,self.runtime.model.contract.default)
-        self.last_command=None;self.error=None;self.heading=None;self.stop_started=None
+        self.last_command=None;self.heading=None;self.stop_started=None
         self.lead=None;self.lead_cursor=0
         self.control_tick=0;self.future_initial=False;self.reference_yaw=0.
 
@@ -338,14 +319,11 @@ class PlannerReference:
             if self.clip is not None:
                 indices=np.clip(origin+np.arange(len(mapped[0]))-self.origin,0,len(self.clip[0])-1)
                 weight=np.clip((origin+np.arange(len(mapped[0]))-self.cursor)/getattr(self.pipeline,'blend_frames',8),0,1)
-                if getattr(self.pipeline,'profile','official_trt')=='latency_reference':
-                    # Correct the map residual discontinuity at arrival, without
-                    # crossfading the entire new walking trajectory a second time.
-                    at=int(np.clip(self.cursor-origin,0,len(mapped[0])-1))
-                    correction=self.clip[0][indices[at]]-mapped[0][at]
-                    mapped[0][:]+=(1-weight[:,None])*correction
-                else:
-                    mapped[0][:]=self.clip[0][indices]*(1-weight[:,None])+mapped[0]*weight[:,None]
+                # Correct the map residual discontinuity at arrival, without
+                # crossfading the entire new walking trajectory a second time.
+                at=int(np.clip(self.cursor-origin,0,len(mapped[0])-1))
+                correction=self.clip[0][indices[at]]-mapped[0][at]
+                mapped[0][:]+=(1-weight[:,None])*correction
             initial=self.clip is None
             self.clip,self.origin=mapped,origin
             if initial:
@@ -383,9 +361,8 @@ class PlannerReference:
             or command.turning!=self.last_command.turning
             or (command.speed>0)!=(self.last_command.speed>0)
             or (command.speed>0 and command!=self.last_command))
-        interval=self.replan_ticks if getattr(self.pipeline,'profile','official_trt')=='latency_reference' else 50
-        periodic=self.control_tick-self.last_request>=interval and (command.speed>0 or command.turning)
-        if self.future is None and (getattr(self.pipeline,'profile','official_trt')=='latency_reference' or self.control_tick%5==0) and (changed or periodic):
+        periodic=self.control_tick-self.last_request>=self.replan_ticks and (command.speed>0 or command.turning)
+        if self.future is None and (changed or periodic):
             self.future=self.pool.submit(self.pipeline.predict,self.cursor,command)
             self.future_initial=False
             self.last_request=self.control_tick;self.last_command=command

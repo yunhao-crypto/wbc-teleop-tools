@@ -1,8 +1,6 @@
 {
   "threads": 4,
-  "profile": "latency_reference",
   "seed": 221,
-  "release_mode": "idle",
   "planner": {
     "path": "artifacts/sonic/planner_sonic.onnx",
     "sha256": "39b553e197f62f077975ba38512bc04781a3fc37c2af7c6756e04629f760edea",

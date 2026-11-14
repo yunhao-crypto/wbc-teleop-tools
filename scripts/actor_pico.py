@@ -388,7 +388,6 @@ def main():
     parser.add_argument('--gripper-config', type=Path,
                         help='live manual-Pico only: explicit OP3 gripper JSON; side grips close/open each gripper')
     parser.add_argument('--planner-config', type=Path, help='SONIC manual Pico: planner legs/root and Pico arms')
-    parser.add_argument('--actor-config', type=Path, help='Explicit actor configuration inside deployment root')
     args = parser.parse_args()
     if args.ankle_command_space is not None and args.motion_config is None:
         parser.error('--ankle-command-space requires --motion-config')
@@ -438,7 +437,7 @@ def main():
     runtime = ActorPicoRuntime(args.root, backend=args.backend, threads=args.threads,
                                human_height=args.human_height, policy=args.policy,
                                reference_source='npz' if args.motion_config is not None else 'pico',
-                               ankle_command_space=args.ankle_command_space,actor_config=args.actor_config)
+                               ankle_command_space=args.ankle_command_space)
     if args.motion_config is not None:
         from deployment.vita_s100_aorta_30dof.actor_motion import load_motion
         runtime.motion_source = load_motion(runtime, args.motion_config)
