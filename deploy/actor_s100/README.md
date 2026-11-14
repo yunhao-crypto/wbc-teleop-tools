@@ -31,6 +31,8 @@ disables video. Offline validation modes do not start it.
 aorta-sdk/aorta-msgs 0.0.0+g7649a87ebb03, vbot-humanoid-msgs 0.0.0+g35ce9eb82d5b,
 FlatBuffers 25.12.19, NumPy 1.26.4, PyYAML 6.0.3 and pybind11 2.13.6, plus the complete pinned GMR dependency closure
 (mink 1.3.0, MuJoCo 3.11.0, SciPy 1.15.3, DAQP 0.10.3 and qpsolvers 4.13.0).
+The optional [SONIC ONNX planner and map bridge](SONIC_ONNX_PLANNER.md) add seven
+pinned ARM64 wheels, bringing the bundled closure to 28 wheels.
 The bootstrap uses pip's full dependency resolver with `--no-index` and runs
 `pip check`; there is no network or missing-dependency fallback.
 

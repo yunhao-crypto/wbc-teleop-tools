@@ -152,6 +152,8 @@ def main():
             head_tests = run_tests('tests/test_actor_pico_head.py', cwd=export, env=env)
             provision_tests = run_tests('tests/test_actor_local_provision.py', cwd=export, env=env)
             live_tests = run_tests('tests/test_actor_pico_live.py', cwd=export, env=env)
+            planner_tests = run_tests('tests/test_actor_sonic_planner.py', cwd=export, env=env)
+            teleop_tests = run_tests('tests/test_actor_teleop_modes.py', cwd=export, env=env)
             # Rerun with the SDK present: the pinned EE enum check must execute, not skip.
             gripper_sdk = run([sys.executable, 'tests/test_actor_pico_gripper.py'], cwd=export, env=env)
             if 'skipped' in gripper_sdk:
@@ -171,6 +173,7 @@ def main():
                           head_control_tests=head_tests,
                           local_provision_tests=provision_tests,
                           live_runner_tests=live_tests, gripper_pinned_sdk_check='PASS',
+                          sonic_planner_tests=planner_tests, teleop_mode_tests=teleop_tests,
                           live_runner_io='simulated; real SDK session/math',
                           robot_motion='not_measured')
         (ROOT/'outputs').mkdir(exist_ok=True)

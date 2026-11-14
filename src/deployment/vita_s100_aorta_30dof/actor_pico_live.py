@@ -531,11 +531,42 @@ def reference_yaw(runtime, motion, root):
 
 def pico_reference_command(runtime, snapshot, now, *, q, dq, root, gyro, yaw_offset=None):
     """Policy command on a worker snapshot; a late reference holds its current frame."""
+    from .actor_teleop_modes import active_planner
+    planner = active_planner(runtime)
+    modes=getattr(runtime,'teleop_modes',None)
+    if planner is not None:
+        try:
+            upper, diagnostics = manual_reference(runtime, snapshot, now)
+            upper_q = upper.q if diagnostics['pico_age_s'] <= runtime.config['pico_hold_age_s'] else None
+        except (ValueError, TimeoutError):
+            upper_q, diagnostics = None, {}
+        sticks=modes.stick_sample(snapshot,now) if modes is not None else snapshot.get('planner_sticks')
+        motion, heading, extra = planner.tick(upper_q, sticks, now, root, robot_q=q,
+            input_enabled=modes is None or modes.stage!='entry')
+        if modes is not None:
+            if extra['planner_state'] not in ('loading','waiting_previous'):
+                motion,heading=modes.filter(motion,heading)
+            motion=modes.follow_upper(motion,upper_q)
+            extra.update(teleop_mode=modes.mode,teleop_mode_stage=modes.stage,
+                stick_armed=planner.stick.armed,stick_needs_center=modes.needs_center,
+                reference_limiter_active=modes.entry is not None)
+        diagnostics.update(extra)
+        command, obs, row = runtime.infer_motion_command(motion,q=q,dq=dq,root=root,gyro=gyro,
+            diagnostics=diagnostics,yaw_offset=heading,ref_time=0.)
+        row['pico_reference'] = dict(q=motion.q.tolist(),root_wxyz=motion.quat.tolist(),
+            base=motion.base.tolist(),ref_time=0.,yaw_offset=heading,source='planner_legs_pico_arms',
+            timestamp_ns=snapshot.get('pico_timestamp_ns'),sticks=snapshot.get('planner_sticks'))
+        return command, obs, row
     motion, diagnostics = manual_reference(runtime, snapshot, now)
     if yaw_offset is None:
         yaw_offset = reference_yaw(runtime, motion, root)
     motion, diagnostics['reference_hold'] = runtime.hold_stale_reference(
         motion, diagnostics['pico_age_s'])
+    if modes is not None:
+        upper_q=motion.q.copy()
+        motion,yaw_offset=modes.filter(motion,yaw_offset)
+        motion=modes.follow_upper(motion,upper_q)
+        diagnostics.update(teleop_mode=modes.mode,teleop_mode_stage=modes.stage)
     command, obs, row = runtime.infer_motion_command(motion, q=q, dq=dq,
         root=root, gyro=gyro, diagnostics=diagnostics, yaw_offset=yaw_offset,
         ref_time=runtime.reference.ref_time)
@@ -806,6 +837,9 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
         previous_pico_state = None
         previous_controller_state = None
         last_trigger_event = 0
+        modes=getattr(runtime,'teleop_modes',None)
+        if modes is not None:
+            print('TELEOP_MODE: full_body; center and click right stick to switch. Right Y=forward/back, X=turn in joystick mode.',flush=True)
         if manual and wait_pico:
             manual_pico.connect(root)
             print('PICO_WAIT: receiver starting; ONNX stand does not depend on receiving Pico',flush=True)
@@ -838,6 +872,8 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
                 return False
             tracking = False
             auto_pico = False
+            if modes is not None:
+                modes.cancel();modes.upper_follow=None
             pico_reengage_blocked = True
             # Required-Pico mode now stands using robot feedback only. A
             # terminal worker snapshot must not keep failing Inputs.read().
@@ -939,6 +975,8 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
             elapsed = stand_tick*runtime.model.contract.period
             reference_frame = min(stand_tick,len(lead.q)-1)
             reference_time = reference_frame*runtime.model.contract.period
+            if not tracking and getattr(runtime, 'planner', None) is not None and runtime.planner.active:
+                runtime.planner.reset()
             snapshot = None
             if manual:
                 request = poll_command()
@@ -977,15 +1015,67 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
                                source_gap_s=snapshot.get('source_gap_s'),
                                receipt_gap_s=snapshot.get('receipt_gap_s'),
                                retarget_ms=snapshot.get('retarget_ms'),actions_sent=sent_count))
+                if modes is not None:
+                    # Pause has priority over a concurrent mode click. Consume
+                    # rejected edges so held/cached buttons cannot re-engage.
+                    if request=='toggle':
+                        modes.cancel();modes.upper_follow=None
+                    event=modes.request(snapshot,clock.monotonic(),tracking=tracking and request!='toggle',
+                        q=q,dq=dq,root=root,gyro=gyro)
+                    if event is not None:
+                        write(dict(event,actions_sent=sent_count))
+                        print('TELEOP_MODE: '+str(event),flush=True)
+                        if event['record_type']=='teleop_mode_requested':request='toggle'
+                    if not tracking and modes.pending is not None:
+                        try:
+                            candidate,diag=manual_reference(runtime,snapshot,clock.monotonic())
+                            if diag['pico_age_s']>runtime.config['pico_hold_age_s']:candidate=None
+                        except (ValueError,TimeoutError):
+                            candidate=None;modes.cancel()
+                        if modes.ready(snapshot,clock.monotonic(),q=q,dq=dq,root=root,gyro=gyro,
+                                preparation_done=elapsed>=preparation,motion=candidate):
+                            request='track'
+                            print('TELEOP_MODE: '+modes.mode+'; reference handover, then center stick to arm.',flush=True)
+                            write(dict(record_type='teleop_mode_selected',mode=modes.mode,actions_sent=sent_count))
+                from .actor_teleop_modes import active_planner
+                planner = active_planner(runtime)
+                if planner is not None and tracking:
+                    if request == 'toggle' and planner.stop_started is None:
+                        planner.stop_started = clock.monotonic()
+                        write(dict(record_type='planner_stop_requested', actions_sent=sent_count))
+                    if planner.stop_started is not None:
+                        # Let the generated gait decelerate before returning to stand.
+                        legs = [i for i,n in enumerate(runtime.model.contract.names)
+                                if any(k in n for k in ('hip','knee','ankle'))]
+                        settled = (clock.monotonic()-planner.stop_started >= 2.
+                                   and np.max(np.abs(dq[legs])) < .4)
+                        if modes is not None:
+                            quiet=(np.max(np.abs(dq[legs]))<.15 and np.max(np.abs(gyro))<.1
+                                and planner.future is None and planner.clip is not None
+                                and planner.cursor>=planner.origin+len(planner.clip[0])-1)
+                            modes.quiet_since=(clock.monotonic() if modes.quiet_since is None else modes.quiet_since) if quiet else None
+                            settled=settled and modes.quiet_since is not None and clock.monotonic()-modes.quiet_since>=.5
+                        request = 'toggle' if settled else None
                 if request == 'toggle' and tracking:
                     # An intentional standby transition; a source fault takes
                     # handle_pico_loss (pico_loss_action) instead of this path.
-                    manual_reference(runtime,snapshot,clock.monotonic())
+                    if planner is None:
+                        manual_reference(runtime,snapshot,clock.monotonic())
                     tracking = False
                     auto_pico = False
-                    lead = runtime.hold_motion().lead_in(
-                        q,root,runtime.config['body_profile']['lead_in'])
-                    offset = runtime.math.yaw(root)
+                    transition_q=q if modes is None or modes.last_q is None else modes.last_q
+                    transition_root=root if modes is None or modes.last_root is None else modes.last_root
+                    stand_target=runtime.hold_motion()
+                    if modes is not None and modes.pending is not None:
+                        # R3 returns only the lower body to stand. Arm targets
+                        # continue from Pico below, using the same filter state.
+                        stand_target=runtime.math.Motion(stand_target.q.copy(),stand_target.base.copy(),stand_target.quat.copy())
+                        slots=modes.upper_follow.slots
+                        stand_target.q[:,slots]=transition_q[slots]
+                    lead = stand_target.lead_in(
+                        transition_q,transition_root,runtime.config['body_profile']['lead_in'])
+                    offset = runtime.math.yaw(transition_root)
+                    if modes is not None:modes.paused()
                     stand_tick = 0
                     elapsed = reference_time = 0.
                     reference_frame = 0
@@ -993,7 +1083,7 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
                     request = None
                     print('PICO_STANDBY: returning reference to ONNX stand; EXTERNAL session stays active.',flush=True)
                     write(dict(record_type='tracking_paused',actions_sent=sent_count,
-                               transition_start_q=q.tolist(),policy_history_reset=False))
+                               transition_start_q=transition_q.tolist(),policy_history_reset=False))
                 automatic_switch = False
                 if auto_pico and not tracking and elapsed >= preparation and snapshot.get('state') == 'ready':
                     try:
@@ -1014,6 +1104,8 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
                         # GMR keeps its world root. Align heading at each new
                         # engagement using the current measured robot heading.
                         tracking_yaw = reference_yaw(runtime, motion, root)
+                        if modes is not None:
+                            modes.engage(lead.q[-1],runtime.math.multiply(runtime.math.yaw_quaternion(offset),lead.quat[-1]))
                         print('PICO_TRACKING: same EXTERNAL session and policy history.', flush=True)
                         write(dict(record_type='tracking_started',actions_sent=sent_count,
                                    reference_yaw_offset=tracking_yaw))
@@ -1048,8 +1140,20 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
                     command, obs, row = pico_reference_command(runtime, inputs.snapshot, clock.monotonic(),
                         q=q, dq=dq, root=root, gyro=gyro, yaw_offset=tracking_yaw)
                 else:
-                    command, obs, row = runtime.infer_motion_command(lead, q=q, dq=dq,
-                        root=root, gyro=gyro, ref_time=reference_time, yaw_offset=offset)
+                    stand_motion=lead
+                    if modes is not None and modes.upper_follow is not None:
+                        try:
+                            upper,diag=manual_reference(runtime,snapshot,clock.monotonic())
+                            upper_q=upper.q if diag['pico_age_s']<=runtime.config['pico_hold_age_s'] else None
+                        except (ValueError,TimeoutError):upper_q=None
+                        # Infer a current-frame window so the persistent arm
+                        # filter is evaluated at frame zero, not a lead-in offset.
+                        start=min(round(reference_time/runtime.model.contract.period),len(lead.q)-1)
+                        indices=np.minimum(start+np.arange(runtime.reference.steps),len(lead.q)-1)
+                        stand_motion=runtime.math.Motion(lead.q[indices],lead.base[indices],lead.quat[indices])
+                        stand_motion=modes.follow_upper(stand_motion,upper_q)
+                    command, obs, row = runtime.infer_motion_command(stand_motion, q=q, dq=dq,
+                        root=root, gyro=gyro, ref_time=0. if stand_motion is not lead else reference_time, yaw_offset=offset)
             except (ValueError, TimeoutError) as error:
                 if not handle_pico_loss(error, q, root):
                     raise
@@ -1061,9 +1165,13 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
             # publication succeeds; skipped ticks keep the last published action.
             pending_action = runtime.policy.last_action.copy()
             runtime.policy.last_action = published_action
+            if modes is not None:
+                row['upper_body_source']='pico' if modes.upper_follow is not None else 'stand'
             command, pending_head = runtime.apply_head(command, row, now=clock.monotonic(),
-                measured_q=state.q, tracking=tracking and motion_source is None,
-                snapshot=(snapshot if manual else inputs.snapshot) if tracking else None)
+                measured_q=state.q, tracking=(tracking or (modes is not None and modes.upper_follow is not None)) and motion_source is None and (
+                    getattr(runtime, 'planner', None) is None or (snapshot is not None and
+                    ('head_snapshot' in snapshot or 'received_monotonic' in snapshot))),
+                snapshot=(snapshot if manual else inputs.snapshot) if (tracking or (modes is not None and modes.upper_follow is not None)) else None)
             envelope.check(command)
             compute_end = clock.monotonic()
             record_period_overrun(write,'compute',compute_end-cycle,sent_count,
@@ -1087,7 +1195,7 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
                         raise
                     deadline = advance(deadline)
                     continue
-            if manual and tracking:
+            if manual and tracking and active_planner(runtime) is None:
                 # Recheck source age immediately before publishing. On loss,
                 # handle_pico_loss returns to stand without auto reconnect.
                 age = clock.monotonic()-float(snapshot['received_monotonic'])

@@ -47,6 +47,9 @@ class TriggerReader:
             raise RuntimeError('Pico binding lacks atomic controller trigger snapshots; update the binding')
         # Optional: shared[3:7] = grip receipt monotonic, stamp, left, right.
         self.grips = getattr(sdk,'get_controller_grip_snapshot',None) if len(shared) >= 7 else None
+        self.sticks = getattr(sdk,'get_controller_stick_snapshot',None) if len(shared) >= 11 else None
+        self.teleop = getattr(sdk,'get_controller_teleop_snapshot',None) if len(shared) >= 14 else None
+        self.mode_toggle = RightStickToggle(min(maximum_age,.25))
         self.shared = shared
         self.toggle = DualTriggerToggle(maximum_age)
         self.stop = threading.Event()
@@ -63,6 +66,20 @@ class TriggerReader:
                     with self.shared.get_lock():
                         self.shared[3:7] = ([now-age,float(stamp),left,right]
                                             if available and math.isfinite(age) and age >= 0 else [0.,0.,0.,0.])
+                if callable(self.teleop):
+                    sample=self.teleop()
+                    available,stamp,age,forward,turn,left_click,right_click=sample
+                    fired=self.mode_toggle.update(sample,now)
+                    with self.shared.get_lock():
+                        receipt=now-age if available and math.isfinite(age) and 0<=age<=.25 else 0.
+                        self.shared[7:11]=[receipt,float(stamp),forward,turn] if receipt else [0.]*4
+                        self.shared[13]=receipt
+                        if fired:self.shared[11]+=1;self.shared[12]=now
+                elif callable(self.sticks):
+                    available,stamp,age,forward,turn = self.sticks()
+                    with self.shared.get_lock():
+                        self.shared[7:11] = ([now-age,float(stamp),forward,turn]
+                            if available and math.isfinite(age) and age >= 0 else [0.,0.,0.,0.])
                 sample = self.get()
                 fired = self.toggle.update(sample,now)
                 available,stamp,age,left,right = sample
@@ -73,11 +90,36 @@ class TriggerReader:
                         self.shared[1] = now
             except Exception:
                 self.toggle.armed = False
+                self.mode_toggle.armed = False
                 with self.shared.get_lock():
                     self.shared[2] = 0.
                     if len(self.shared) >= 7: self.shared[3] = 0.
+                    if len(self.shared) >= 11: self.shared[7] = 0.
+                    if len(self.shared) >= 14: self.shared[13] = 0.
             self.stop.wait(.005)
 
     def close(self):
         self.stop.set()
         self.thread.join(timeout=1.)
+
+
+class RightStickToggle:
+    """Fresh R3 press after release; simultaneous L3/R3 never switches mode."""
+    def __init__(self, maximum_age=.25):
+        self.maximum_age=maximum_age;self.armed=False;self.stamp=0;self.last=-math.inf
+
+    def update(self,sample,now):
+        available,stamp,age,y,x,left,right=sample
+        if (not available or type(stamp) is not int or stamp<=0 or type(left) is not bool or type(right) is not bool
+                or not all(math.isfinite(v) for v in (now,age,y,x)) or not 0<=age<=self.maximum_age or max(abs(x),abs(y))>1):
+            self.armed=False;return False
+        if stamp<=self.stamp:
+            if stamp<self.stamp:self.armed=False
+            return False
+        self.stamp=stamp
+        if left:self.armed=False
+        elif not right:self.armed=True
+        elif self.armed:
+            self.armed=False
+            if now-self.last>=.3:self.last=now;return True
+        return False

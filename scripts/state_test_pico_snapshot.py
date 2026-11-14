@@ -11,6 +11,7 @@ head=src[:src.index('void init()')]
 head='\n'.join(line for line in head.splitlines() if not line.startswith('#include <pybind11/'))
 getter=src[src.index('std::tuple<bool, int64_t, std::array<std::array<double, 7>, 24>> getBodyPoseSnapshot()'):src.index('bool isBodyDataAvailable()')]
 getter+=src[src.index('std::tuple<bool, int64_t, double, double, double> getControllerTriggerSnapshot()'):src.index('double getLeftGrip()')]
+getter+=src[src.index('std::tuple<bool, int64_t, double, double, double, bool, bool> getControllerTeleopSnapshot()'):src.index('double getRightTrigger()')]
 test=r'''
 #include <atomic>
 #include <cassert>
@@ -36,13 +37,31 @@ json with_controller(json value) {
  const json side={{"pose","0,0,0,0,0,0,1"},{"trigger",depth},{"grip",1.-depth},
    {"menuButton",false},{"axisX",0.},{"axisY",0.},{"axisClick",false},
    {"primaryButton",false},{"secondaryButton",false}};
- value["Controller"]={{"left",side},{"right",side}};return value;
+ value["Controller"]={{"left",side},{"right",side}};
+ value["Controller"]["right"]["axisY"]=depth*.25;
+ value["Controller"]["right"]["axisX"]=-depth*.5;
+ value["Controller"]["right"]["axisClick"]=(depth>0);return value;
 }
 void triggers_coherent(){auto [available,stamp,age,left,right]=getControllerTriggerSnapshot();
  if(!available)return;assert(age>=0);assert(left==right);assert(left==double(stamp%2));}
 void grips_coherent(){auto [available,stamp,age,left,right]=getControllerGripSnapshot();
  if(!available)return;assert(age>=0);assert(left==right);assert(left==1.-double(stamp%2));}
+void teleop_coherent(){auto [available,stamp,age,y,x,left,right]=getControllerTeleopSnapshot();
+ if(!available)return;assert(age>=0);assert(y==double(stamp%2)*.25);assert(x==-double(stamp%2)*.5);assert(!left);assert(right==bool(stamp%2));}
 int main(){
+ auto sticks=with_controller(packet(1));
+ sticks["Controller"]["left"]["axisY"]=-.5;
+ sticks["Controller"]["right"]["axisX"]=.7;
+ publish(sticks);
+ auto [ok,ts,age,fwd,turn]=getControllerStickSnapshot();
+ assert(ok && ts==1 && age>=0 && fwd==-.5 && turn==.7);
+ sticks["Controller"]["right"]["axisX"]=1.5;publish(sticks);
+ assert(!std::get<0>(getControllerStickSnapshot()));
+ assert(!std::get<0>(getControllerTeleopSnapshot()));
+ auto bad_click=with_controller(packet(2));bad_click["Controller"]["right"]["axisClick"]=1;publish(bad_click);
+ assert(!std::get<0>(getControllerTeleopSnapshot()));
+ {std::lock_guard<std::mutex> lock(controllerTriggerMutex);AtomicGrips={};}
+
  assert(!std::get<0>(getControllerGripSnapshot()));
  publish(with_controller(packet(1)));grips_coherent();assert(std::get<0>(getControllerGripSnapshot()));
  auto bad_grip=with_controller(packet(2));bad_grip["Controller"]["left"]["grip"]=1.5;
@@ -75,10 +94,10 @@ int main(){
  invalid=packet(14);invalid.erase("timeStampNs");publish(invalid);
  assert(std::get<1>(getBodyPoseSnapshot())==10);
  std::atomic<bool>done{false};std::atomic<unsigned>reads{0};
- std::thread reader([&]{while(!done){coherent();triggers_coherent();grips_coherent();++reads;}});
+ std::thread reader([&]{while(!done){coherent();triggers_coherent();grips_coherent();teleop_coherent();++reads;}});
  for(int frame=20;frame<10020;++frame)publish(with_controller(packet(frame)));
  done=true;reader.join();coherent();assert(reads>0);
- std::cout<<"PASS: actual callback/getter, root timestamp semantics, torn global update, 7 malformed packets, 3 malformed grips, 10000 concurrent publications, "<<reads<<" coherent reads\n";
+ std::cout<<"PASS: actual callback/getter, root timestamp semantics, torn global update, 7 malformed packets, 3 malformed grips, atomic right Y/X/R3, 10000 concurrent publications, "<<reads<<" coherent reads\n";
 }
 '''
 out=root/'build/state';out.mkdir(parents=True,exist_ok=True)

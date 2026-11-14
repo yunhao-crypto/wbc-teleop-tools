@@ -94,6 +94,26 @@ class InstallerTests(unittest.TestCase):
             self.assertEqual((root/item['path']).read_bytes(), b'other')
             self.assertFalse((root/'artifacts/actor_g1').exists())
 
+    def test_planner_and_bridge_assets_are_pinned_and_separate(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root/'config').mkdir()
+            planner = dict(path='artifacts/sonic/planner.onnx', bytes=7,
+                           sha256=hashlib.sha256(b'planner').hexdigest())
+            bridge = dict(path='artifacts/sonic/bridge.onnx', bytes=6,
+                          sha256=hashlib.sha256(b'bridge').hexdigest())
+            (root/'config/actor_sonic_planner.json').write_text(json.dumps(dict(planner=planner, bridge=bridge)))
+            manifest = dict(external_resources=[planner, bridge])
+            source = root/'source.onnx'; source.write_bytes(b'planner')
+            bootstrap.provision_planner_assets(root, manifest, planner=source)
+            self.assertEqual((root/planner['path']).read_bytes(), b'planner')
+            self.assertFalse((root/bridge['path']).exists())
+            with self.assertRaisesRegex(RuntimeError, 'SHA256 does not match'):
+                bootstrap.provision_planner_assets(root, manifest, bridge=source)
+            source.write_bytes(b'bridge')
+            bootstrap.provision_planner_assets(root, manifest, bridge=source)
+            self.assertEqual((root/bridge['path']).read_bytes(), b'bridge')
+
     def test_changed_input_rejected_before_unpack(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

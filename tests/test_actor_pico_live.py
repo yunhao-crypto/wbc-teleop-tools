@@ -291,6 +291,31 @@ class LiveTests(unittest.TestCase):
         self.assertTrue(all(len(c.joints) == 31 for c in self.transport.commands))
         self.assert_cancelled()
 
+    def test_planner_pause_waits_for_gait_deceleration(self):
+        worker, _ = self.manual_trial()
+        self.args.seconds = 7.
+        runtime = self.runtime
+        class Planner:
+            active = False
+            stop_started = None
+            def reset(self):
+                self.active = False
+                self.stop_started = None
+            def tick(self, upper, sticks, now, root, *, robot_q, input_enabled=True):
+                self.active = True
+                return runtime.hold_motion(), 0., dict(planner_state='tracking')
+        planner = Planner()
+        def request():
+            return {50: 'connect', 155: 'track', 170: 'toggle'}.get(len(self.transport.commands))
+        with patch.object(runtime, 'planner', planner, create=True):
+            report = self.run_trial(manual_pico=worker, poll_command=request)
+        requested = next(row for row in self.rows if row.get('record_type') == 'planner_stop_requested')
+        paused = next(row for row in self.rows if row.get('record_type') == 'tracking_paused')
+        self.assertGreaterEqual(paused['actions_sent']-requested['actions_sent'], 99)
+        self.assertTrue(report['exit_confirmed'])
+        fused = [row for row in self.rows if row.get('pico_reference', {}).get('source') == 'planner_legs_pico_arms']
+        self.assertGreater(len(fused), 90)
+
     def test_stand_only_never_switches_to_pico_tracking(self):
         self.args.stand_only = True
         self.pico.step = lambda:(_ for _ in ()).throw(AssertionError('Pico must not be polled'))

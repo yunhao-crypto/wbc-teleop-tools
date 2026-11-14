@@ -36,6 +36,8 @@ bool BodyDataAvailable = false;  // Flag to indicate if body data is available
 BodyPoseSnapshot AtomicBodyPose;  // Complete same-packet pose/root timestamp only
 ControllerTriggerSnapshot AtomicTriggers;
 ControllerTriggerSnapshot AtomicGrips;
+ControllerTriggerSnapshot AtomicSticks;
+ControllerTeleopSnapshot AtomicTeleop;
 std::mutex controllerTriggerMutex;
 
 std::array<std::array<double, 7>, 3> MotionTrackerPose;  // Position and rotation for each joint
@@ -142,6 +144,16 @@ void OnPXREAClientCallback(void* context, PXREAClientCallbackType type, int stat
                     std::lock_guard<std::mutex> lock(controllerTriggerMutex);
                     AtomicTriggers = triggers;
                     AtomicGrips = grips;
+                    AtomicSticks = {};
+                    try {
+                        AtomicSticks = parseControllerStickSnapshot(value);
+                        AtomicSticks.received = std::chrono::steady_clock::now();
+                    } catch (const std::exception&) {}
+                    AtomicTeleop = {};
+                    try {
+                        AtomicTeleop = parseControllerTeleopSnapshot(value);
+                        AtomicTeleop.received = std::chrono::steady_clock::now();
+                    } catch (const std::exception&) {}
                 }
                 if (value["Controller"].contains("left")) {
                     auto& left = value["Controller"]["left"];
@@ -347,9 +359,26 @@ std::tuple<bool, int64_t, double, double, double> getControllerGripSnapshot() {
             AtomicGrips.left, AtomicGrips.right};
 }
 
+std::tuple<bool, int64_t, double, double, double> getControllerStickSnapshot() {
+    std::lock_guard<std::mutex> lock(controllerTriggerMutex);
+    const double age = AtomicSticks.available
+        ? std::chrono::duration<double>(std::chrono::steady_clock::now()-AtomicSticks.received).count()
+        : 0.0;
+    return {AtomicSticks.available, AtomicSticks.packet_timestamp_ns, age,
+            AtomicSticks.left, AtomicSticks.right};
+}
+
 double getLeftGrip() {
     std::lock_guard<std::mutex> lock(leftMutex);
     return LeftGrip;
+}
+
+std::tuple<bool, int64_t, double, double, double, bool, bool> getControllerTeleopSnapshot() {
+    std::lock_guard<std::mutex> lock(controllerTriggerMutex);
+    const double age=AtomicTeleop.available
+        ? std::chrono::duration<double>(std::chrono::steady_clock::now()-AtomicTeleop.received).count() : 0.;
+    return {AtomicTeleop.available, AtomicTeleop.packet_timestamp_ns, age,
+            AtomicTeleop.left, AtomicTeleop.right, AtomicTeleop.left_click, AtomicTeleop.right_click};
 }
 
 double getRightTrigger() {
@@ -559,6 +588,9 @@ PYBIND11_MODULE(xrobotoolkit_sdk, m) {
     m.def("get_right_trigger", &getRightTrigger, "Get the right trigger value.");
     m.def("get_controller_trigger_snapshot", &getControllerTriggerSnapshot,
           "Atomically copy both trigger depths, same-packet timestamp and native receipt age: available, stamp_ns, age_s, left, right.");
+    m.def("get_controller_stick_snapshot", &getControllerStickSnapshot, "Atomic left Y/right X with packet age.");
+    m.def("get_controller_teleop_snapshot", &getControllerTeleopSnapshot,
+          "Atomic right Y/X and left/right stick clicks: available, stamp, age, forward, turn, left_click, right_click.");
     m.def("get_controller_grip_snapshot", &getControllerGripSnapshot,
           "Atomically copy both side-grip depths, same-packet timestamp and native receipt age: available, stamp_ns, age_s, left, right.");
     m.def("get_right_grip", &getRightGrip, "Get the right grip value.");

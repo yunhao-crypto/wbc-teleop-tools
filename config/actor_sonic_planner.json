@@ -1,0 +1,26 @@
+{
+  "threads": 4,
+  "profile": "latency_reference",
+  "seed": 221,
+  "release_mode": "idle",
+  "planner": {
+    "path": "artifacts/sonic/planner_sonic.onnx",
+    "sha256": "39b553e197f62f077975ba38512bc04781a3fc37c2af7c6756e04629f760edea",
+    "bytes": 773952989
+  },
+  "bridge": {
+    "path": "artifacts/sonic/bridge_candidate_20261112/bridge_map_20261112_deployment_candidate/bridge_map.onnx",
+    "sha256": "94e34cc051a9a3f6848c2abf09d14654f717cf3775bb8678e74a2da1d36f0e3c",
+    "bytes": 2619337
+  },
+  "mode_switch": true,
+  "yaw_rate": 0.5,
+  "forward_speed": 0.5,
+  "backward_speed": 0.5,
+  "turn_speed_limit": 0.5,
+  "replan_interval_s": 0.4,
+  "moving_lookahead_s": 0.36,
+  "idle_lookahead_s": 0.36,
+  "blend_frames": 8,
+  "walk_mode": 1
+}

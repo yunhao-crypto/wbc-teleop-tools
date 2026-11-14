@@ -82,3 +82,4 @@ __pycache__/
 
 # Model weights, export reports and checkpoint receipts are supplied separately.
 /artifacts/morphmimic/
+/artifacts/sonic/

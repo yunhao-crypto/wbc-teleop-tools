@@ -309,6 +309,18 @@ def live(runtime, args, write):
                     load_config(args.gripper_config)
                     load_sdk()  # Refuse before any control handle when the SDK has no EE client.
                 from deployment.vita_s100_aorta_30dof.actor_pico_worker import PicoReferenceProcess
+                if args.planner_config is not None:
+                    if not callable(getattr(pico_sdk,'get_controller_stick_snapshot',None)):
+                        raise RuntimeError('Rebuild Pico binding: atomic stick snapshots required')
+                    from deployment.vita_s100_aorta_30dof.actor_sonic_planner import PlannerReference
+                    runtime.planner = PlannerReference(runtime, args.planner_config)
+                    resources.callback(runtime.planner.close)
+                    if runtime.planner.settings.get('mode_switch',False):
+                        if not callable(getattr(pico_sdk,'get_controller_teleop_snapshot',None)):
+                            raise RuntimeError('Rebuild Pico binding: atomic right-stick/R3 snapshot required for mode switching')
+                        from deployment.vita_s100_aorta_30dof.actor_teleop_modes import TeleopModes
+                        runtime.teleop_modes=TeleopModes(runtime)
+                    write(dict(record_type='planner_configuration', settings=runtime.planner.settings, actions_sent=0))
                 manual = PicoReferenceProcess(runtime)
                 manual.start()
                 resources.callback(manual.close)
@@ -375,6 +387,8 @@ def main():
     parser.add_argument('--auto-pico', action='store_true', help='live: receive Pico and automatically follow only after preparation and a fresh complete reference window')
     parser.add_argument('--gripper-config', type=Path,
                         help='live manual-Pico only: explicit OP3 gripper JSON; side grips close/open each gripper')
+    parser.add_argument('--planner-config', type=Path, help='SONIC manual Pico: planner legs/root and Pico arms')
+    parser.add_argument('--actor-config', type=Path, help='Explicit actor configuration inside deployment root')
     args = parser.parse_args()
     if args.ankle_command_space is not None and args.motion_config is None:
         parser.error('--ankle-command-space requires --motion-config')
@@ -414,6 +428,8 @@ def main():
           or args.manual_pico or args.auto_start or args.wait_pico or args.auto_pico
           or args.gripper_config is not None):
         parser.error('motion authorization/options apply only to live')
+    if args.planner_config is not None and (args.mode != 'live' or args.policy != 'sonic' or not args.manual_pico or args.motion_config is not None):
+        parser.error('--planner-config requires sonic live --manual-pico without motion playback')
     valid_duration = args.seconds >= 0 if args.mode == 'live' else 1 <= args.seconds <= 7200
     if (args.steps < 1 or not math.isfinite(args.seconds) or not valid_duration
             or not math.isfinite(args.startup_timeout) or not 1 <= args.startup_timeout <= 120):
@@ -422,7 +438,7 @@ def main():
     runtime = ActorPicoRuntime(args.root, backend=args.backend, threads=args.threads,
                                human_height=args.human_height, policy=args.policy,
                                reference_source='npz' if args.motion_config is not None else 'pico',
-                               ankle_command_space=args.ankle_command_space)
+                               ankle_command_space=args.ankle_command_space,actor_config=args.actor_config)
     if args.motion_config is not None:
         from deployment.vita_s100_aorta_30dof.actor_motion import load_motion
         runtime.motion_source = load_motion(runtime, args.motion_config)
