@@ -213,8 +213,11 @@ class GripperRunner:
     binding has no controller vibration call, so live passes none.
     """
 
-    def __init__(self, config, shared, *, connection, sdk=None, haptics=None, clock=time.monotonic):
+    def __init__(self, config, shared, *, connection, sdk=None, haptics=None, clock=time.monotonic,
+                 profiling=None):
         self.sdk = load_sdk() if sdk is None else sdk
+        self.profiling = profiling
+        self.feedback_received = {} if profiling is not None else None
         self.config, self.shared, self.haptics, self.clock = config, shared, haptics, clock
         self.mode = getattr(self.sdk.ControlMode, config['control_mode'])
         self.events = deque()
@@ -323,6 +326,8 @@ class GripperRunner:
         """Validated (latest, position) or None while output is not yet allowed."""
         sdk, client, info = self.sdk, self.clients[side], self.infos[side]
         latest, position, fault, received = client.motion_feedback()
+        if self.profiling is not None:
+            self.feedback_received[side] = received
         for state in (latest, position, fault):
             if state is not None:
                 sdk.codec.validate_state(info, state)
@@ -353,7 +358,12 @@ class GripperRunner:
         if feedback is None:
             return
         latest, position = feedback
-        self.clients[side].publish(self.targets[side][closed], input_observations=(position.sample_ref,))
+        if self.profiling is None:
+            self.clients[side].publish(self.targets[side][closed], input_observations=(position.sample_ref,))
+        else:
+            self.profiling.publish_gripper(self.clients[side], self.targets[side][closed],
+                latest, position, self.feedback_received[side],
+                phase='wtt_close' if closed else 'wtt_open', rate=self.config['rate_hz'])
         self.publishes[side] += 1
         opening, current = self._opening(position), self._current(latest)
         if closed != self.commanded[side]:
@@ -400,7 +410,10 @@ class GripperRunner:
         try:
             latest, position, _, _ = self.clients[side].motion_feedback()
             observations = () if position is None else (position.sample_ref,)
-            self.clients[side].publish(self.targets[side][False], input_observations=observations)
+            if self.profiling is None:
+                self.clients[side].publish(self.targets[side][False], input_observations=observations)
+            else:
+                self.profiling.publish_fault_open(self.clients[side], self.targets[side][False], position)
             return True
         except Exception:
             return False
@@ -408,7 +421,14 @@ class GripperRunner:
     def start(self):
         self.started_at = self.clock()
         self.thread = threading.Thread(target=self.run, name='pico-op3-gripper', daemon=True)
-        self.thread.start()
+        if self.profiling is not None:
+            self.profiling.ee_owned_by_worker = True
+        try:
+            self.thread.start()
+        except BaseException:
+            if self.profiling is not None:
+                self.profiling.ee_owned_by_worker = False
+            raise
 
     def tick(self, now=None):
         now = self.clock() if now is None else now
@@ -430,11 +450,20 @@ class GripperRunner:
     def run(self):
         period = 1./self.config['rate_hz']
         try:
+            if self.profiling is not None:
+                self.profiling.begin_grippers(self.infos)
             while not self.stop.is_set() and self.error is None:
                 self.tick()
                 self.stop.wait(period)
         except BaseException as error:
             self.error = error
+        finally:
+            if self.profiling is not None:
+                try:
+                    self.profiling.finish_grippers(self.error)
+                except BaseException as error:
+                    if self.error is None:
+                        self.error = error
 
     def drain(self):
         rows = []
