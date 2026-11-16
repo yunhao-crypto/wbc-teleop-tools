@@ -6,6 +6,7 @@ import io
 from pathlib import Path
 import sys
 import tempfile
+import time
 from types import SimpleNamespace as NS
 import unittest
 from unittest.mock import patch
@@ -42,26 +43,36 @@ class TraceTests(unittest.TestCase):
         p.order = list(range(28))
         p.moving_lookahead = 22
         p.idle_lookahead = 2
+        p.observed_intervals = []
         def infer(outputs, inputs):
+            began = time.monotonic_ns() // 1000
             result = np.zeros((1, 64, 36), np.float32)
             result[:, :, 3] = 1
-            return result, np.array([64], np.int32)
+            output = result, np.array([64], np.int32)
+            p.observed_intervals.append((began, time.monotonic_ns() // 1000))
+            return output
         p.planner = NS(run=infer)
-        p.bridge = NS(run=lambda outputs, inputs: [np.zeros((len(inputs['window_features']), 28), np.float32)])
+        def bridge(outputs, inputs):
+            began = time.monotonic_ns() // 1000
+            output = [np.zeros((len(inputs['window_features']), 28), np.float32)]
+            p.observed_intervals.append((began, time.monotonic_ns() // 1000))
+            return output
+        p.bridge = NS(run=bridge)
         return p
 
     def test_initial_background_map_and_control_thread_replan_map_are_separate(self):
         with Trace(self.path, stages=('planner_infer', 'planner_map')) as trace:
             p = self.pipeline(trace)
             with ThreadPoolExecutor(max_workers=1) as pool:
-                with patch('locomotion_aorta.trace._sdk.monotonic_us', side_effect=(100, 120, 130, 160)):
-                    pool.submit(p.start, np.zeros(28)).result(timeout=2)
-                with patch('locomotion_aorta.trace._sdk.monotonic_us', side_effect=(200, 250)):
-                    prediction = pool.submit(p.predict, 10, Command()).result(timeout=2)
-                with patch('locomotion_aorta.trace._sdk.monotonic_us', side_effect=(300, 370)):
-                    p.accept(prediction, 10)
+                pool.submit(p.start, np.zeros(28)).result(timeout=2)
+                prediction = pool.submit(p.predict, 10, Command()).result(timeout=2)
+                p.accept(prediction, 10)
         rows = sorted(self.records(), key=lambda row: row['timestamp_us'])
-        self.assertEqual([r['duration_us'] for r in rows], [21, 31, 51, 71])
+        self.assertEqual(len(rows), len(p.observed_intervals))
+        for row, (begin, end) in zip(rows, p.observed_intervals):
+            self.assertLessEqual(row['timestamp_us'], begin)
+            self.assertGreaterEqual(row['timestamp_us'] + row['duration_us'], end)
+            self.assertGreaterEqual(row['duration_us'], 1)
         self.assertEqual([r['stage'] for r in rows], [12, 13, 12, 13])
         self.assertEqual(len({r['producer'] for r in rows[:3]}), 1)
         self.assertNotEqual(rows[2]['producer'], rows[3]['producer'])
@@ -85,16 +96,26 @@ class TraceTests(unittest.TestCase):
             runtime = ActorPicoRuntime.__new__(ActorPicoRuntime)
             runtime.trace = trace
             runtime.policy_name = 'synthetic-test'
-            runtime.policy = NS(order=(), observe=lambda *args: np.zeros(3),
-                                decode=lambda action: (NS(joints=()), {}))
-            runtime.model = NS(backend='synthetic-test', infer=lambda observation: np.ones(2))
-            with patch('locomotion_aorta.trace._sdk.monotonic_us', side_effect=(100, 110, 200, 230, 300, 340)):
-                command, observation, row = runtime.infer_motion_command(None, q=(), dq=(), root=(), gyro=())
+            intervals = []
+            def measured(function):
+                def call(*args):
+                    began = time.monotonic_ns() // 1000
+                    result = function(*args)
+                    intervals.append((began, time.monotonic_ns() // 1000))
+                    return result
+                return call
+            runtime.policy = NS(order=(), observe=measured(lambda *args: np.zeros(3)),
+                                decode=measured(lambda action: (NS(joints=()), {})))
+            runtime.model = NS(backend='synthetic-test', infer=measured(lambda observation: np.ones(2)))
+            command, observation, row = runtime.infer_motion_command(None, q=(), dq=(), root=(), gyro=())
             self.assertEqual(observation.shape, (3,))
             self.assertEqual(row['raw_action'], [1., 1.])
             identity = runtime.last_trace_inference_id
         rows = sorted(self.records(), key=lambda r: r['timestamp_us'])
-        self.assertEqual([r['duration_us'] for r in rows], [11, 31, 41])
+        self.assertEqual(len(rows), len(intervals))
+        for span, (begin, end) in zip(rows, intervals):
+            self.assertLessEqual(span['timestamp_us'], begin)
+            self.assertGreaterEqual(span['timestamp_us'] + span['duration_us'], end)
         self.assertEqual(rows[1]['inference_id'], identity)
 
     def test_offline_cli_uses_one_run_recorder_and_off_has_no_trace_resource(self):
