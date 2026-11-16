@@ -1,5 +1,9 @@
 # Vita02A / S100 actor + Pico
 
+本分支是 FBS Trace 开发候选，三份 actor 配置已绑定 SDK PR28 的实际源码版本和哈希。
+它尚未形成新的完整 ARM 部署包；下面旧交付的 wheel／设备验收记录不能作为本候选的验收。
+使用方式与剩余边界见 [FBS Trace 说明](README_ACTOR_PICO.md#fbs-trace-development-integration)。
+
 Native SONIC action14 reference-only Pico/GMR design, explicit fixed-neck mode and current deployment safety limitations: [README_SONIC_ACTION14.md](README_SONIC_ACTION14.md). Existing EXTERNAL actor path remains unchanged.
 
 部署链路：Pico → **motion-stream-bridge Vita02A GMR** → Vita02A 关节参考 →

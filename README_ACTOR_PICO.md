@@ -1,7 +1,7 @@
 # Vita02A policy + Pico on S100
 
-This entry runs the reviewed joint-reference policy through the installed SDK
-0.3.0 WBC observation/decoder math. The model is supplied separately and excluded
+This entry runs the reviewed joint-reference policy through the SDK WBC
+observation/decoder math pinned by `sdk_sources`. The model is supplied separately and excluded
 from Git. Its identity, installation path and SHA256 are pinned in
 `config/actor_pico.json` and the delivery manifest. Supply the model matching
 that contract; the example filename `policy.onnx` is only a local pathname.
@@ -38,8 +38,22 @@ before the outer recorder drains and closes. Body/EE SDK calls record internally
 measure the actual calls independently, using monotonic microseconds and distinct
 inference IDs. Initial Map runs in the Planner worker; replan Map runs in the
 control thread. Thread-local handles feed separate bounded native queues; only
-the native writer compresses and writes. Python/GIL and scheduling overhead have
-not yet been measured. No offline duration is interpreted as physical CAN output.
+the native writer compresses and writes. SDK-owned native ONNX calls additionally
+record `actor_infer/native_run` in the offline summary, linked by the exact span
+ID and timed before reacquiring the GIL. `actor_infer` still includes preparation,
+copies, scheduling and Python result conversion; subtracting the two does not
+isolate GIL wait. The external multi-input Planner/Map Python ORT backend keeps
+its outer spans only. No wrapper or extra model invocation is introduced.
+Native Body/EE encoding and Body/EE/Touch decoding supply their existing data to
+Trace; repeated SDK reads reference the captured sample instead of walking the
+Python DTO again. A decode record alone does not mean admission or device output.
+Python/GIL and target scheduling overhead still need measurement.
+
+The three actor configurations now name SDK source `63edf9f63267b0c0d528ea913c5c617c1bfe87db`
+(`1.0.0rc1`) and the actual hashes of their math/Body DTO inputs. This is a source
+pairing for the Trace candidate. The existing sealed package/native-library
+guard remains in force: these edits do not replace its old wheel with a new
+release, and current-source ARM packaging/installation still needs verification.
 
 This is an incremental source candidate, **not complete JSONL retirement**.
 Pico/GMR worker capture, full cycle/grip diagnostics, Planner acceptance and
