@@ -6,6 +6,7 @@ SuperMimic/MorphMimic actors. They share feedback validation and Body31 decode.
 import hashlib
 import importlib
 import json
+from contextlib import nullcontext
 from pathlib import Path
 import functools
 import platform
@@ -133,6 +134,7 @@ class ActorPicoRuntime:
                  reference_source='pico', ankle_command_space=None):
         if reference_source not in ('pico', 'npz'):
             raise ValueError('Unknown actor reference source')
+        self.trace = None
         self.reference_source = reference_source
         self.root = Path(root).resolve()
         self.policy_name = policy
@@ -290,12 +292,17 @@ class ActorPicoRuntime:
         retain their two-value API and never construct control handles.
         """
         begin = time.perf_counter()
-        observation = self.policy.observe(motion, ref_time, q, dq, root, gyro, yaw_offset)
+        trace = getattr(self, 'trace', None)
+        with trace.span('actor_observe') if trace is not None else nullcontext():
+            observation = self.policy.observe(motion, ref_time, q, dq, root, gyro, yaw_offset)
         before_infer = time.perf_counter()
-        action = self.model.infer(observation)
+        with trace.span('actor_infer') if trace is not None else nullcontext() as capture:
+            action = self.model.infer(observation)
+        self.last_trace_inference_id = 0 if capture is None else capture.inference_id
         after_infer = time.perf_counter()
         # This constructs an inert DTO only. No publisher/controller is owned.
-        command, decoded = self.policy.decode(action)
+        with trace.span('actor_decode') if trace is not None else nullcontext():
+            command, decoded = self.policy.decode(action)
         row = dict(record_type='actor_inference', policy=self.policy_name, backend=self.model.backend,
                    observation_dim=len(observation), action_dim=len(action),
                    observation_ms=(before_infer-begin)*1000,

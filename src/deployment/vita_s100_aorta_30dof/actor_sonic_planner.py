@@ -5,6 +5,7 @@ Vita adds bridge history and arm fusion.
 Quaternions are wxyz throughout. The actor remains the only motor policy.
 """
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import nullcontext
 from dataclasses import dataclass
 import hashlib
 import json
@@ -145,7 +146,9 @@ class PlannerPipeline:
             specific_target_headings=np.zeros((1,4),np.float32),
             allowed_pred_num_tokens=np.array([[int(24+4*i in self.allowed_counts) for i in range(11)]],np.int64),height=np.array([-1],np.float32))
         started=time.perf_counter()
-        pred,count=self.planner.run(['mujoco_qpos','num_pred_frames'],inputs)
+        trace = getattr(getattr(self, 'runtime', None), 'trace', None)
+        with trace.span('planner_infer') if trace is not None else nullcontext():
+            pred,count=self.planner.run(['mujoco_qpos','num_pred_frames'],inputs)
         self.last_inference_ms=(time.perf_counter()-started)*1000
         if pred.shape!=(1,64,36) or pred.dtype!=np.float32 or count.shape!=(1,) or count.dtype!=np.int32:
             raise ValueError('Invalid planner output signature')
@@ -175,7 +178,9 @@ class PlannerPipeline:
         w,x,y,z=motion[:,3:7].T
         gravity=np.stack((-2*(x*z-w*y),-2*(y*z+w*x),-(1-2*(x*x+y*y))),axis=1)
         features=np.concatenate(features+[gravity],axis=1).astype(np.float32)
-        residual=self.bridge.run(['joint_residual'],{'window_features':features})[0]
+        trace = getattr(getattr(self, 'runtime', None), 'trace', None)
+        with trace.span('planner_map') if trace is not None else nullcontext():
+            residual=self.bridge.run(['joint_residual'],{'window_features':features})[0]
         if residual.shape!=(len(motion),28) or not np.isfinite(residual).all():
             raise ValueError('Invalid bridge residual')
         ramp=np.clip((origin+np.arange(len(motion)))/25,0,1)[:,None]
@@ -272,6 +277,7 @@ class PlannerReference:
         self.pipeline=PlannerPipeline(*paths,runtime.model.contract.names,threads=settings.get('threads',4),
             seed=settings.get('seed',1234),
             max_speed=max(.3,self.stick.limit,self.stick.backward_limit))
+        self.pipeline.runtime = runtime
         self.replan_ticks=round(float(settings.get('replan_interval_s',.4))*50)
         self.pipeline.moving_lookahead=round(float(settings.get('moving_lookahead_s',.44))*50)
         self.pipeline.idle_lookahead=round(float(settings.get('idle_lookahead_s',.04))*50)

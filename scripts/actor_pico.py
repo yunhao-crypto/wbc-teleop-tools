@@ -27,6 +27,14 @@ sys.path.insert(0, str(ROOT/'src'))
 from deployment.vita_s100_aorta_30dof.actor_pico_runtime import ActorPicoRuntime, POLICY_CONFIGS
 
 
+TRACE_STAGES = ('actor_observe', 'actor_infer', 'actor_decode', 'planner_infer', 'planner_map')
+
+
+def trace_options(args):
+    recorder = getattr(args, '_trace_recorder', None)
+    return {} if recorder is None else dict(trace_recorder=recorder)
+
+
 def check(runtime, args, write):
     c = runtime.model.contract
     motion = runtime.hold_motion()
@@ -111,7 +119,7 @@ def state_check(runtime, args, write):
         raise RuntimeError('Use start_actor_pico.sh state-check with a reviewed S100 peer profile')
     require_peer_profile(profile)
     verify_vendor_sources()
-    source = PullStateSource(group=args.group, node_name='vita-actor-state-check')
+    source = PullStateSource(group=args.group, node_name='vita-actor-state-check', **trace_options(args))
     frames, last_key = 0, None
     deadline = time.monotonic()+args.seconds
     try:
@@ -173,7 +181,7 @@ def shadow(runtime, args, write):
                         service.kill()
                         service.wait(timeout=2)
             resources.callback(close_service)
-            source = PullStateSource(group=args.group, node_name='vita-actor-pico-shadow')
+            source = PullStateSource(group=args.group, node_name='vita-actor-pico-shadow', **trace_options(args))
             resources.callback(source.close)
             if source.group != args.group:
                 raise RuntimeError('SDK source group mismatch')
@@ -343,7 +351,7 @@ def live(runtime, args, write):
             write(dict(record_type='control_affinity', cpus=control_affinity(runtime.worker.control_cpus)))
             transport = RealtimeBodyTransport(group=args.group, node_name='vita-actor-pico-live')
             resources.callback(transport.close)
-            controller = PullController(group=args.group, node_name='vita-actor-pico-live', _transport=transport)
+            controller = PullController(group=args.group, node_name='vita-actor-pico-live', _transport=transport, **trace_options(args))
             resources.callback(controller.close)
             return run_live(runtime, args, write, controller, pico, stop,
                             service_alive=service_alive, manual_pico=manual,
@@ -376,6 +384,8 @@ def main():
                         help='live/motion-check: fixed NPZ reference configuration; no Pico input')
     parser.add_argument('--ankle-command-space', choices=('motor_theta', 'virtual_pitch_roll'),
                         help='NPZ trials only: select command path; robot EXTERNAL configuration must match')
+    parser.add_argument('--trace', choices=('off', 'fbs'), default='off')
+    parser.add_argument('--trace-output', type=Path)
     parser.add_argument('--log', type=Path)
     profiling = parser.add_mutually_exclusive_group()
     profiling.add_argument('--profiling', action='store_true',
@@ -403,6 +413,12 @@ def main():
                         help='live manual-Pico only: explicit OP3 gripper JSON; side grips close/open each gripper')
     parser.add_argument('--planner-config', type=Path, help='SONIC manual Pico: planner legs/root and Pico arms')
     args = parser.parse_args()
+    if args.trace == 'fbs' and (args.trace_output is None or args.trace_output.suffix != '.ftrace'):
+        parser.error('--trace=fbs requires a new --trace-output ending in .ftrace')
+    if args.trace == 'off' and args.trace_output is not None:
+        parser.error('--trace-output requires --trace=fbs')
+    if args.trace == 'fbs' and (args.profiling or args.log is not None or args.record_observations):
+        parser.error('FBS trace cannot run with legacy JSONL capture')
     if args.profiling_log is not None and not args.profiling:
         parser.error('--profiling-log requires --profiling')
     if args.profiling and args.mode != 'live':
@@ -473,15 +489,30 @@ def main():
               f"{notice['fitted_human_height_m']:g} m, this launch uses {notice['human_height_m']:g} m; "
               "calibration and planted-foot support are OFF for this run. Refit the profile for this operator.",
               file=sys.stderr, flush=True)
-    args.log = args.log or args.root/'outputs'/f'actor_pico_{args.mode}_{time.time_ns()}.jsonl'
+    args.log = None if args.trace == 'fbs' else (args.log or args.root/'outputs'/f'actor_pico_{args.mode}_{time.time_ns()}.jsonl')
     if args.profiling:
         args.profiling_log = args.profiling_log or args.log.with_suffix('')
     comparable_config = copy.deepcopy(runtime.config)
     comparable_config['body_profile'].pop('ankle_command_space', None)
     comparison_hash = hashlib.sha256(json.dumps(comparable_config, sort_keys=True).encode()).hexdigest()
-    args.log.parent.mkdir(parents=True, exist_ok=True)
-    with args.log.open('x', buffering=1024*1024) as stream:
+    if args.log is not None:
+        args.log.parent.mkdir(parents=True, exist_ok=True)
+    with ExitStack() as recording:
+        # Outlives every SDK connection and model/input worker in this run.
+        # Off starts no recorder, file or writer thread.
+        args._trace_recorder = None
+        if args.trace == 'fbs':
+            from locomotion_aorta.trace import Trace
+            args._trace_recorder = recording.enter_context(
+                Trace(args.trace_output, stages=TRACE_STAGES))
+        runtime.trace = args._trace_recorder
+        stream = recording.enter_context(args.log.open('x', buffering=1024*1024)) if args.log is not None else None
         def write(row, observation=None):
+            if stream is None:
+                if row.get('record_type') in ('header', 'external_entered', 'external_exit',
+                                             'error', 'summary', 'startup_exit_failure', 'exit_failure'):
+                    print('ACTOR_EVENT ' + json.dumps(row, allow_nan=False), flush=True)
+                return
             if args.record_observations and observation is not None:
                 row = dict(row, observation=observation.tolist())
             stream.write(json.dumps(row, allow_nan=False, separators=(',', ':'))+'\n')
@@ -515,7 +546,8 @@ def main():
             raise
         report.setdefault('actions_sent', 0)
         report.setdefault('control_handles_created', 0)
-        report.update(log=str(args.log),
+        report.update(log=None if args.log is None else str(args.log),
+                      trace=str(args.trace_output) if args.trace == 'fbs' else None,
                       s100_inference_timing='see_trace' if args.mode in ('shadow', 'live') else 'not_measured')
         write(dict(record_type='summary', **report))
     print(json.dumps(report, indent=2))

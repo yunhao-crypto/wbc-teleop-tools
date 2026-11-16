@@ -12,6 +12,45 @@ service. It writes computed targets to JSONL; it never creates a controller,
 requests EXTERNAL or publishes a robot command. Only `live` requests control and moves joints. The existing P1/P2/P3 runtime,
 launchers, SDK installation and protocol guards are not replaced.
 
+
+## FBS Trace development integration
+
+The Trace candidate uses the installed SDK's recorder and automatic SDK call
+instrumentation. It does not wrap `publish`, add subscriptions, enable touch,
+or change the control handshake. With the matching SDK PR28 build:
+
+```bash
+python scripts/actor_pico.py check --steps 10 --trace=fbs --trace-output=new-run.ftrace
+python -m locomotion_aorta.trace.summary new-run.ftrace
+```
+
+The same `--trace=fbs --trace-output=...` options apply to an otherwise valid
+`state-check`, `shadow` or explicitly authorized `live` invocation. They confer
+no motion permission. Default `--trace=off` starts no FBS writer; this increment
+still retains the legacy JSONL baseline and its default behavior until the
+complete replacement is validated. FBS cannot be combined with `--profiling`,
+`--log` or `--record-observations` in the same invocation.
+
+The run owns one recorder. Connections borrow it, so a connection closing does
+not close a file still used by the Planner. Existing worker shutdown completes
+before the outer recorder drains and closes. Body/EE SDK calls record internally.
+`actor_observe`, `actor_infer`, `actor_decode`, `planner_infer` and `planner_map`
+measure the actual calls independently, using monotonic microseconds and distinct
+inference IDs. Initial Map runs in the Planner worker; replan Map runs in the
+control thread. Thread-local handles feed separate bounded native queues; only
+the native writer compresses and writes. Python/GIL and scheduling overhead have
+not yet been measured. No offline duration is interpreted as physical CAN output.
+
+This is an incremental source candidate, **not complete JSONL retirement**.
+Pico/GMR worker capture, full cycle/grip diagnostics, Planner acceptance and
+consumption links, model observations/actions, MCAP/HTML, validated ARM packaging
+and same-input timing acceptance remain unfinished. In FBS mode the generic
+policy-row JSONL writer is disabled; the listed model spans and SDK records do
+not yet replace every old diagnostic field. No runtime guard/pinned dependency
+is weakened to make this development build pass. The existing released/sealed
+SDK does not acquire Trace merely by checking out these WTT sources.
+
+
 ## Policy selection
 
 `start_actor_pico.sh` requires an explicit policy for every mode except
