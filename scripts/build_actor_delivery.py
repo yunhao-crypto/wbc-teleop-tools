@@ -27,7 +27,8 @@ ARCHIVES = [
 SCRIPTS = ('actor_pico.py', 'bootstrap_actor_s100.py', 'configure_actor_s100.py',
            'start_actor_pico.sh', 'start_actor_motion.sh', 'prepare_zenoh_session.py',
            'pico_session_services.py', 'pico_camera_bridge.py', 'build_pico_arm64.sh',
-           'prepare_external_ankle_config.py', 'import_actor_motion.py')
+           'prepare_external_ankle_config.py', 'import_actor_motion.py',
+           'start_wtt_mimiclite_robot67.sh')
 MODULES = ('__init__.py', 'policy_contract.py', 'state_adapter.py', 'sdkmain_adapter.py',
            'sdk021_guard.py', 'pico_input.py', 'pico_camera_bridge.py')
 PLATFORMS = ('manylinux_2_35_aarch64', 'manylinux_2_28_aarch64', 'manylinux_2_17_aarch64',

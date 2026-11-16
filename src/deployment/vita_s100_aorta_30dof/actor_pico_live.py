@@ -277,6 +277,7 @@ class CommandEnvelope:
     def __init__(self, runtime, reply, params):
         from .sdkmain_adapter import validate_robot_info, BODY_TO_LEGACY
         validate_robot_info(reply)
+        self.command_protocol = 4 if command_space(runtime.policy) == 'motor_theta' else 3
         self.body = reply.info.body
         if self.body.roster_version != 1:
             raise ValueError('Expected body roster_version=1')
@@ -348,6 +349,10 @@ class CommandEnvelope:
                 raise ValueError('Measured virtual joint outside bounds: '+self.body.joint_names[i])
 
     def check(self, command, q_margin=0., *, virtual=False):
+        # The virtual pose check below is local; only published commands need
+        # the protocol that matches this EXTERNAL ankle coordinate contract.
+        if not virtual and command.protocol_version != self.command_protocol:
+            raise ValueError(f'BodyCmd protocol/ankle coordinate mismatch: expected {self.command_protocol}')
         if len(command.joints) != 31:
             raise ValueError('Command must contain exactly 31 slots')
         limits = self.virtual_limits if virtual else self.limits
