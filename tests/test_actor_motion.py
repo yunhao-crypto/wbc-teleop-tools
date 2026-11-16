@@ -28,7 +28,9 @@ class MotionTests(unittest.TestCase):
         with patch('deployment.vita_s100_aorta_30dof.actor_pico_runtime.create_retargeter',
                    side_effect=AssertionError('File source must not construct GMR')):
             cls.runtimes = {p: ActorPicoRuntime(ROOT, policy=p, backend='ort', reference_source='npz')
-                            for p in ('sonic', 'supermimic', 'morphmimic')}
+                            for p in ('sonic', 'supermimic')}
+        # MimicLite's synthetic import/NPZ/live-fake coverage is in
+        # test_actor_mimiclite.py; no private trained weights are fabricated here.
 
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()

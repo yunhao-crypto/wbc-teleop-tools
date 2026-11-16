@@ -112,9 +112,11 @@ class ProfileTests(unittest.TestCase):
                     self.retarget(calibration_profile=self.scratch_profile(tmp, **changes), human_height_m=1.75)
 
     def test_shipped_configs_leave_calibration_and_planted_feet_off(self):
-        for policy in ('sonic', 'supermimic', 'morphmimic'):
+        for policy, filename in (('sonic','actor_pico.json'),('supermimic','actor_pico_supermimic.json'),
+                                 ('mimiclite','actor_pico_mimiclite.json')):
             with self.subTest(policy=policy):
-                config = load_actor_config(ROOT, policy)
+                # This checks shipped retargeting defaults, not model readiness.
+                config = json.loads((ROOT/'config'/filename).read_text())
                 settings = config['retargeting']
                 self.assertEqual(settings['human_height_m'], 1.8)
                 self.assertNotIn('calibration_profile', settings)

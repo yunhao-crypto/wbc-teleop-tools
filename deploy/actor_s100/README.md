@@ -12,6 +12,13 @@ The optional SuperMimic actor has its own pinned model in
 `config/actor_pico_supermimic.json`; install it with
 `--policy supermimic --model /path/to/supermimic_vita02a.onnx` (see
 [policy selection](../../README_ACTOR_PICO.md#policy-selection)).
+MimicLite replaces the former MorphMimic option. Follow
+[host import and MimicLite deployment](../../README_MIMICLITE.md) before building:
+its configuration is unconfigured until a real matched ONNX/YAML pair has been
+wrapped, parity-checked and pinned. Install the wrapped artifact with
+`--policy mimiclite --model /path/to/wrapped-policy.onnx`. No additional Python
+ORT is needed in the base S100 package, and no model or hardware acceptance is
+fabricated. Do not edit an already sealed package to configure this model.
 Use a freshly extracted package directory for a changed model delivery. A different existing
 model/environment is preserved rather than overwritten.
 The URDF, source code, tests and configuration are tracked. Tests and developer
@@ -95,7 +102,7 @@ protocols and cannot run this delivery. No robot run with SDK 0.3.0 has been mad
 A different firmware requires an interface/configuration review before live use.
 
 **Out-of-range PD targets for the motor-theta / unclipped policies (SONIC,
-SuperMimic, MorphMimic).** These policies send unclipped PD setpoints that leave
+SuperMimic, MimicLite).** These policies send unclipped PD setpoints that leave
 the advertised RobotInfo q range (on the robot-42 SONIC log about a fifth of
 steps, mainly the ankles). Official SDK #23 does not enforce RobotInfo device
 ranges for q/dq/tau/kp/kd and has no per-call exemption API. It still rejects

@@ -22,6 +22,8 @@ from bootstrap_actor_s100 import provision_model
 
 
 ROOT = Path(__file__).resolve().parents[1]
+DOCUMENTS = ('README.md', 'README_ACTOR_PICO.md', 'README_MIMICLITE.md',
+             'deploy/actor_s100/README.md', 'deploy/pico_viewer/README.md')
 
 
 def run(command, *, cwd, env):
@@ -42,7 +44,7 @@ def run_tests(path, *, cwd, env):
 
 def verify_doc_links(root):
     links = 0
-    for name in ['README.md', 'README_ACTOR_PICO.md', 'deploy/actor_s100/README.md', 'deploy/pico_viewer/README.md']:
+    for name in DOCUMENTS:
         document = root/name
         for target in re.findall(r'\[[^\]]+\]\(([^)]+)\)', document.read_text()):
             if '://' in target or target.startswith('mailto:'):
@@ -148,7 +150,7 @@ def main():
                       camera_viewer_prepare_tests=camera_prepare_tests,
                       pico_session_lifecycle_tests=camera_session_tests,
                       local_provision_tests='not_measured',
-                      documentation_files=4, documentation_links=documentation_links,
+                      documentation_files=len(DOCUMENTS), documentation_links=documentation_links,
                       external_model_supplied=bool(args.model),
                       source=source, packages={v: {k: b[k] for k in ('sha256', 'payload_sha256', 'files', 'offline_wheels')} for v, b in packages.items()},
                       model_steps=0, replay_steps=0, actions_sent=0,

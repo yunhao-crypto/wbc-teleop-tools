@@ -332,7 +332,7 @@ class SuperMimicReference:
     at a control-clock time, which needs ``history_s`` of extra samples.
     """
     def __init__(self, contract, math_api, *, past_frames, tail_frames, capacity=1024, history_s=0.):
-        if getattr(contract, 'policy_kind', '') not in (POLICY_KIND, 'morphmimic_vita02a_tracking') or capacity < 3 or not 0 <= history_s <= 2:
+        if getattr(contract, 'policy_kind', '') not in (POLICY_KIND, 'mimiclite_vita02a_tracking') or capacity < 3 or not 0 <= history_s <= 2:
             raise ValueError('Invalid SuperMimic reference settings')
         self.contract, self.math = contract, math_api
         self.samples = deque(maxlen=capacity)
@@ -413,9 +413,9 @@ def reference_window(config):
 
 
 def create_policy(contract, profile, math_api, config):
-    if getattr(contract, 'policy_kind', '') == 'morphmimic_vita02a_tracking':
-        from .actor_morphmimic import policy_class as morph_policy
-        return morph_policy(math_api)(contract, profile)
+    if getattr(contract, 'policy_kind', '') == 'mimiclite_vita02a_tracking':
+        from .actor_mimiclite import policy_class as mimic_policy
+        return mimic_policy(math_api)(contract, profile)
     if not is_supermimic(contract):
         return create_groot_policy(contract, profile, math_api)
     past, tail = reference_window(config)
@@ -428,7 +428,10 @@ def create_reference(contract, math_api, config):
     # Playback lags the newest sample by the margin and, before the hold
     # rule takes over, by up to pico_hold_age_s; keep samples for both.
     history = 0. if settings is None else settings.playback_margin_s+config['pico_hold_age_s']+.1
-    if not is_supermimic(contract) and getattr(contract, 'policy_kind', '') != 'morphmimic_vita02a_tracking':
+    if getattr(contract, 'policy_kind', '') == 'mimiclite_vita02a_tracking':
+        from .actor_mimiclite import create_reference as mimic_reference
+        return mimic_reference(contract, math_api, config)
+    if not is_supermimic(contract):
         from .actor_pico_reference import CausalActorReference
         return CausalActorReference(contract, math_api, history_s=history)
     past, tail = reference_window(config)

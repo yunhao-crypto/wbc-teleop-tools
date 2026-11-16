@@ -71,6 +71,9 @@ def load_motion(runtime, config_path):
             motor_names = {f'{side}_{motor}_achilles_joint' for side in ('left','right') for motor in ('A','B')}
             if not motor_names <= set(names):
                 raise ValueError('Ambiguous motor-theta NPZ: need separate named motor joints or explicit virtual joint_space')
+        if (getattr(c, 'policy_kind', '') == 'mimiclite_vita02a_tracking' and 'root_body' in f
+                and str(np.asarray(f['root_body']).item()) != 'base_link'):
+            raise ValueError('MimicLite references require base_link, not a waist anchor')
         raw_q = _finite(f['joint_pos'], 'joint_pos')
         if raw_q.ndim != 2 or raw_q.shape[1] != len(names) or not 1 <= len(raw_q) <= 180000:
             raise ValueError('Expected joint_pos [N,J], 1 <= N <= 180000')
@@ -170,7 +173,7 @@ class FixedMotion:
         r, c, m = self.runtime, self.runtime.model.contract, self.runtime.math
         prepared = self.motion.lead_in(q, root, r.config['body_profile']['lead_in'])
         self.lead_frames = len(prepared.q)-len(self.motion.q)
-        # MorphMimic consumes absolute reference anchor height. Blend it from
+        # MimicLite consumes absolute reference base_link height. Blend it from
         # the model's stand height, as well as blending measured joint angles.
         if hasattr(c, 'nominal_root_height') and self.lead_frames:
             alpha = .5-.5*np.cos(np.pi*np.arange(self.lead_frames)/self.lead_frames)
@@ -196,7 +199,7 @@ class FixedMotion:
         past = r.reference.current_index
         lo = max(0, self.tick-past)
         hi = min(len(p.q), self.tick+r.reference.steps-past)
-        # Bounded windows keep MorphMimic's gradient cost independent of clip length.
+        # Bound per-tick history/lookahead work independently of clip length.
         window = r.math.Motion(p.q[lo:hi], p.base[lo:hi], p.quat[lo:hi])
         return window, (self.tick-lo)*r.model.contract.period
 

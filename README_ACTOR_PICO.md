@@ -16,8 +16,8 @@ launchers, SDK installation and protocol guards are not replaced.
 
 `start_actor_pico.sh` requires an explicit policy for every mode except
 `configure` and the connection-only `connect` mode: `sonic` (`config/actor_pico.json`),
-`supermimic` (`config/actor_pico_supermimic.json`) or `morphmimic`
-(`config/actor_pico_morphmimic.json`), given as the first word
+`supermimic` (`config/actor_pico_supermimic.json`) or `mimiclite`
+(`config/actor_pico_mimiclite.json`), given as the first word
 (`start_actor_pico.sh supermimic shadow ...`), after the mode, or as `--policy`.
 Without one, a terminal shows a menu with no default; an empty answer or a
 non-interactive run starts nothing. Conflicting selections are rejected. A
@@ -128,9 +128,10 @@ name, the configuration or the robot:
   training). With command space `policy`, these A/B
   targets and model gains are transmitted directly (`actor_groot_ankle.py`).
 
-GR00T/SONIC, SuperMimic and MorphMimic clip only the dimensionless action to
-their exported `action_clip` (20 for the current SONIC training run), then
-send `default + scale * action` in each policy's control coordinates.
+GR00T/SONIC and SuperMimic clip only the dimensionless action to their exported
+`action_clip` (20 for the current SONIC training run). MimicLite preserves the
+raw action without action clipping. All send `default + scale * action` in
+each policy's control coordinates, and retain their own previous-action semantics.
 Neither exported 0.9 soft limits, physical motor travel nor profile position
 ranges clip these PD setpoints. The soft limits describe the training penalty
 region for actual joint positions. The active command envelope allows these
@@ -214,63 +215,40 @@ update `config/actor_pico.json` (model path, `sha256`, `bytes`), rebuild the off
 package and install it with
 `bootstrap_actor_s100.py --policy sonic --model /path/to/actor_g1.onnx`; then
 change the robot YAML to the matching row above.
-## MorphMimic Vita02A
+## MimicLite Vita02A OP3
 
-The versioned `native_serial_and_coupled_motor_workspace_v2` reference guard
-supports the 137670 `vita02a_sonic_v2` export through
-`actor_morphmimic_sonic.py`. Despite its training profile name, this export uses
-the **MorphMimic 1600-dimensional interface**, not SONIC's 1520-dimensional
-interface. The adapter validates its declared bounded-v3 training to affine-v4
-execution transfer and retains native A/B target decoding. Its reference
-projection uses serial travel and the coupled motor workspace; existing
-`virtual_box_and_coupled_motor_v1` models retain their original reference guard.
+MimicLite replaces the retired MorphMimic deployment option; there is no legacy
+policy alias or weight fallback. Follow [MimicLite deployment](README_MIMICLITE.md)
+for host import, S100 installation, the exact observation ABI and validation limits.
+`config/actor_pico_mimiclite.json` is explicitly unconfigured until a real matching
+MimicLite ONNX/YAML pair is imported. No trained weights or live acceptance are supplied.
 
-SuperMimic schema 2 retains the 1670-dimensional feature layout and explicitly
-declares affine PD targets. The loader requires its no-position-clip semantics,
-native motor command space and unchanged root-reference features, and checks
-declared actuation overrides against exported gain/scale arrays. Schema 1
-remains supported. Select candidate models in separate deployment roots so
-their metadata, configuration and recordings remain identifiable; this support
-does not change the default model files.
-
-The default deployment model is the teleop fine-tune iteration 31000. Its model
-path, SHA256 and size are specified in `config/actor_pico_morphmimic.json`.
-Model weights and export/experiment reports are supplied separately; reports
-are not source-controlled deployment inputs.
-The model metadata enables `virtual_box_and_coupled_motor_v1`: virtual ankle
-references are projected into the coupled motor workspace before reference
-velocities are computed. Measured feedback is unchanged. Older models without
-this metadata retain their existing reference path. This guard is identical
-for native and legacy command trials. The candidate GMR configuration also
-narrows ankle IK ranges; fixed NPZ playback does not use GMR.
-The same launcher manages the camera relay and PICO view switching. MorphMimic
-also uses the shared head-following defaults (40 ms filter, no independent
-slew-rate cap); the physical head joint limits still apply.
-
-`morphmimic` uses 1600 inputs (10 × 93 proprioception + 10 × 67 reference)
-and 28 outputs, including native A/B ankles. Observation/goal normalizers are
-baked into the exported ONNX. The reference includes the waist anchor and its
-absolute height; standing references use the training robot's nominal root
-height. Feedback remains virtual and is converted by the same IK/Jacobian
-used in training. There is no SDK modification.
-
-Export and training-input parity checks belong to the training repository.
-Supply an ONNX containing the `morphmimic.tracking_contract.v1` metadata,
-update the model path/SHA256/size in `config/actor_pico_morphmimic.json`, and
-rebuild the offline delivery package. Training export reports are external evidence.
-The deployment checks the supplied model's contract and runs offline inference:
+The host importer preserves the trained graph and normalizers, wraps its named
+`command`/`policy` inputs into the SDK's single tensor, selects the action output,
+and verifies original/wrapped ORT parity before pinning SHA256/size. The default
+814-value input uses sparse term-major/newest-first histories, reference offsets
+`[-8,-4,-2,0,1,2,3,4]`, base_link root and first-two-rows rotation features.
+MimicLite retains raw actions and native A/B targets without action/position
+clipping. A mismatched model, reference or robot contract is rejected, not relabelled.
 
 ```bash
-python scripts/prepare_external_ankle_config.py --input /path/to/asample.yaml \
-  --output /path/to/asample-native-ab.yaml --space motor_theta
-python scripts/bootstrap_actor_s100.py --policy morphmimic --model /path/to/policy.onnx
-bash scripts/start_actor_pico.sh morphmimic check --steps 100
+# Host only, before building the sealed package; no robot connection:
+python3 scripts/import_mimiclite_policy.py --policy-yaml /path/to/policy.yaml
+# After building and installing the matching package/model on S100:
+python3.10 scripts/bootstrap_actor_s100.py --policy mimiclite --model /path/to/wrapped-policy.onnx
+bash scripts/start_actor_pico.sh mimiclite check --steps 100
 ```
 
-SONIC's serial-ankle checkpoint cannot become a native A/B policy by changing
-a flag. Supply a real closed-loop motor-theta export and update its pinned
-model identity. The three native decoders are covered by offline tests; this
-does not constitute physical robot validation.
+Only native `motor_theta` output is supported for MimicLite. Existing effective
+YAML, target-margin, interpolation, freshness and ownership checks remain.
+The shared Pico/head/camera infrastructure is reused; its presence is not
+physical validation. Synthetic weights and fake transport tests are not a
+substitute for a trained model, ARM inference, HIL or standing acceptance.
+
+SuperMimic schema 2 retains its 1670-dimensional layout and affine target
+contract, including validation of unchanged root features and declared gain/
+scale overrides. Schema 1 remains supported. SONIC serial checkpoints still
+cannot become native motor-angle policies by changing a flag.
 
 ## Data path and calibration
 
@@ -363,7 +341,7 @@ OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 PYTHONDONTWRITEBYTECODE=1 \
 ### Fixed NPZ reference playback
 
 `scripts/start_actor_motion.sh` plays the same named robot-reference clip with
-`sonic`, `supermimic`, or `morphmimic`. The selected policy constructs its own
+`sonic`, `supermimic`, or `mimiclite`. The selected policy constructs its own
 observation, history and future goals, including virtual-to-motor ankle
 conversion. This is a reference source, not a recorded observation/action player.
 Live observations always use current SDK robot feedback.
@@ -394,7 +372,7 @@ bash scripts/start_actor_motion.sh supermimic check --steps 100 --record-observa
 # motion. FIXED_STAND -> policy stand preparation -> clip lead-in -> one pass
 # -> final-pose reference hold -> checked CANCEL/PASSIVE. STOP/Ctrl-C also exits.
 bash scripts/start_actor_motion.sh supermimic --record-observations
-bash scripts/start_actor_motion.sh morphmimic --record-observations
+bash scripts/start_actor_motion.sh mimiclite --record-observations
 bash scripts/start_actor_motion.sh sonic --record-observations
 
 # Optional configuration override; the policy remains an explicit selection.
@@ -443,7 +421,7 @@ and root height, and aligns initial yaw to the measured robot heading.
 References are neither GMR-retargeted nor filtered with Pico's OneEuro settings;
 future frames are available from disk, so no Pico playback delay is added.
 
-The existing measured-pose lead-in is reused for clip entry. MorphMimic's
+The existing measured-pose lead-in is reused for clip entry. MimicLite's
 absolute reference root height also blends from its nominal stand height.
 The policy's action/history state remains continuous across stand and playback.
 Only a bounded, model-specific reference window is processed per tick, so
@@ -466,15 +444,16 @@ reference windows. `sha256` in `actor_motion.json` can pin an approved clip;
 `null` accepts the selected file and records its hash. `check` uses synthetic
 stand feedback and is **not** closed-loop simulation or hardware validation.
 Recorded `supermimic_observations.npz` files are a different schema and cannot
-be played by this entry. Tests in `tests/test_actor_motion.py` cover all three
-real ONNX policies and simulated live lifecycle/fault paths; they do not prove
-physical stability of a chosen clip.
+be played by this entry. Existing SONIC/SuperMimic model checks remain in
+`tests/test_actor_motion.py`; `tests/test_actor_mimiclite.py` covers synthetic
+MimicLite import/parity, NPZ and fake-live paths. No test proves physical
+stability of a chosen clip.
 
 #### Controlled ankle command-path A/B trial
 
-Use the **same motor-theta model** (SuperMimic or MorphMimic, or a SONIC export
-whose contract explicitly says motor-theta), NPZ/hash, gains, reference settings
-and robot build. Keep video and other background workloads in the same state.
+Use the **same motor-theta model** (SuperMimic, or a SONIC export whose contract
+explicitly says motor-theta), NPZ/hash, gains, reference settings and robot build.
+MimicLite supports native output only and rejects the legacy conversion trial. Keep video and other background workloads in the same state.
 A virtual-angle SONIC model cannot be used as the native half of this test.
 
 | Trial | `--ankle-command-space` / EXTERNAL `ankle_command_space` | EXTERNAL `ankle_virtual_pd_intent` | `allow_position_targets_outside_mechanical_range` |
@@ -505,9 +484,9 @@ python3 scripts/prepare_external_ankle_config.py --input /path/to/effective.yaml
   --output /path/to/legacy.yaml --space virtual_pitch_roll --virtual-pd-intent false
 
 # Both are offline and can be run before changing any robot configuration.
-bash scripts/start_actor_motion.sh morphmimic check --steps 1000 \
+bash scripts/start_actor_motion.sh supermimic check --steps 1000 \
   --ankle-command-space motor_theta
-bash scripts/start_actor_motion.sh morphmimic check --steps 1000 \
+bash scripts/start_actor_motion.sh supermimic check --steps 1000 \
   --ankle-command-space virtual_pitch_roll
 ```
 
@@ -525,9 +504,9 @@ Only after that configuration matches the desired trial, start the corresponding
 command manually (run these as separate trials, never concurrently):
 
 ```bash
-bash scripts/start_actor_motion.sh morphmimic --ankle-command-space motor_theta \
+bash scripts/start_actor_motion.sh supermimic --ankle-command-space motor_theta \
   --record-observations --log outputs/motion_native.jsonl
-bash scripts/start_actor_motion.sh morphmimic --ankle-command-space virtual_pitch_roll \
+bash scripts/start_actor_motion.sh supermimic --ankle-command-space virtual_pitch_roll \
   --record-observations --log outputs/motion_legacy.jsonl
 python3 scripts/compare_actor_motion.py outputs/motion_native.jsonl \
   outputs/motion_legacy.jsonl --output outputs/motion_ankle_comparison.json
@@ -1094,7 +1073,7 @@ forward bends, while all runs completed without it.
 
 Two `retargeting` keys change the GMR targets without modifying the vendored
 solver, its IK configuration or the MJCF. All three shipped configs (SONIC,
-SuperMimic, MorphMimic) omit both keys, so the default path uses plain GMR
+SuperMimic, MimicLite) omit both keys, so the default path uses plain GMR
 offsets without planted-foot targets. Setting `--human-height 1.8` does not
 select the supplied profile. To opt in, explicitly add the following keys to
 `retargeting` in the selected policy configuration, after validating the profile

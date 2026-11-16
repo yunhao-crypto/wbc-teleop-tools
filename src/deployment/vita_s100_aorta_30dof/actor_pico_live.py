@@ -250,6 +250,11 @@ def check_motor_theta_ankle(ankle, intent, runtime, native=False):
         if (not np.isfinite(wire_ranges).all()
                 or np.any(wire_ranges[:, 0] >= wire_ranges[:, 1])):
             raise ValueError('Native motor limits cannot be represented as float32')
+        if getattr(contract, 'policy_kind', '') == 'mimiclite_vita02a_tracking':
+            # Reviewed plant: 50 Nm / 117 rpm. Existing YAML rounds the speed.
+            if (not math.isclose(float(caps['tau_motor_max']), 50., rel_tol=0, abs_tol=1e-6)
+                    or not math.isclose(float(caps['qd_motor_max']), 12.25221135, rel_tol=0, abs_tol=.01)):
+                raise ValueError('MimicLite model/robot motor torque-speed envelope differs')
         runtime.policy.native_motor_ranges = [tuple(map(float, row)) for row in wire_ranges]
         runtime.policy.native_hold_gains = gains[0]
         return

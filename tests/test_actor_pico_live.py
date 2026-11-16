@@ -2181,7 +2181,7 @@ class LocalStartTests(unittest.TestCase):
         self.assertIn('Select the actor policy explicitly',refused('check','--steps','1'))
         self.assertIn('Conflicting',refused('sonic','--policy','supermimic'))
         self.assertIn("Unknown policy 'g1'",refused('--policy','g1'))
-        for policy in ('sonic','supermimic','morphmimic'):
+        for policy in ('sonic','supermimic','mimiclite'):
             args=launch(policy)
             self.assertEqual(args[1:4],['live','--policy',policy])
             for flag in ('--auto-start','--wait-pico','--manual-pico','--confirm-motion','--local-start'):
@@ -2205,7 +2205,7 @@ class LocalStartTests(unittest.TestCase):
         self.assertNotIn('--no-camera',args)
         # Interactive menu: a number selects; an empty answer starts nothing.
         import pty
-        for answer,expected in ((b'2\n','supermimic'),(b'1\n','sonic'),(b'3\n','morphmimic'),(b'\n',None)):
+        for answer,expected in ((b'2\n','supermimic'),(b'1\n','sonic'),(b'3\n','mimiclite'),(b'\n',None)):
             output.unlink(missing_ok=True)
             master,slave=pty.openpty()
             try:

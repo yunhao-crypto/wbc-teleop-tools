@@ -20,7 +20,7 @@ Native SONIC action14 reference-only Pico/GMR design, explicit fixed-neck mode a
   需要支持这些协议的机器人固件（vita-robot master `896385d5b` 或更新）；此前验证的
   `1.6.0-200` / `c9b4e80c` 只支持 SDK 0.2.1 协议，不能运行本交付。SDK 0.3.0 尚无真机运行记录。
   其他机器人发行版须先核对接口和有效配置；不能仅凭包日期选择 wheel。
-- **越界 PD 目标约定**：SONIC/SuperMimic/MorphMimic 发送未裁剪的 PD 目标（主要是踝），会超出 RobotInfo q 范围。
+- **越界 PD 目标约定**：SONIC/SuperMimic/MimicLite 发送未裁剪的 PD 目标（主要是踝），会超出 RobotInfo q 范围。
   官方 SDK 将 BodyCmd 的 q/dq/tau/kp/kd 设备范围处理交给固件，不需要逐次豁免参数；仍校验有限 float32、
   声明字段、MOCK、能力和控制身份。WTT 保留策略命令包络与实测姿态检查，并要求机器人显式开启
   `allow_position_targets_outside_mechanical_range: true` 及有限的 `position_target_margin_rad`，
@@ -40,6 +40,15 @@ XRT 连接、全身追踪准备与 A+B+X+Y 四键视角切换。安装 APK 不�
 在已部署的机器人目录运行 `bash scripts/start_actor_pico.sh connect`，可以先启动 XRT 连接和
 视频转发进行无机器人动作的联调；退出后，原有 `sonic` / `supermimic` 跟随入口默认带视频启动。
 
+## MimicLite OP3（替换原 MorphMimic 入口）
+
+策略名现为 `mimiclite`，原 MorphMimic 入口和适配器已移除；SONIC、SuperMimic 保留。
+请先在构建主机用 `scripts/import_mimiclite_policy.py --policy-yaml /path/to/policy.yaml`
+导入真实、匹配的 MimicLite ONNX/YAML，再构建并安装离线包。导入器保留原图及归一化，
+验证单输入包装前后的推理一致性，并固定新模型哈希。当前配置明确为未导入状态，
+不会伪造权重、沿用 MorphMimic 模型或回退其他策略。
+详见 [MimicLite 部署与验证边界](README_MIMICLITE.md)。
+
 ## 固定 NPZ 动作评测
 
 新增 `scripts/start_actor_motion.sh`，共用一个参考动作文件，由所选策略生成自己的 observation。
@@ -56,11 +65,13 @@ bash scripts/start_actor_motion.sh supermimic check --steps 100
 
 # 已配置的 S100：请求运动，使用实时反馈播放一遍，然后正常退出
 bash scripts/start_actor_motion.sh supermimic --record-observations
-# 同一个 NPZ 也可选择 sonic / morphmimic
+# 同一个 NPZ 也可选择 sonic / mimiclite（需先导入模型）
 ```
 
 文件通过导入脚本放入固定路径，原始 NPZ 不改写。加载器兼容重复根部字段，并逐项记录配置允许的微小边界修正。
-同一 motor-theta 模型可用 `--ankle-command-space motor_theta` / `virtual_pitch_roll` 对照两条输出路径；
+SONIC/SuperMimic 的同一 motor-theta 模型可用
+`--ankle-command-space motor_theta` / `virtual_pitch_roll` 对照两条输出路径；
+MimicLite 仅支持原生 `motor_theta`，不提供旧虚拟输出兼容模式。
 两组机器人 EXTERNAL 配置都需要 `ankle_virtual_pd_intent: false`，且命令空间必须匹配。
 切换机器人配置与重启服务仍需单独执行，脚本不会自动修改。步骤和日志对比见
 [脚踝控制路径 A/B 测试](README_ACTOR_PICO.md#controlled-ankle-command-path-ab-trial)。
@@ -95,13 +106,16 @@ bash scripts/start_actor_pico.sh sonic state-check --seconds 5
 bash scripts/start_actor_pico.sh sonic shadow --seconds 30 --human-height 1.80
 ```
 
-**运动与策略检查入口必须显式选择策略，没有默认值，也不会改用另一个策略。** 第一个参数写 `sonic` 或
-`supermimic`（等价于 `--policy sonic|supermimic`）；在终端里不写时会弹出菜单要求选择，
+**运动与策略检查入口必须显式选择策略，没有默认值，也不会改用另一个策略。** 第一个参数写
+`sonic`、`supermimic` 或 `mimiclite`（等价于 `--policy sonic|supermimic|mimiclite`）；
+在终端里不写时会弹出菜单要求选择，
 直接回车或非交互运行都不会启动任何东西。所选策略的模型未安装或哈希不符、加速 GMR
 依赖版本不符时直接报错退出，不会退回 sonic 或较慢的原版 GMR。
 
 模型版本、文件大小、SHA256 和安装目标路径统一记录在
-[`config/actor_pico.json`](config/actor_pico.json) 与
+各自的策略配置（SONIC 的 [`actor_pico.json`](config/actor_pico.json)、
+SuperMimic 的 [`actor_pico_supermimic.json`](config/actor_pico_supermimic.json)、
+MimicLite 的 [`actor_pico_mimiclite.json`](config/actor_pico_mimiclite.json)）与
 包内构建生成的 `deploy/actor_s100/manifest.json` 中。
 示例使用通用文件名 `policy.onnx`；安装器按交付清单校验模型内容并复制到配置指定的位置，
 随后离线解析全部 wheel 依赖、创建独立 `venv`，解包 Pico 运行库，检查 SDK/绑定/动态库，并运行无动作模型检查。
@@ -129,7 +143,8 @@ bash scripts/start_actor_pico.sh configure \
 ```bash
 bash scripts/start_actor_pico.sh sonic        # GR00T G1 (SONIC) 策略
 bash scripts/start_actor_pico.sh supermimic   # SuperMimic 策略
-bash scripts/start_actor_pico.sh              # 终端菜单选择 1) sonic 2) supermimic，无默认
+bash scripts/start_actor_pico.sh mimiclite    # 需先完成真实模型导入、设备检查和现场授权
+bash scripts/start_actor_pico.sh              # 菜单：1) sonic 2) supermimic 3) mimiclite，无默认
 # 身高默认 1.80 米；三种策略均默认关闭 GMR 标定与落地脚，需在策略配置中显式指定。
 # 使用 --human-height 指定实际操作者身高；仅设置为 1.80 米不会启用标定：
 # bash scripts/start_actor_pico.sh supermimic --human-height 1.68

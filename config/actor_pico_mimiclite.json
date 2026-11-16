@@ -1,13 +1,14 @@
 {
   "schema": "vita_actor_pico_shadow_v1",
   "scope": "inference_only",
-  "policy_kind": "morphmimic_vita02a_tracking",
+  "policy_kind": "mimiclite_vita02a_tracking",
+  "model_ready": true,
   "artifacts": {
     "model": {
-      "path": "artifacts/morphmimic/teleop_20261105/iter_0031000/policy.onnx",
-      "sha256": "77216ff87069dc8ec5b4b780de9e9f85232470ef936219736ffa6907f82f36ca",
-      "bytes": 35507011,
-      "source_name": "checkpoint.pt"
+      "path": "artifacts/mimiclite/policy.onnx",
+      "sha256": "07beb97df39637029522e3800666a744080313fd3892c66bc4391ab5246da876",
+      "bytes": 8157569,
+      "source_name": "student_final.onnx"
     },
     "urdf": {
       "path": "artifacts/output_envelopes.motion.urdf",
@@ -217,19 +218,23 @@
       "neck_pitch_joint",
       "neck_yaw_joint"
     ],
-    "ankle_command_space": "policy"
+    "ankle_command_space": "motor_theta"
   },
   "pico_max_age_s": 0.6,
   "pico_hold_age_s": 0.25,
   "pico_loss_action": "stand",
   "provenance": {
-    "exporter": "MorphMimic training-side ONNX exporter",
-    "checkpoint_sha256": "c8d84f6e3124d5d6ef71776a311d222cf5bc19767a2bd775e9588cc87470de57",
-    "iteration": 31000,
-    "training_commit": "d4a257152b3cfb30ec83a0fa1ba095287c9fad56",
-    "data_version_sha256": "968f5caadb96eec371959e8b6dfbb950a6448eb7eaf0eec4029107dbba320389",
-    "finetune_source_sha256": "a7e258c6148034112a90fa08f0377863b22f2a7024f7f81226e5ac799550fde6",
-    "reference_feasibility_guard": "virtual_box_and_coupled_motor_v1"
+    "importer": "scripts/import_mimiclite_policy.py",
+    "source_onnx_sha256": "e4b9b8d1a47b11b1cd5e884f36c74d2256f655d5d199e37d47a91c0292f7124f",
+    "source_yaml_sha256": "20d0b0ae733b91515d3b41d0c314c7a610f0d667271c27a40ffe95f8cd003ab7",
+    "model_sha256": "2f015a57135ea0fd76e2f76f60633a3d55e835c6978432fb3c43b2de4fa78a75",
+    "actuator_schema": "mimiclite.vita02a.achilles_friction.v2",
+    "wrapper_parity": {
+      "samples": 9,
+      "max_abs_error": 0.0,
+      "input": "synthetic finite inputs; not robot validation"
+    },
+    "robot_validation": "not_measured"
   },
   "retargeting": {
     "implementation": "motion_stream_bridge_gmr_vita02a",
@@ -249,8 +254,8 @@
     }
   },
   "reference_window": {
-    "past_frames": 1,
-    "tail_frames": 1
+    "past_frames": 8,
+    "tail_frames": 0
   },
   "pico_stream": {
     "playback_margin_s": 0.06,

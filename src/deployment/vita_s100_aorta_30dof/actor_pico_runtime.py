@@ -1,7 +1,7 @@
 """Actor inference through SDK 0.3.0 math; no transport or publication.
 
 ``policy`` selects a pinned configuration: the SONIC/GR00T G1 actor or the
-SuperMimic/MorphMimic actors. They share feedback validation and Body31 decode.
+SuperMimic/MimicLite actors. They share feedback validation and Body31 decode.
 """
 import hashlib
 import importlib
@@ -14,7 +14,7 @@ import time
 
 import numpy as np
 
-from .actor_morphmimic import MorphMimicContract, POLICY_KIND as MORPHMIMIC_KIND
+from .actor_mimiclite import MimicLiteContract, POLICY_KIND as MIMICLITE_KIND
 from .actor_groot_ankle import contract_from_metadata as groot_contract
 from .actor_pico_gmr import create_retargeter
 from .actor_pico_gmr_profile import apply_calibration, operator_calibration
@@ -23,7 +23,7 @@ from .actor_pico_stream import stream_settings, worker_settings
 from .actor_supermimic import (POLICY_KIND as SUPERMIMIC_KIND, NativeModel, SuperMimicContract,
                                create_policy, create_reference, reference_window)
 
-POLICY_CONFIGS = {'sonic': 'config/actor_pico.json', 'supermimic': 'config/actor_pico_supermimic.json', 'morphmimic': 'config/actor_pico_morphmimic.json'}
+POLICY_CONFIGS = {'sonic': 'config/actor_pico.json', 'supermimic': 'config/actor_pico_supermimic.json', 'mimiclite': 'config/actor_pico_mimiclite.json'}
 
 
 def digest(path):
@@ -42,9 +42,12 @@ def load_actor_config(root, policy='sonic'):
     if config['schema'] != 'vita_actor_pico_shadow_v1':
         raise ValueError('Unsupported actor/Pico configuration')
     if config.get('policy_kind', 'groot_vita02a_tracking') != {
-            'sonic': 'groot_vita02a_tracking', 'supermimic': SUPERMIMIC_KIND, 'morphmimic': MORPHMIMIC_KIND}[policy]:
+            'sonic': 'groot_vita02a_tracking', 'supermimic': SUPERMIMIC_KIND, 'mimiclite': MIMICLITE_KIND}[policy]:
         raise ValueError('Actor configuration does not match the selected policy')
-    if policy in ('supermimic', 'morphmimic'):
+    if policy == 'mimiclite' and config.get('model_ready') is not True:
+        raise ValueError('MimicLite model is not configured; run scripts/import_mimiclite_policy.py '
+                         'with the matching ONNX and YAML before building/installing')
+    if policy == 'supermimic':
         reference_window(config)
     if not np.isfinite(config['pico_max_age_s']) or config['pico_max_age_s'] <= 0:
         raise ValueError('Invalid Pico maximum data age')
@@ -59,7 +62,9 @@ def load_actor_config(root, policy='sonic'):
     head_settings(config)
     for item in config['artifacts'].values():
         path = (root/item['path']).resolve()
-        if not path.is_relative_to(root) or digest(path) != item['sha256']:
+        if (not path.is_relative_to(root) or not path.is_file()
+                or ('bytes' in item and (type(item['bytes']) is not int or path.stat().st_size != item['bytes']))
+                or digest(path) != item['sha256']):
             raise ValueError('Actor artifact missing or hash mismatch: '+item['path'])
     return config
 
@@ -88,7 +93,7 @@ class ActorModel:
             backend = 'sdk' if platform.machine() == 'aarch64' else 'ort'
         self.backend = backend
         # The GR00T ankle control space comes only from the ONNX metadata.
-        parse = (functools.partial(MorphMimicContract.from_metadata, math_api) if policy_kind == MORPHMIMIC_KIND else
+        parse = (functools.partial(MimicLiteContract.from_metadata, math_api) if policy_kind == MIMICLITE_KIND else
                  SuperMimicContract.from_metadata if policy_kind == SUPERMIMIC_KIND
                  else functools.partial(groot_contract, math_api))
         if backend == 'sdk':
@@ -173,10 +178,10 @@ class ActorPicoRuntime:
         self.reset_inputs()
 
     def hold_motion(self):
-        """Stand reference; MorphMimic goals include absolute anchor height."""
+        """Stand reference; MimicLite commands include absolute base_link height."""
         c = self.model.contract
         motion = self.math.Motion.hold(c.default)
-        if isinstance(c, MorphMimicContract):
+        if isinstance(c, MimicLiteContract):
             motion.base[:, 2] = c.nominal_root_height
         return motion
 

@@ -39,8 +39,23 @@ class PackageTests(unittest.TestCase):
                 self.assertEqual(manifest['source'], self.built[variant]['source'])
                 self.assertEqual(manifest['target']['architecture'], 'aarch64')
                 self.assertEqual({i['role'] for i in manifest['external_resources']},
-                    {'sonic_actor', 'supermimic_actor', 'morphmimic_actor'} |
+                    {'sonic_actor', 'supermimic_actor', 'mimiclite_actor'} |
                     ({'planner', 'bridge'} if variant == 'planner' else set()))
+
+    def test_mimiclite_readiness_is_explicit_and_legacy_adapter_is_absent(self):
+        from bootstrap_actor_s100 import configured_model
+        ready = json.loads((ROOT/'config/actor_pico_mimiclite.json').read_text())['model_ready']
+        for package in self.packages.values():
+            model, = [m for m in verify(package)['external_resources'] if m['role']=='mimiclite_actor']
+            self.assertIs(model['configured'],ready)
+            module=package/'src/deployment/vita_s100_aorta_30dof'
+            self.assertTrue((module/'actor_mimiclite.py').is_file())
+            self.assertFalse((module/'actor_morphmimic.py').exists())
+            self.assertFalse((package/'config/actor_pico_morphmimic.json').exists())
+            if not ready:
+                self.assertIsNone(model['sha256']);self.assertIsNone(model['bytes'])
+                with self.assertRaisesRegex(RuntimeError,'not configured'):
+                    configured_model(package,'mimiclite')
 
     def test_archive_contains_runtime_only_and_one_manifest(self):
         for package in self.packages.values():

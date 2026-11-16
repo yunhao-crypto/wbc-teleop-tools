@@ -67,7 +67,7 @@ class MotionToolsTests(unittest.TestCase):
         self.assertEqual(custom['actions']['EXTERNAL']['params']['position_target_margin_rad'],3.12)
 
     def trial(self,space):
-        header=dict(reference_source='npz',policy='morphmimic',model={'sha256':'model'},comparison_config_sha256='cfg',
+        header=dict(reference_source='npz',policy='mimiclite',model={'sha256':'model'},comparison_config_sha256='cfg',
             motion=dict(sha256='clip',limit_corrections=[],end_hold_s=1.,root_body_index=0,
                         joint_names=['left_ankle_roll_joint'],policy_frames=2,period_s=.02),
             contract=dict(required_ankle_command_space=space,ankle_control_space='motor_theta',required_ankle_virtual_pd_intent=False))
