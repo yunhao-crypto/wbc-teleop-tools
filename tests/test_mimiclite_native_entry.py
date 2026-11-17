@@ -83,6 +83,25 @@ PY
                 self.assertFalse(self.calls.exists())
                 path.write_bytes(original)
 
+    def test_audit_requires_exact_package_marker(self):
+        marker=self.package/'audit-package-protocol.txt'
+        for text in (None, '', '{}', 'mimiclite-native-audit-package-v2', 'x'*129):
+            if text is not None:marker.write_text(text)
+            result=self.run_entry('--native-root',str(self.package),'--audit')
+            self.assertEqual(result.returncode,2,result.stderr)
+            self.assertFalse(self.calls.exists())
+        marker.write_text('mimiclite-native-audit-package-v1\n')
+        for model in ('student2000','knee-reg1000','knee-reg2000'):
+            result=self.run_entry('--native-root',str(self.package),'--audit','--model',model)
+            self.assertEqual(result.returncode,37,result.stderr)
+            self.assertIn('--audit',json.loads(self.calls.read_text()))
+
+    def test_audit_plan_missing_package_is_read_only(self):
+        result=self.run_entry('--native-root','/nonexistent/native-package','--audit','--plan')
+        self.assertEqual(result.returncode,0,result.stderr)
+        self.assertIn('--audit',result.stdout)
+        self.assertFalse(self.calls.exists())
+
     def test_invalid_or_conflicting_options_do_not_reach_package(self):
         cases = [('--model', 'old814'), ('--model',), ('--native-root',),
                  ('--native-root', 'relative/path'), ('--seconds', '-1'), ('--seconds', 'nan'),

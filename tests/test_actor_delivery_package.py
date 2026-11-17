@@ -66,10 +66,11 @@ class PackageTests(unittest.TestCase):
             self.assertEqual([p for p in files if p.endswith('/manifest.json')],
                              ['deploy/actor_s100/manifest.json'])
             self.assertFalse(any(p.startswith(('tests/', 'outputs/', 'venv/', 'reference/')) for p in files))
-            self.assertEqual({p for p in files if p.endswith('.md')}, {'README_ACTOR_CONTROL_AUDIT.md'})
+            self.assertEqual({p for p in files if p.endswith('.md')},
+                             {'README_ACTOR_CONTROL_AUDIT.md', 'README_NATIVE_AUDIT.md'})
             self.assertFalse(any(p.endswith(('.onnx', '.pyc')) for p in files))
             for tool in ('audit_actor_control.py', 'compare_actor_control.py', 'actor_control_shadow.py',
-                         'extract_actor_body.py', 'audit_actor_imu.py'):
+                         'extract_actor_body.py', 'audit_actor_imu.py', 'audit_mimiclite_native.py'):
                 self.assertIn('scripts/'+tool, files)
             self.assertIn('requirements-control-audit.txt', files)
             self.assertIn('scripts/start_actor_pico.sh', files)

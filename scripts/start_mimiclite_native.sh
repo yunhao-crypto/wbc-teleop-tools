@@ -11,6 +11,7 @@ Usage: start_mimiclite_native.sh [options]
   --seconds SECONDS             Duration; default 0 runs until Ctrl-C.
   --stand-only                  Stand without Pico following.
   --motion NPZ_PATH             Replay an existing NPZ instead of Pico.
+  --audit                       Require opt-in native audit before motion/following.
   --plan                        Print the command only; do not check/start the package.
   --help, -h                    Show this help without accessing robot services.
 
@@ -32,6 +33,7 @@ NATIVE_ROOT=
 MODEL_SET=0
 ROOT_SET=0
 PLAN=0
+AUDIT=0
 STAND=0
 MOTION=0
 ARGS=()
@@ -52,6 +54,7 @@ while (($#)); do
       ARGS+=("$1" "$2"); shift 2 ;;
     --stand-only) STAND=1; ARGS+=("$1"); shift ;;
     --motion) value "$@"; MOTION=1; ARGS+=("$1" "$2"); shift 2 ;;
+    --audit) AUDIT=1; ARGS+=("$1"); shift ;;
     --plan) PLAN=1; shift ;;
     *) fail "unknown option: $1 (see --help)" ;;
   esac
@@ -73,5 +76,10 @@ fi
 for file in "$ENTRY" "$NATIVE_ROOT/contract_$MODEL.json" "$NATIVE_ROOT/$MODEL.onnx"; do
   [[ -f "$file" && -r "$file" ]] || fail "missing native package file: $file; see --help for package selection"
 done
+if [[ $AUDIT == 1 ]]; then
+  MARKER="$NATIVE_ROOT/audit-package-protocol.txt"
+  [[ -f "$MARKER" && -r "$MARKER" && $(stat -c %s "$MARKER") -le 128 ]] || fail 'package lacks audit protocol marker; operator installation required'
+  [[ $(<"$MARKER") == mimiclite-native-audit-package-v1 ]] || fail 'unsupported audit package protocol'
+fi
 echo "MIMICLITE_NATIVE_ENTRY: model=$MODEL package=$NATIVE_ROOT"
 exec bash "$ENTRY" --model "$MODEL" "${ARGS[@]}"

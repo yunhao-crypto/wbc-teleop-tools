@@ -233,3 +233,28 @@ actual-checkpoint trajectory receipts should accompany a release.
 
 These tests do not substitute for a real trained policy, S100 native binary
 inference, HIL, real Pico quality or physical robot stability acceptance.
+
+### Native audit opt-in
+
+`bash scripts/start_mimiclite_native.sh --model student2000 --motion /absolute/fixed.npz --seconds 20 --audit`
+uses the normal LIVE owning launch (not standalone attach). Default invocations
+remain audit-off. `--plan --audit` only prints the intended command, even with a
+missing package; it reads no marker and accesses no services.
+
+LIVE `--audit` requires the installed package's exact
+`audit-package-protocol.txt` marker (`mimiclite-native-audit-package-v1`). This
+advertises package protocol only, not running-daemon support. An operator must
+build/install the audit-capable daemon/bridge and explicitly configure its
+`MIMICLITE_AUDIT_ROOT` using native preparation's `--audit-root`; provision disk
+permissions/space separately. This wrapper neither installs/restarts anything nor
+creates the audit directory. Runtime readiness must still confirm capability,
+engine/capture identity and Recording after normal activation, before motion or
+following. Start acknowledgement alone is insufficient. Failure still requests
+PASSIVE; stop is asynchronous and bounded, not a wait for writer drain.
+
+Prewarm/initial activation frames are unavailable, and first captured row is not
+reset/full history. Collect a fixed reviewed NPZ without gain/excitation changes;
+retain NPZ/model/package hashes, launcher log, recorder footer and drop/error
+counts. Bounded buffering/disk limits can lose records. Monotonic clocks are
+host/process scoped; software command evidence is not CAN delivery or physical
+response. All three existing model routes/locks/profiles are unchanged.
