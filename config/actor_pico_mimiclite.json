@@ -6,9 +6,9 @@
   "artifacts": {
     "model": {
       "path": "artifacts/mimiclite/policy.onnx",
-      "sha256": "abee60da0ca2c9bf19c3b5eaef0db9fd274ed911854ee725d9bf0dbded0ba4fc",
-      "bytes": 9427021,
-      "source_name": "policy.onnx"
+      "sha256": "61fcd3494ea4c11b2acb8d5030d0ca2c79b43db3eb2a3dc468a19091582ab097",
+      "bytes": 9381822,
+      "source_name": "student_1000.onnx"
     },
     "urdf": {
       "path": "artifacts/output_envelopes.motion.urdf",
@@ -225,8 +225,8 @@
   "pico_loss_action": "stand",
   "provenance": {
     "importer": "scripts/import_mimiclite_policy.py",
-    "source_onnx_sha256": "711d4766c2d92dcd63fdde1d318749b15716910998746c55db5105eeeb164bf8",
-    "source_yaml_sha256": "05846ec962b060f13fd2e3902db0951b32763848dc1aa3696853eec7d5109983",
+    "source_onnx_sha256": "0bd001d7bbeee4431685645a0fa3157e4d59b76f839c3eed2e54076c0b7574e1",
+    "source_yaml_sha256": "74784eae824bd3640fef48d9b0a4a5c23d9bdde182b2201865fd98ab8f980df2",
     "model_sha256": "2f015a57135ea0fd76e2f76f60633a3d55e835c6978432fb3c43b2de4fa78a75",
     "actuator_schema": "mimiclite.vita02a.achilles_friction.v2",
     "wrapper_parity": {
