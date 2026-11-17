@@ -38,12 +38,12 @@
       "sha256": "53e87f274a726e64fe36403be7b24aacb283fb954a4b7c71d877b08f3124769b"
     }
   },
-  "sdk_version": "0.3.0",
-  "sdk_commit": "a0b50cef329181b138239f5576238fcb9e0c02ca",
+  "sdk_version": "1.0.0rc1+bodycmdv4.6863ad7",
+  "sdk_commit": "6863ad7bbde07aefd7e369ca7ee27c0eabe2d1f8",
   "sdk_sources": {
     "wbc_tracking_policy.py": "8bf9ecbcce9d06fde34eaaa817fe7966354958be012f74af159cfd711ce53b9e",
     "_policy_state.py": "d28cacb350f3c838848ba6978745cb943a2406585a26d35e06b1b1d4828f1c67",
-    "body_types.py": "bf8cefde2dee078109da498938f3511da0aa1906fa8af410c5dd9d6740c1a452"
+    "body_types.py": "a6c591cf2d9e74a0ba78fb32b76c1cba3ff86b10b273d2aae26c908daee3829e"
   },
   "body_profile": {
     "joint_limits": {

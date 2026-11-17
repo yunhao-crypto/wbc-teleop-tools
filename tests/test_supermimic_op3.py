@@ -58,6 +58,7 @@ class OP3Tests(unittest.TestCase):
     def test_native_motor_targets_are_unclipped_and_not_double_converted(self):
         action = np.linspace(-25,25,28,dtype=np.float32)
         command, row = self.policy.decode(action)
+        self.assertEqual(command.protocol_version, 4)
         expected = self.c.policy_default+self.c.scale*action
         np.testing.assert_allclose(row['target'],expected)
         np.testing.assert_array_equal(self.policy.last_action,action)

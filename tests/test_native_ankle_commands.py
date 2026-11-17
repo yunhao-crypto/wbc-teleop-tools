@@ -70,6 +70,7 @@ class NativeAnkleTests(unittest.TestCase):
                     self.assertAlmostEqual(j.q,.55,places=6)
                     self.assertEqual(j.kp,kp[i]);self.assertEqual(j.kd,kd[i]);self.assertEqual(j.tau,0.)
                 self.assertEqual(row['ankle_command_space'],'motor_theta')
+                self.assertEqual(cmd.protocol_version,4)
                 self.assertEqual(len(cmd.joints),31)
                 for name in ('left_wrist_pitch_joint','left_wrist_yaw_joint','right_wrist_pitch_joint','right_wrist_yaw_joint'):
                     i=c.names.index(name);self.assertEqual(policy.order[policy.mapping[i]],name)
@@ -109,6 +110,7 @@ class NativeAnkleTests(unittest.TestCase):
             for i in policy.contract.ankle.slots:
                 self.assertAlmostEqual(cmd.joints[policy.mapping[i]].q,policy.contract.default[i],places=6)
             self.assertEqual(row['ankle_command_space'],'virtual_pitch_roll')
+            self.assertEqual(cmd.protocol_version,3)
 
     def test_nonfinite_and_wrong_width_rejected(self):
         for policy in self.policies():
@@ -239,6 +241,9 @@ class NativeAnkleTests(unittest.TestCase):
                 path=Path(tmp)/'robot.yaml';path.write_text(yaml.safe_dump(root))
                 params,_=load_robot_config(path,runtime)
                 envelope=CommandEnvelope(runtime,reply,params)
+                native_command,_=policy.decode(np.zeros(28))
+                with self.assertRaisesRegex(ValueError,'BodyCmd protocol/ankle coordinate mismatch'):
+                    envelope.check(replace(native_command,protocol_version=3))
                 startup=StartupPlan(runtime,envelope,path)
                 self.assertEqual(startup.damping,dict(PASSIVE=4.,QUIET_PASSIVE=4.))
                 action=np.zeros(28);slots=policy.contract.ankle.slots

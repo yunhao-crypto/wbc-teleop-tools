@@ -266,8 +266,11 @@ def decode_motor_theta(policy, math_api, raw_action, **timing):
                                              float(np.float32(c.kp[p])), float(np.float32(c.kd[p])))
     for name, fixed in policy.profile['fixed_joints'].items():
         motors[policy.order.index(name)] = math_api.BodyJointCmd(fixed['q'], 0., 0., fixed['kp'], fixed['kd'])
-    return math_api.BodyCmd(joints=tuple(motors), **timing), {
+    # Firmware distinguishes motor A/B targets (v4) from virtual pitch/roll (v3).
+    protocol = 4 if native else 3
+    return math_api.BodyCmd(joints=tuple(motors), protocol_version=protocol, **timing), {
         'ankle_command_space': command_space(policy),
+        'body_cmd_protocol_version': protocol,
         'action': policy.last_action.tolist(), 'raw_target': raw_q.tolist(),
         'motor_target': motor_q[slots].tolist(), 'ankle_fk_residual': residual,
         'target': target.tolist(), 'tau_ff': tau.tolist(), 'clamped': clamped.tolist(),
