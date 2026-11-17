@@ -17,6 +17,43 @@ observation/history independently, certify fixed-NPZ equivalence, or prove CAN
 completion/mechanical response. Reports remain `PARTIAL`; exit 0 only means a
 report was produced. Read numerical mismatch and structural diagnostics.
 
+## Bounded v1/v2 offline decoder
+
+`actor_native_audit.validate(row)` checks individual raw **or expanded** v1/v2
+rows; it does not resolve references. Use `AuditDecoder.decode(row)` for ordered
+parsed rows, or `iter_audit_records(path, max_line_bytes=2*1024*1024)` for bounded
+JSONL streaming. The iterator yields header, expanded records, then footer;
+consume it fully to check the footer. Invalid/unresolved/truncated input raises
+`ValueError`. Each iterator/decoder is scoped to one capture; create a fresh one
+for another file. Direct decoder callers must bound their own input row sizes.
+
+V2 requires header `command_encoding="last_full_snapshot_ref_v1"` and positive
+uint64 `record_sequence` on every record, starting at 1 and strictly increasing.
+A present source/final command field has exactly one full array or corresponding
+`source_commands_ref` / `final_commands_ref`. Each ref must point strictly
+backwards to the **most recent FULL** of that same field, engine and capture.
+Refs do not advance the base. Absent fields do not erase a known base. Two
+snapshots only are cached; returned data never aliases these caches. Unknown or
+invalid bases are not replaced with empty arrays, zero identities or other
+fields' snapshots. Genuine zero identities remain valid integers.
+
+Sequence holes are explicit `missing_record_sequence_not_physical_loss`
+diagnostics and invalidate both bases (a missing row could have replaced one).
+The iterator raises on holes by default; an optional `on_diagnostic` callback
+can accept a hole followed by a new full snapshot. Malformed/unresolved rows
+always raise. The report API continues with explicit `invalid_line` diagnostics,
+clears bases after errors, and never counts unresolved commands as output
+evidence. New full snapshots can re-establish bases. Mixed schemas, repeated or
+reversed sequences, cross-capture/engine refs and rows after footer are invalid.
+V1 is still accepted unchanged; old v1-only readers reject v2 rather than silently
+misreading it. Footer `complete` still means accepted records drained, not full
+inference/control coverage. Extra recorder counters are forward-compatible;
+existing drop counters remain evidence loss, not physical command loss.
+
+These are offline reader checks, not board-side performance or hardware safety
+validation. Companion integration branch: `feat/mimiclite-native-robot67-20261117`;
+WTT: `feat/mimiclite-student2000-wtt`.
+
 ## Operator capture, only after separate native acceptance
 
 `start_mimiclite_native.sh --audit` is an explicit **live** startup option, not a

@@ -1,5 +1,6 @@
 """Bounded, offline native JSONL inspection. Never a causal or safety certificate."""
 import collections
+import copy
 import hashlib
 import json
 import math
@@ -53,7 +54,8 @@ def vector(v, n, name):
 
 
 def validate(r):
-    if not isinstance(r, dict) or type(r.get('schema_version')) is not int or r['schema_version'] != 1:
+    """Validate one raw or expanded wire row; reference resolution needs AuditDecoder."""
+    if not isinstance(r, dict) or type(r.get('schema_version')) is not int or r['schema_version'] not in (1, 2):
         raise ValueError('unsupported schema_version')
     if r.get('type') not in ('header', 'record', 'footer'):
         raise ValueError('unknown line type')
@@ -70,8 +72,15 @@ def validate(r):
             for v in obj:
                 walk(v)
     walk(r)
+    if r['schema_version'] == 2 and r['type'] == 'header':
+        if r.get('command_encoding') != 'last_full_snapshot_ref_v1':
+            raise ValueError('unsupported command_encoding')
     if r['type'] != 'record':
         return
+    if r['schema_version'] == 2:
+        integer(r.get('record_sequence'), 'record_sequence')
+        if r['record_sequence'] == 0:
+            raise ValueError('zero record_sequence')
     integer(r.get('present'), 'present')
     p = r['present']
     if p >> 25:
@@ -84,7 +93,17 @@ def validate(r):
         raise ValueError('missing reason')
     for bit, names in PRESENCE.items():
         for name in names:
-            if (name in r) != bool(p & (1 << bit)):
+            if name in ('source_commands', 'final_commands'):
+                ref = name + '_ref'
+                if ref in r:
+                    if r['schema_version'] != 2:
+                        raise ValueError('command reference requires schema_version 2')
+                    integer(r[ref], ref)
+                    if not 0 < r[ref] < r['record_sequence']:
+                        raise ValueError('non-backward command reference: ' + ref)
+                if int(name in r) + int(ref in r) != int(bool(p & (1 << bit))):
+                    raise ValueError('presence mismatch: ' + name)
+            elif (name in r) != bool(p & (1 << bit)):
                 raise ValueError('presence mismatch: ' + name)
     for bit, name in ((11, 'sequence'), (12, 'capture_system_us'), (13, 'source_capture_us')):
         if (name in r.get('reference', {})) != bool(p & (1 << bit)) or (p & (1 << bit) and not p & 2):
@@ -131,9 +150,23 @@ def validate(r):
         if not isinstance(r[name], list) or len(r[name]) > 64:
             raise ValueError('invalid commands')
         for cmd in r[name]:
-            c = cmd.get('context')
-            if c is None:
+            if not isinstance(cmd, dict):
+                raise ValueError('invalid command object')
+            for field in ('q', 'dq', 'tau', 'kp', 'kd'):
+                if field in cmd and cmd[field] is not None:
+                    value = cmd[field]
+                    if type(value) not in (int, float) or not math.isfinite(value):
+                        raise ValueError('invalid command number: ' + field)
+            # Native emits explicit null for nonfinite measurements; preserve
+            # that missing numeric evidence rather than inventing a zero.
+            for field in ('hardware_slot', 'controller_status'):
+                if field in cmd and (type(cmd[field]) is not int or not -(1 << 31) <= cmd[field] < (1 << 31)):
+                    raise ValueError('invalid command integer: ' + field)
+            if 'context' not in cmd:
                 continue
+            c = cmd['context']
+            if not isinstance(c, dict):
+                raise ValueError('invalid command context')
             if type(c.get('source_valid')) is not bool or type(c.get('allow_joint_projection')) is not bool:
                 raise ValueError('invalid context validity')
             integer(c.get('rewrite_reasons'), 'rewrite_reasons')
@@ -179,6 +212,117 @@ def validate(r):
                 raise ValueError('dispatch stage mismatch')
 
 
+class AuditDecoder:
+    """One capture, two last-FULL snapshots only; returned rows never alias caches.
+
+    decode() accepts parsed wire rows and returns expanded rows (refs removed).
+    Any malformed row invalidates both bases, so later references cannot invent
+    evidence across unknown input. last_diagnostics describes sequence holes.
+    Use iter_audit_records for bounded JSON input; direct callers bound row size.
+    """
+
+    def __init__(self):
+        self._header = None
+        self._closed = False
+        self._sequence = 0
+        self._snapshots = {}
+        self.last_diagnostics = ()
+
+    def decode(self, row):
+        self.last_diagnostics = ()
+        try:
+            return self._decode(row)
+        except (ValueError, KeyError, TypeError, AttributeError, OverflowError, RecursionError):
+            self._snapshots.clear()
+            raise
+
+    def invalidate(self):
+        """Call after JSON/transport errors before attempting to resume."""
+        self._snapshots.clear()
+
+    def _decode(self, row):
+        validate(row)
+        if self._closed:
+            raise ValueError('data after footer')
+        t = row['type']
+        if t == 'header':
+            if self._header is not None:
+                raise ValueError('duplicate/misplaced header')
+            for name in ('engine_id', 'capture_epoch'):
+                integer(row.get(name), name)
+            self._header = (row['schema_version'], row['engine_id'], row['capture_epoch'])
+            return copy.deepcopy(row)
+        if self._header is None:
+            raise ValueError('cross-epoch/engine or missing header')
+        version, engine, epoch = self._header
+        if row['schema_version'] != version:
+            raise ValueError('mixed schema_version within capture')
+        if t == 'footer':
+            for key, expected in (('engine_id', engine), ('capture_epoch', epoch)):
+                if key in row and row[key] != expected:
+                    raise ValueError('cross-epoch/engine footer')
+            self._closed = True
+            self._snapshots.clear()
+            return copy.deepcopy(row)
+        if (row['engine_id'], row['capture_epoch']) != (engine, epoch):
+            raise ValueError('cross-epoch/engine or missing header')
+        if version == 1:
+            return copy.deepcopy(row)
+        seq = row['record_sequence']
+        if seq <= self._sequence:
+            raise ValueError('non-increasing record_sequence')
+        if seq != self._sequence + 1:
+            self.last_diagnostics = ('missing_record_sequence_not_physical_loss',)
+            # An omitted row could have replaced either most recent FULL base.
+            self._snapshots.clear()
+        self._sequence = seq
+        expanded = copy.deepcopy(row)
+        updates = {}
+        for name in ('source_commands', 'final_commands'):
+            ref = name + '_ref'
+            if ref in row:
+                base = self._snapshots.get(name)
+                if base is None or base[0] != row[ref]:
+                    raise ValueError('unresolved command reference: ' + ref)
+                expanded[name] = copy.deepcopy(base[1])
+                del expanded[ref]
+            elif name in row:
+                updates[name] = (seq, copy.deepcopy(row[name]))
+        self._snapshots.update(updates)
+        return expanded
+
+
+def iter_audit_records(path, *, max_line_bytes=2*1024*1024, on_diagnostic=None):
+    """Yield expanded header/record/footer rows with bounded line + two-base memory.
+
+    Invalid/unresolved/truncated input raises ValueError, never substitutes zeros.
+    Sequence holes raise unless on_diagnostic accepts the explicit diagnostic.
+    A new iterator/decoder is required for each capture.
+    """
+    if type(max_line_bytes) is not int or max_line_bytes < 1:
+        raise ValueError('invalid line bound')
+    decoder = AuditDecoder()
+    with open(path, 'rb') as stream:
+        while True:
+            line = stream.readline(max_line_bytes + 1)
+            if not line:
+                break
+            if len(line) > max_line_bytes:
+                raise ValueError('line_limit_exceeded')
+            if not line.endswith(b'\n'):
+                raise ValueError('truncated_final_line')
+            row = decoder.decode(loads(line))
+            for diagnostic in decoder.last_diagnostics:
+                if on_diagnostic is None:
+                    raise ValueError(diagnostic)
+                on_diagnostic(diagnostic)
+            yield row
+    if decoder._header is None:
+        raise ValueError('missing_header')
+    if not decoder._closed:
+        raise ValueError('missing_footer')
+
+
 def audit(path, *, max_pending=256, max_line_bytes=2*1024*1024, onnx=None, atol=1e-5, rtol=1e-5):
     """Memory bounded by line cap and pending cap; diagnostics aggregated by category."""
     if max_pending < 1 or max_line_bytes < 1 or not all(math.isfinite(x) and x >= 0 for x in (atol, rtol)):
@@ -186,6 +330,7 @@ def audit(path, *, max_pending=256, max_line_bytes=2*1024*1024, onnx=None, atol=
     issues = collections.Counter()
     counts = collections.Counter()
     pending = collections.OrderedDict()
+    decoder = AuditDecoder()
     header = footer = metadata = session = None
     ort = np = None
     checked = set()  # keys removed with pending entries
@@ -246,8 +391,11 @@ def audit(path, *, max_pending=256, max_line_bytes=2*1024*1024, onnx=None, atol=
                 issue('truncated_final_line')
                 break
             try:
-                r = loads(line)
-                validate(r)
+                decoder.last_diagnostics = ()
+                r = decoder.decode(loads(line))
+                for diagnostic in decoder.last_diagnostics:
+                    issue(diagnostic)
+                decoder.last_diagnostics = ()
                 t = r['type']
                 if footer is not None:
                     raise ValueError('data after footer')
@@ -295,8 +443,7 @@ def audit(path, *, max_pending=256, max_line_bytes=2*1024*1024, onnx=None, atol=
                         continue
                     idname = 'inference_id' if kind <= 3 else 'output_attempt_id'
                     integer(r.get(idname), idname)
-                    if r[idname] == 0:
-                        raise ValueError('unassigned correlation ID')
+                    # Presence, not truthiness, distinguishes missing from genuine zero.
                     key = ('inference' if kind <= 3 else 'output', r['capture_epoch'], r['engine_id'], r[idname])
                     if key not in pending:
                         if len(pending) >= max_pending:
@@ -324,6 +471,9 @@ def audit(path, *, max_pending=256, max_line_bytes=2*1024*1024, onnx=None, atol=
                     compare(key, group)
                     counts['peak_pending'] = max(counts['peak_pending'], len(pending))
             except (ValueError, KeyError, TypeError, AttributeError, UnicodeError, OverflowError, RecursionError) as e:
+                decoder.invalidate()
+                for diagnostic in decoder.last_diagnostics:
+                    issue(diagnostic)
                 issue('invalid_line:' + str(e)[:120])
     for key, group in pending.items():
         finish(key, group)

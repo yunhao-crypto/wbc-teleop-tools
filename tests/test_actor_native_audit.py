@@ -8,7 +8,7 @@ import tempfile
 import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src'))
-from deployment.vita_s100_aorta_30dof.actor_native_audit import audit, validate
+from deployment.vita_s100_aorta_30dof.actor_native_audit import AuditDecoder, audit, iter_audit_records, validate
 
 
 def header(metadata=None):
@@ -127,6 +127,161 @@ class NativeAuditTest(unittest.TestCase):
         report = self.run_capture([header(), r])
         self.assertIn('joint_timestamp_capture_truncated_not_sensor_loss', report['diagnostics'])
         self.assertFalse(report['physical_loss_inferred'])
+
+    def test_v2_two_full_bases_and_owned_expansion(self):
+        decoder = AuditDecoder()
+        decoder.decode(dict(header(), schema_version=2, command_encoding='last_full_snapshot_ref_v1'))
+        source = [{'hardware_slot': 0, 'q': -0.0, 'context': {
+            'source_valid': True, 'allow_joint_projection': False, 'rewrite_reasons': 0,
+            'source': {'session_id': 0, 'sequence': 0, 'writer_epoch': 0, 'type': 0}}}]
+        first = dict(record(6, present=96, source_commands=source, final_commands=[]),
+                     schema_version=2, record_sequence=1)
+        expanded = decoder.decode(first)
+        first['source_commands'][0]['q'] = 999
+        expanded['source_commands'][0]['q'] = 888
+        for seq in (2, 3):
+            wire = dict(record(6, present=96, source_commands_ref=1, final_commands_ref=1),
+                        schema_version=2, record_sequence=seq)
+            validate(wire)
+            result = decoder.decode(wire)
+            validate(result)
+            self.assertEqual(result['source_commands'][0]['q'], 0.0)
+            self.assertEqual(result['source_commands'][0]['context']['source']['session_id'], 0)
+            self.assertEqual(result['final_commands'], [])
+            self.assertNotIn('source_commands_ref', result)
+            result['source_commands'][0]['q'] = 777
+        self.assertEqual(len(decoder._snapshots), 2)
+        # Each field has an independent most-recent FULL, refs do not advance it.
+        decoder.decode(dict(record(6, present=32, source_commands=[]), schema_version=2, record_sequence=4))
+        ok = dict(record(6, present=96, source_commands_ref=4, final_commands_ref=1),
+                  schema_version=2, record_sequence=5)
+        self.assertEqual(decoder.decode(ok)['source_commands'], [])
+        with self.assertRaisesRegex(ValueError, 'unresolved'):
+            decoder.decode(dict(ok, record_sequence=6, source_commands_ref=1))
+
+    def test_v2_malformed_wire_and_scope(self):
+        h = dict(header(), schema_version=2, command_encoding='last_full_snapshot_ref_v1')
+        base = dict(record(6, present=32, source_commands=[]), schema_version=2, record_sequence=1)
+        ref = dict(record(6, present=32, source_commands_ref=1), schema_version=2, record_sequence=2)
+        for change in ({'source_commands': []}, {'present': 0}, {'source_commands_ref': 0},
+                       {'source_commands_ref': 2}, {'source_commands_ref': 3},
+                       {'source_commands_ref': True}, {'source_commands_ref': 1.0},
+                       {'source_commands_ref': 2**64}, {'record_sequence': 0},
+                       {'record_sequence': True}, {'schema_version': 1}):
+            with self.subTest(change=change), self.assertRaises(ValueError):
+                validate(dict(ref, **change))
+        for bad in (dict(ref, capture_epoch=2), dict(ref, engine_id=0),
+                    dict(base), dict(ref, source_commands_ref=1, present=64,
+                                     final_commands_ref=1), dict(record(6), schema_version=1)):
+            decoder = AuditDecoder()
+            decoder.decode(h)
+            decoder.decode(base)
+            with self.subTest(bad=bad), self.assertRaises(ValueError):
+                decoder.decode(bad)
+            # No stale cache after any invalid row, even if valid-looking ref follows.
+            with self.assertRaises(ValueError):
+                decoder.decode(dict(ref, record_sequence=3))
+        decoder = AuditDecoder()
+        decoder.decode(h)
+        with self.assertRaisesRegex(ValueError, 'unresolved'):
+            decoder.decode(ref)
+        self.assertIn('missing_record_sequence_not_physical_loss', decoder.last_diagnostics)
+        with self.assertRaises(ValueError):
+            decoder.decode(h)
+
+    def test_v2_field_scope_and_changed_same_inference(self):
+        decoder = AuditDecoder()
+        decoder.decode(dict(header(), schema_version=2, command_encoding='last_full_snapshot_ref_v1'))
+        for seq, commands in enumerate(([{'hardware_slot': 0, 'q': 1}],
+                                         [{'hardware_slot': 0, 'q': 2, 'context': {
+                                             'source_valid': False, 'allow_joint_projection': False,
+                                             'rewrite_reasons': 8}}]), 1):
+            row = dict(record(4, ident=0, output_attempt_id=seq, present=32,
+                              source_commands=commands), schema_version=2, record_sequence=seq)
+            self.assertEqual(decoder.decode(row)['source_commands'], commands)
+        # Even a real FULL sequence for source cannot resolve final commands.
+        with self.assertRaisesRegex(ValueError, 'unresolved.*final_commands_ref'):
+            decoder.decode(dict(record(6, present=64, final_commands_ref=2),
+                                schema_version=2, record_sequence=3))
+
+    def test_v2_corrupt_full_never_becomes_a_reference_base(self):
+        bad_commands = [{'q': 'broken'}, {'q': True}, {'dq': float('inf')},
+                        {'tau': json.loads('1e309')}, {'kp': float('nan')},
+                        {'hardware_slot': 0.5}, {'hardware_slot': True},
+                        {'controller_status': 2**31}, {'context': None}, 'not-an-object']
+        for cmd in bad_commands:
+            with self.subTest(cmd=cmd):
+                decoder = AuditDecoder()
+                decoder.decode(dict(header(), schema_version=2, command_encoding='last_full_snapshot_ref_v1'))
+                with self.assertRaises(ValueError):
+                    decoder.decode(dict(record(6, present=64, final_commands=[cmd]),
+                                        schema_version=2, record_sequence=1))
+                self.assertEqual(len(decoder._snapshots), 0)
+                with self.assertRaisesRegex(ValueError, 'unresolved'):
+                    decoder.decode(dict(record(6, present=64, final_commands_ref=1),
+                                        schema_version=2, record_sequence=2))
+        decoder = AuditDecoder()
+        decoder.decode(dict(header(), schema_version=2, command_encoding='last_full_snapshot_ref_v1'))
+        full = dict(record(6, present=64, final_commands=[{'q': None, 'dq': -0.0, 'hardware_slot': -1}]),
+                    schema_version=2, record_sequence=1)
+        decoder.decode(full)
+        restored=decoder.decode(dict(record(6, present=64, final_commands_ref=1),schema_version=2,record_sequence=2))
+        self.assertIsNone(restored['final_commands'][0]['q'])
+        self.assertEqual(json.dumps(restored['final_commands']), json.dumps(full['final_commands']))
+
+    def test_v2_iterator_and_report_missing_not_zero(self):
+        h = dict(header(), schema_version=2, command_encoding='last_full_snapshot_ref_v1')
+        rows = [h, dict(record(6, present=64, final_commands=[{'hardware_slot': 0}]),
+                        schema_version=2, record_sequence=1),
+                dict(record(6, present=64, final_commands_ref=1), schema_version=2, record_sequence=2),
+                dict(footer(2), schema_version=2)]
+        with tempfile.TemporaryDirectory() as d:
+            p = Path(d) / 'audit.jsonl'
+            p.write_text(''.join(json.dumps(r)+'\n' for r in rows))
+            expanded = list(iter_audit_records(p))
+            self.assertEqual(expanded[1]['final_commands'], expanded[2]['final_commands'])
+            report = audit(p)
+            self.assertEqual(report['counts']['slot_source_unknown_or_reset'], 2)
+            self.assertFalse(any(k.startswith('invalid_line') for k in report['diagnostics']))
+            with self.assertRaisesRegex(ValueError, 'line_limit'):
+                list(iter_audit_records(p, max_line_bytes=3))
+            # Dropping the FULL row cannot turn the ref into an empty command array.
+            p.write_text(''.join(json.dumps(r)+'\n' for r in (rows[0], rows[2], rows[3])))
+            with self.assertRaisesRegex(ValueError, 'unresolved'):
+                list(iter_audit_records(p))
+            report = audit(p)
+            self.assertNotIn('slot_source_unknown_or_reset', report['counts'])
+            self.assertIn('missing_record_sequence_not_physical_loss', report['diagnostics'])
+            self.assertTrue(any('unresolved command reference' in k for k in report['diagnostics']))
+        report = self.run_capture([header(), record(1, ident=0), record(2, ident=0), footer(2)])
+        self.assertEqual(report['counts']['observation_result_pairs'], 1)
+        self.assertFalse(any('unassigned' in k for k in report['diagnostics']))
+
+    def test_v2_sequence_hole_recovery_and_v1_iterator(self):
+        h = dict(header(), schema_version=2, command_encoding='last_full_snapshot_ref_v1')
+        decoder = AuditDecoder()
+        decoder.decode(h)
+        decoder.decode(dict(record(6, present=32, source_commands=[]), schema_version=2, record_sequence=1))
+        # A missing row may have changed the most recent full snapshot: fail closed.
+        with self.assertRaisesRegex(ValueError, 'unresolved'):
+            decoder.decode(dict(record(6, present=32, source_commands_ref=1), schema_version=2, record_sequence=3))
+        self.assertEqual(len(decoder._snapshots), 0)
+        decoder.decode(dict(record(6, present=32, source_commands=[]), schema_version=2, record_sequence=4))
+        decoder.decode(dict(record(6, present=32, source_commands_ref=4), schema_version=2, record_sequence=5))
+        decoder.decode(dict(footer(4), schema_version=2))
+        with self.assertRaisesRegex(ValueError, 'after footer'):
+            decoder.decode(dict(record(6), schema_version=2, record_sequence=6))
+        with tempfile.TemporaryDirectory() as d:
+            p = Path(d) / 'v1.jsonl'
+            rows = [header(), record(), footer(1)]
+            p.write_text(''.join(json.dumps(r)+'\n' for r in rows))
+            self.assertEqual(list(iter_audit_records(p)), rows)
+            p.write_text(json.dumps(header())+'\n')
+            with self.assertRaisesRegex(ValueError, 'missing_footer'):
+                list(iter_audit_records(p))
+            p.write_text(json.dumps(header()))
+            with self.assertRaisesRegex(ValueError, 'truncated'):
+                list(iter_audit_records(p))
 
     @unittest.skipUnless(importlib.util.find_spec('onnx') and importlib.util.find_spec('onnxruntime'), 'optional ONNX dependencies absent')
     def test_cpu_replay_and_action_mismatch(self):

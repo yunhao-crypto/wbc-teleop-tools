@@ -151,7 +151,10 @@ class CaptureSchedulingTests(unittest.TestCase):
                       patch.object(worker.subprocess,'Popen',return_value=service),
                       patch.object(pico_input,'create_pico_source',return_value=source) as factory):
                     worker._capture(tmp,config,None,None,None,commands,output,stop)
-                header=json.loads(next((Path(tmp)/'outputs').glob('actor_pico_gmr_input_*.jsonl')).read_text())
+                rows=[json.loads(line) for line in next((Path(tmp)/'outputs').glob('actor_pico_gmr_input_*.jsonl')).read_text().splitlines()]
+                header=rows[0]
+                self.assertEqual(rows[-1]['record_type'],'footer')
+                self.assertEqual(rows[-1]['complete_scope'],'accepted_records_drained')
                 self.assertEqual(seen,dict(sdk=cpus,gmr=[cpus[0]]))
                 self.assertEqual(header['worker_affinity'],cpus)
                 self.assertEqual(header['gmr_affinity'],[cpus[0]])
@@ -202,7 +205,9 @@ class PlaybackTests(unittest.TestCase):
             reader_realtime_ns=123,reader_monotonic_ns=1_000_000_000),(1.,0.,0.,0.))
         self.assertEqual(capture.getvalue(),'')
         worker.flush_log()
-        row=json.loads(capture.getvalue())
+        self.assertTrue(worker.source_log.close(timeout=1.)['complete'])
+        rows=[json.loads(line) for line in capture.getvalue().splitlines()]
+        row=next(row for row in rows if row['record_type']=='gmr_frame')
         self.assertEqual(row['reader_frame_sequence'],42)
         self.assertEqual(row['reader_realtime_ns'],123)
         self.assertLessEqual(row['gmr_start_monotonic'],row['gmr_end_monotonic'])
