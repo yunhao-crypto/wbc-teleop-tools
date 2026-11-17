@@ -1,0 +1,7 @@
+{
+  "iteration": 45000,
+  "samples": 12,
+  "max_abs_onnx_error": 6.67572021484375e-06,
+  "onnx_sha256": "8a6e5e6ad3e493042e0ba8a754358dc6effdf24bd464c7ab243f0a3145457395",
+  "hardware_tested": false
+}

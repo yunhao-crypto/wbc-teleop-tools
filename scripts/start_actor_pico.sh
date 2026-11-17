@@ -1,21 +1,21 @@
 #!/usr/bin/env bash
 set -euo pipefail
 ROOT=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
-USAGE='Usage: start_actor_pico.sh [sonic|supermimic|mimiclite] [connect|check|replay|motion-check|state-check|shadow|configure|live|auto] [options] [--no-camera] [--camera-topic TOPIC]'
+USAGE='Usage: start_actor_pico.sh [sonic|supermimic|supermimic_op3|mimiclite] [connect|check|replay|motion-check|state-check|shadow|configure|live|auto] [options] [--no-camera] [--camera-topic TOPIC]'
 # The actor policy is always an explicit choice: a positional name, --policy,
 # or the interactive menu. There is no default and no substitute policy.
 POLICY=
 choose_policy() {
   case "$1" in
-    sonic|supermimic|mimiclite) ;;
-    *) echo "Unknown policy '$1'; choose sonic, supermimic or mimiclite. $USAGE" >&2; exit 2 ;;
+    sonic|supermimic|supermimic_op3|mimiclite) ;;
+    *) echo "Unknown policy '$1'; choose sonic, supermimic, supermimic_op3 or mimiclite. $USAGE" >&2; exit 2 ;;
   esac
   if [[ -n "$POLICY" && "$POLICY" != "$1" ]]; then
     echo "Conflicting policy selections: $POLICY and $1; nothing started." >&2; exit 2
   fi
   POLICY=$1
 }
-if [[ "${1:-}" == sonic || "${1:-}" == supermimic || "${1:-}" == mimiclite ]]; then
+if [[ "${1:-}" == sonic || "${1:-}" == supermimic || "${1:-}" == supermimic_op3 || "${1:-}" == mimiclite ]]; then
   choose_policy "$1"; shift
 fi
 if [[ "${1:-}" == --help || "${1:-}" == -h ]]; then
@@ -30,7 +30,7 @@ case "$MODE" in
   connect|auto|check|replay|motion-check|state-check|shadow|live|configure) shift ;;
   *) echo "$USAGE" >&2; exit 2 ;;
 esac
-if [[ "${1:-}" == sonic || "${1:-}" == supermimic || "${1:-}" == mimiclite ]]; then
+if [[ "${1:-}" == sonic || "${1:-}" == supermimic || "${1:-}" == supermimic_op3 || "${1:-}" == mimiclite ]]; then
   choose_policy "$1"; shift
 fi
 HELP=0
@@ -42,7 +42,7 @@ while (( $# )); do
     --motion-config) (( $# >= 2 )) || { echo '--motion-config requires a path' >&2; exit 2; }
               FILE_REFERENCE=1; REST+=("$1" "$2"); shift 2 ;;
     --motion-config=*) FILE_REFERENCE=1; REST+=("$1"); shift ;;
-    --policy) (( $# >= 2 )) || { echo '--policy requires sonic, supermimic or mimiclite' >&2; exit 2; }
+    --policy) (( $# >= 2 )) || { echo '--policy requires sonic, supermimic, supermimic_op3 or mimiclite' >&2; exit 2; }
               choose_policy "$2"; shift 2 ;;
     --policy=*) choose_policy "${1#--policy=}"; shift ;;
     --no-camera) CAMERA_OPTIONS+=("$1"); shift ;;
@@ -66,11 +66,13 @@ if [[ "$MODE" != configure && "$MODE" != connect && $HELP == 0 && -z "$POLICY" ]
       echo '  1) sonic       GR00T G1 actor     config/actor_pico.json'
       echo '  2) supermimic  SuperMimic actor   config/actor_pico_supermimic.json'
       echo '  3) mimiclite   MimicLite actor    config/actor_pico_mimiclite.json'
+      echo '  4) supermimic_op3  Official OP3 actor'
     } >&2
-    read -r -p 'Policy [1/2/3]: ' answer || answer=
+    read -r -p 'Policy [1/2/3/4]: ' answer || answer=
     case "$answer" in
       1|sonic) POLICY=sonic ;;
       2|supermimic) POLICY=supermimic ;;
+      4|supermimic_op3) POLICY=supermimic_op3 ;;
       3|mimiclite) POLICY=mimiclite ;;
       *) echo 'No policy selected; nothing started.' >&2; exit 2 ;;
     esac

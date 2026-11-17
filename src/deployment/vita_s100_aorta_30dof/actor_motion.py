@@ -57,6 +57,7 @@ def load_motion(runtime, config_path):
     if cfg.get('sha256') is not None and cfg['sha256'] != sha:
         raise ValueError('Fixed-motion SHA256 mismatch')
     c, m = runtime.model.contract, runtime.math
+    native = None
     with np.load(path, allow_pickle=False) as f:
         raw_names = np.asarray(f['joint_names'])
         if raw_names.ndim != 1 or raw_names.dtype.kind not in 'US':
@@ -100,7 +101,15 @@ def load_motion(runtime, config_path):
         if ((base_keys.intersection(keys) and not base_keys <= keys)
                 or (body_keys.intersection(keys) and not body_keys <= keys)):
             raise ValueError('Incomplete root position/quaternion pair')
-        if base_keys <= keys and not body_keys.intersection(keys):
+        op3_keys = {'root_pos_w', 'root_quat_w'}
+        if getattr(c, 'policy_kind', '') == 'supermimic_op3_tracking' and op3_keys.intersection(keys):
+            if not op3_keys <= keys or (base_keys | body_keys).intersection(keys):
+                raise ValueError('Incomplete or ambiguous OP3 root arrays')
+            from .actor_supermimic_op3 import load_native_motion
+            native = load_native_motion(path, c, m)
+            base, quat = native.base, native.quat
+            layout = 'op3_root'
+        elif base_keys <= keys and not body_keys.intersection(keys):
             base, quat = _finite(f['base_pos_w'], 'base_pos_w'), _finite(f['base_quat_w'], 'base_quat_w')
             layout = 'base'
         elif body_keys <= keys:
@@ -147,6 +156,8 @@ def load_motion(runtime, config_path):
                    for i,j in np.argwhere(projected != q)]
     if corrections and qd is not None and getattr(c, 'deployment', {}).get('observation_schema') == 'mimic_lite.motor_observation.v2':
         raise ValueError('Cannot project v2 reference positions while preserving explicit velocities; provide a coherent projected trajectory')
+    if native is not None and corrections:
+        raise ValueError('Native OP3 reference cannot be projected without invalidating recorded linkage rates')
     q = projected  # Reference-only projection; command/firmware bounds remain unchanged.
     duration = (len(q)-1)/fps
     count = int(math.ceil(duration/c.period-1e-9))+1
@@ -176,6 +187,9 @@ def load_motion(runtime, config_path):
             rotations.append(m.slerp(src.quat[i], src.quat[i+1], (t-times[i])*fps))
     bp[:, :2] -= bp[0, :2].copy()  # Remove the world origin; retain relative translation.
     motion = m.Motion(qp, bp, rotations)
+    if native is not None:
+        motion.op3_joint_names = native.op3_joint_names
+        motion.op3_joint_pos, motion.op3_joint_vel = native.op3_joint_pos, native.op3_joint_vel
     if qdp is not None:
         # SDK Motion remains the old API; this optional explicit virtual-joint
         # rate channel is consumed by MimicLite and converted through its ankle
@@ -189,7 +203,7 @@ def load_motion(runtime, config_path):
         root_body_index=root_index if layout.startswith('body') else None,
         limit_projection_max_rad=projection, limit_corrections=corrections,
         joint_space='virtual_pitch_roll', quaternion_order='wxyz',
-        source_control_space=source_control_space,
+        source_control_space=source_control_space, native_rates_preserved=native is not None,
         velocity_source=('explicit_npz_virtual_rad_s' if qd is not None else
                          'dense_source_derivative' if qdp is not None else 'legacy_unspecified'),
         velocity_units='rad/s',
@@ -230,6 +244,14 @@ class FixedMotion:
         if hasattr(prepared, 'joint_vel'):
             self.prepared.joint_vel = np.concatenate((np.asarray(prepared.joint_vel, dtype=np.float64),
                                                      np.zeros((padding, prepared.q.shape[1]))), axis=0)
+        if hasattr(self.motion, 'op3_joint_pos'):
+            from .actor_supermimic_op3 import native_reference
+            rates = np.gradient(self.prepared.q, c.period, axis=0)
+            pos, vel = native_reference(self.prepared.q, rates, c)
+            clip = slice(self.lead_frames, self.lead_frames+len(self.motion.q))
+            pos[clip], vel[clip] = self.motion.op3_joint_pos, self.motion.op3_joint_vel
+            self.prepared.op3_joint_names = c.reference_names
+            self.prepared.op3_joint_pos, self.prepared.op3_joint_vel = pos, vel
         self.yaw_offset = m.yaw(root)
         self.tick = 0
 
@@ -248,6 +270,9 @@ class FixedMotion:
         window = r.math.Motion(p.q[lo:hi], p.base[lo:hi], p.quat[lo:hi])
         if hasattr(p, 'joint_vel'):
             window.joint_vel = np.asarray(p.joint_vel[lo:hi], dtype=np.float64)
+        if hasattr(p, 'op3_joint_pos'):
+            window.op3_joint_names = p.op3_joint_names
+            window.op3_joint_pos, window.op3_joint_vel = p.op3_joint_pos[lo:hi], p.op3_joint_vel[lo:hi]
         return window, (self.tick-lo)*r.model.contract.period
 
     def infer(self, *, q, dq, root, gyro):

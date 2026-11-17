@@ -87,6 +87,8 @@ def runtime_inputs(root, variant):
                      and '__pycache__' not in p.parts)
     names.update(('third_party/motion_stream_bridge/GMR-LICENSE',
                   'third_party/pico_binding/LICENSE', 'third_party/double-conversion/LICENSE'))
+    names.update(('third_party/supermimic/LICENSE', 'third_party/supermimic/NOTICE',
+                  'artifacts/supermimic_op3/actor.contract.json'))
     names.update(item['path'] for item in ARCHIVES)
     external = []
     for policy, name in POLICY_CONFIGS.items():

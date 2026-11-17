@@ -1296,3 +1296,88 @@ Physical travel limits, finite-value checks, gains, adapter effort caps,
 watchdog/interpolation, ownership and checked exit remain in place. Removing
 an extra Python gate restores this contract; hardware stability still requires
 an attended motion trial.
+
+## Official SuperMimic OP3 (GenCoord)
+
+Use **`--policy supermimic_op3`** / `start_actor_pico.sh supermimic_op3 check`.
+The existing `supermimic` selection remains the trackerlab actor. Their weights,
+observations and reference protocols are incompatible; do not swap their files.
+The new config pins the evaluated official **45,000-iteration** checkpoint.
+
+The adapter consumes virtual Body31 feedback and emits native Achilles A/B
+motor setpoints. EXTERNAL must use `ankle_command_space: motor_theta` and
+`ankle_virtual_pd_intent: false`; the existing robot configuration checks still
+apply. Motor targets must not go through ankle IK a second time. Actions and
+PD setpoints are unclipped, matching this training run; physical travel and
+robot-side effort limits remain separate from those setpoints.
+
+The single-input ONNX contains the actor and its normalizers only:
+
+- Input: 1×1760 float32. Ten term-major history frames of gravity (3), body
+  gyro (3), motor position relative to default (28), motor velocity (28), and
+  previous action (28), followed by the 860-dimensional goal.
+- Goal: ten `[q40, qd40]` frames, then ten relative root rotations (first two
+  matrix columns, row-major). Offsets are 0, 5, …, 45 at 50 Hz. Rotations are
+  relative to the actual robot root, including the calibrated reference yaw.
+- Output: 1×28 float32 native motor actions in the contract's named order.
+- Reset repeats the first observed frame. End-of-clip references clamp both
+  positions and recorded velocities to the final frame, matching training.
+
+Pico uses one past frame and one derivative tail: **0.92 s intentional reference
+lag**, plus the configured playback margin. Startup requires 0.94 s of samples.
+This is not the old 0.22 s reference delay. Existing stream-age checks measure
+freshness of incoming data, independently of that intentional lag. Streaming
+28-joint references use central/one-sided virtual gradients and reconstruct all
+40 closed-linkage coordinates and rates. Impossible linkage poses are rejected.
+Native training NPZ replay instead preserves its recorded 40-joint rates via
+`actor_supermimic_op3.load_native_motion`; it requires the exact joint order and
+50 Hz and checks linkage closure.
+
+Export on the training host (trusted committed full checkpoint directory):
+
+```bash
+/path/to/supermimic/.venv/bin/python scripts/export_supermimic_op3.py \
+  --supermimic-repo /path/to/supermimic \
+  --checkpoint /path/to/checkpoint_00045000
+/path/to/supermimic/.venv/bin/python scripts/check_supermimic_op3.py \
+  --supermimic-repo /path/to/supermimic \
+  --checkpoint /path/to/checkpoint_00045000
+```
+
+The host needs ONNX Runtime in addition to training dependencies. Do not install
+ARM wheels on the host or modify a running training environment. The exporter
+writes `artifacts/supermimic_op3/actor.onnx`, contract/validation sidecars and the
+hash-pinned config. Like the other actors, the ONNX is an **external resource**,
+not a Git blob. Transfer that exact file separately. On this branch, first build and extract
+a base offline package with `scripts/build_actor_delivery.py --variant base`;
+run the following from the extracted package root. Bootstrap verifies the hash:
+
+```bash
+python scripts/bootstrap_actor_s100.py --policy supermimic_op3 --model /path/to/actor.onnx
+scripts/start_actor_pico.sh supermimic_op3 check --steps 100
+```
+
+For simulation through the deployment adapter and decoded Body31 setpoints:
+
+```bash
+/path/to/supermimic/.venv/bin/python scripts/simulate_supermimic_op3.py \
+  --supermimic-repo /path/to/supermimic --motion /path/to/qualified-op3.npz \
+  --steps 474 --output outputs/op3-simulation.json
+```
+
+Validation reports in `artifacts/supermimic_op3/` describe host parity and a
+single-reference simulation smoke test, not broad policy robustness or S100
+performance. Hardware movement and S100 20 ms timing have not been tested.
+Build offline packages with `scripts/build_actor_delivery.py`; manifests are
+generated inside the package and are not committed on this branch.
+
+Fixed-file playback also accepts the official OP3 `root_pos_w/root_quat_w`
+NPZ layout. It preserves native joint rates through lead-in and bounded playback
+windows; generated lead-in and terminal hold segments use reconstructed rates.
+Files needing joint-limit projection are rejected on this native path, since
+projection would invalidate the recorded closed-linkage trajectory. Check a
+hash-pinned `vita_actor_motion_v1` config without creating a robot controller:
+
+```bash
+scripts/start_actor_motion.sh supermimic_op3 check --motion-config /path/to/motion.json
+```

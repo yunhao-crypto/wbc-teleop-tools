@@ -24,7 +24,8 @@ SCHEMA = 'vita_actor_s100_delivery_v2'
 TARGET = dict(os='Linux', architecture='aarch64', python='3.10', glibc_min='2.35')
 # Mirrors actor_pico_runtime.POLICY_CONFIGS; bootstrap runs before the venv exists.
 POLICY_CONFIGS = {'sonic': 'config/actor_pico.json', 'supermimic': 'config/actor_pico_supermimic.json',
-                  'mimiclite': 'config/actor_pico_mimiclite.json'}
+                  'mimiclite': 'config/actor_pico_mimiclite.json',
+                  'supermimic_op3': 'config/actor_pico_supermimic_op3.json'}
 
 
 def sha(path):

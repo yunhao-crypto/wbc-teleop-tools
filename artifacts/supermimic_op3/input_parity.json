@@ -1,0 +1,8 @@
+{
+  "linkage_cases": 100,
+  "observation_action_target_cases": 17,
+  "max_input_error": 3.725290298461914e-07,
+  "max_action_error": 6.67572021484375e-06,
+  "max_target_error": 1.4470307230229906e-06,
+  "hardware_tested": false
+}

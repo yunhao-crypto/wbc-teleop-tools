@@ -39,7 +39,7 @@ class PackageTests(unittest.TestCase):
                 self.assertEqual(manifest['source'], self.built[variant]['source'])
                 self.assertEqual(manifest['target']['architecture'], 'aarch64')
                 self.assertEqual({i['role'] for i in manifest['external_resources']},
-                    {'sonic_actor', 'supermimic_actor', 'mimiclite_actor'} |
+                    {'sonic_actor', 'supermimic_actor', 'mimiclite_actor', 'supermimic_op3_actor'} |
                     ({'planner', 'bridge'} if variant == 'planner' else set()))
 
     def test_mimiclite_readiness_is_explicit_and_legacy_adapter_is_absent(self):
@@ -51,6 +51,9 @@ class PackageTests(unittest.TestCase):
             module=package/'src/deployment/vita_s100_aorta_30dof'
             self.assertTrue((module/'actor_mimiclite.py').is_file())
             self.assertFalse((module/'actor_morphmimic.py').exists())
+            self.assertTrue((module/'actor_supermimic_op3.py').is_file())
+            self.assertTrue((package/'artifacts/supermimic_op3/actor.contract.json').is_file())
+            self.assertTrue((package/'third_party/supermimic/LICENSE').is_file())
             self.assertFalse((package/'config/actor_pico_morphmimic.json').exists())
             if not ready:
                 self.assertIsNone(model['sha256']);self.assertIsNone(model['bytes'])

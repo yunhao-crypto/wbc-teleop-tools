@@ -343,7 +343,7 @@ class SuperMimicReference:
     at a control-clock time, which needs ``history_s`` of extra samples.
     """
     def __init__(self, contract, math_api, *, past_frames, tail_frames, capacity=1024, history_s=0.):
-        if getattr(contract, 'policy_kind', '') not in (POLICY_KIND, 'mimiclite_vita02a_tracking') or capacity < 3 or not 0 <= history_s <= 2:
+        if getattr(contract, 'policy_kind', '') not in (POLICY_KIND, 'supermimic_op3_tracking', 'mimiclite_vita02a_tracking') or capacity < 3 or not 0 <= history_s <= 2:
             raise ValueError('Invalid SuperMimic reference settings')
         self.contract, self.math = contract, math_api
         self.samples = deque(maxlen=capacity)
@@ -431,6 +431,12 @@ def reference_window(config):
 
 
 def create_policy(contract, profile, math_api, config):
+    if getattr(contract, 'policy_kind', '') == 'supermimic_op3_tracking':
+        from .actor_supermimic_op3 import policy_class as op3_policy
+        past, tail = reference_window(config)
+        if past < 1 or tail < 1:
+            raise ValueError('OP3 streaming needs a past frame and derivative tail')
+        return op3_policy(math_api)(contract, profile)
     if getattr(contract, 'policy_kind', '') == 'mimiclite_vita02a_tracking':
         from .actor_mimiclite import policy_class as mimic_policy
         return mimic_policy(math_api)(contract, profile)
@@ -449,8 +455,10 @@ def create_reference(contract, math_api, config):
     if getattr(contract, 'policy_kind', '') == 'mimiclite_vita02a_tracking':
         from .actor_mimiclite import create_reference as mimic_reference
         return mimic_reference(contract, math_api, config)
-    if not is_supermimic(contract):
+    if not is_supermimic(contract) and getattr(contract, 'policy_kind', '') != 'supermimic_op3_tracking':
         from .actor_pico_reference import CausalActorReference
         return CausalActorReference(contract, math_api, history_s=history)
     past, tail = reference_window(config)
+    if getattr(contract, 'policy_kind', '') == 'supermimic_op3_tracking' and (past < 1 or tail < 1):
+        raise ValueError('OP3 streaming needs a past frame and derivative tail')
     return SuperMimicReference(contract, math_api, past_frames=past, tail_frames=tail, history_s=history)
