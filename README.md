@@ -49,6 +49,11 @@ XRT 连接、全身追踪准备与 A+B+X+Y 四键视角切换。安装 APK 不�
 不会伪造权重、沿用 MorphMimic 模型或回退其他策略。
 详见 [MimicLite 部署与验证边界](README_MIMICLITE.md)。
 
+已安装 native MimicLite 的机器人使用
+`bash scripts/start_mimiclite_native.sh --model knee-reg2000`；此入口调用独立
+native 部署包，由 locomotion 推理。模型选择、路径和只读 `--plan` 用法见
+[native 启动说明](README_MIMICLITE.md#native-locomotion-actor-entry)。
+
 ## 固定 NPZ 动作评测
 
 新增 `scripts/start_actor_motion.sh`，共用一个参考动作文件，由所选策略生成自己的 observation。

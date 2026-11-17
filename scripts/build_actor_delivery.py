@@ -25,7 +25,7 @@ ARCHIVES = [
                                                     'libdouble-conversion.so.3']),
 ]
 SCRIPTS = ('actor_pico.py', 'bootstrap_actor_s100.py', 'configure_actor_s100.py',
-           'start_actor_pico.sh', 'start_actor_motion.sh', 'prepare_zenoh_session.py',
+           'start_actor_pico.sh', 'start_actor_motion.sh', 'start_mimiclite_native.sh', 'prepare_zenoh_session.py',
            'pico_session_services.py', 'pico_camera_bridge.py', 'build_pico_arm64.sh',
            'prepare_external_ankle_config.py', 'import_actor_motion.py',
            'audit_actor_control.py', 'compare_actor_control.py', 'actor_control_shadow.py',

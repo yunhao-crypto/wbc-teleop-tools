@@ -13,6 +13,43 @@ checks and controlled SDK-versus-exec comparison, see
 [README_ACTOR_CONTROL_AUDIT.md](README_ACTOR_CONTROL_AUDIT.md). These tools never
 start robot motion; the native-exec implementation remains external.
 
+## Native locomotion actor entry
+
+For a robot with the separate native MimicLite deployment already installed:
+
+```bash
+# Read-only command preview; works without a robot or native package:
+bash scripts/start_mimiclite_native.sh --model knee-reg2000 --plan
+# On the prepared robot67, explicitly start its installed native package:
+bash scripts/start_mimiclite_native.sh --model knee-reg2000
+```
+
+This WTT entry calls the installed package's `start.sh`. Actor inference and
+history run in locomotion; the native package's Python process supplies Pico/GMR
+references. The native implementation, build/tests, profiles and installation
+tools remain in [vita-robot's native deployment guide](https://github.com/VitaDynamics/vita-robot/blob/feat/mimiclite-native-robot67-20261117/src/application/locomotion/humanoid/tools/MIMICLITE_NATIVE.md).
+The WTT entry is included in both base and planner delivery packages; native
+binaries, models and device configuration are separate prerequisites.
+
+`student2000` (the default here) means the **1224-input hist10 v2** native model,
+not this branch's pinned original 814-input WTT model. `student2000` and
+`knee-reg1000` use `/userdata/mimiclite_native_20261117`; `knee-reg2000` uses
+`/userdata/mimiclite_knee_reg2000_20261117`. These defaults describe the current
+robot67 installation. Use `--native-root /absolute/path` for a different reviewed
+installation; its matching `start.sh`, `contract_MODEL.json` and `MODEL.onnx`
+must exist. An incomplete installation is refused before invoking the package.
+
+Pico following is the native package's default. `--stand-only` omits Pico;
+`--motion /absolute/path/reference.npz` selects fixed NPZ; `--seconds 0` runs
+until Ctrl-C. After stand preparation, release then press both triggers to toggle
+following; Ctrl-C requests PASSIVE through the installed launcher. The existing
+native package keeps its operator lock, ownership/posture/freshness guards,
+planner/camera-off settings and recording location. This wrapper does not
+reconfigure/restart locomotion, change WTT's pinned model or provide a Python
+actor fallback. The earlier WTT inference path remains
+`start_actor_pico.sh mimiclite`; native startup requires matching native firmware
+on the target.
+
 ## 1. Export a real matching policy
 
 Use the MimicLite OP3 training-side `scripts/play.py` export with the exact
