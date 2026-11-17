@@ -113,6 +113,8 @@ class ReferenceStream:
             else:
                 motion = reference.motion()
                 snapshot.update(state='ready', q=motion.q, base=motion.base, quat=motion.quat)
+                if hasattr(motion, 'joint_vel'):
+                    snapshot['joint_vel'] = motion.joint_vel
         return snapshot
 
     def flush_log(self):

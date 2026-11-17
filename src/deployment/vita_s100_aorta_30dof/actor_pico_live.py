@@ -17,6 +17,7 @@ import time
 import numpy as np
 
 from .actor_parallel_ankle import command_space
+from .actor_motion import lead_in_with_velocity
 
 STATE_AGE = .1
 STATUS_AGE = .5
@@ -524,6 +525,11 @@ def manual_reference(runtime, snapshot, now):
                                                       runtime.stream.playback_margin_s)
     else:
         motion = runtime.math.Motion(snapshot['q'], snapshot['base'], snapshot['quat'])
+        if snapshot.get('joint_vel') is not None:
+            rates = np.asarray(snapshot['joint_vel'], dtype=float)
+            if rates.shape != motion.q.shape or not np.isfinite(rates).all():
+                raise ValueError('Pico reference joint_vel must match joint positions')
+            motion.joint_vel = rates.copy()
     if len(motion.q) != runtime.reference.steps:
         raise ValueError('Pico worker reference window length differs from model')
     return motion, dict(pico_age_s=age, reference_delay_s=runtime.reference.delay,
@@ -690,7 +696,8 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
                     q=q, dq=dq, root=root, gyro=gyro)
             else:
                 motion = runtime.hold_motion()
-                motion = motion.lead_in(q, root, runtime.config['body_profile']['lead_in'])
+                motion = lead_in_with_velocity(motion, q, root,
+                    runtime.config['body_profile']['lead_in'], runtime.model.contract.period)
                 command, obs, row = runtime.infer_motion_command(motion,
                     q=q, dq=dq, root=root, gyro=gyro, yaw_offset=runtime.math.yaw(root))
             envelope.check(command)
@@ -757,8 +764,8 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
             # earlier passive snapshot, and still before requesting EXTERNAL.
             runtime.reset_inputs()
             begin = clock.monotonic()
-            lead = runtime.hold_motion().lead_in(
-                q, root, runtime.config['body_profile']['lead_in'])
+            lead = lead_in_with_velocity(runtime.hold_motion(),
+                q, root, runtime.config['body_profile']['lead_in'], runtime.model.contract.period)
             command, obs, row = runtime.infer_motion_command(lead,q=q,dq=dq,root=root,gyro=gyro,
                                                             yaw_offset=runtime.math.yaw(root))
             model_elapsed = clock.monotonic()-begin
@@ -820,8 +827,8 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
             startup.check_hardware_pose(envelope,state)
         if not auto:
             envelope.check_measured_pose(state)
-        lead = runtime.hold_motion().lead_in(
-            q, root, runtime.config['body_profile']['lead_in'])
+        lead = lead_in_with_velocity(runtime.hold_motion(),
+            q, root, runtime.config['body_profile']['lead_in'], runtime.model.contract.period)
         offset = runtime.math.yaw(root)
         preparation = max(3., (len(lead.q)-1)*runtime.model.contract.period)
         start = deadline = clock.monotonic()
@@ -889,7 +896,8 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
             # terminal worker snapshot must not keep failing Inputs.read().
             # Manual re-engagement reads its separate manual_pico source.
             inputs.pico = None
-            lead = runtime.hold_motion().lead_in(q, root, runtime.config['body_profile']['lead_in'])
+            lead = lead_in_with_velocity(runtime.hold_motion(), q, root,
+                runtime.config['body_profile']['lead_in'], runtime.model.contract.period)
             offset = runtime.math.yaw(root)
             stand_tick = 0
             preparation = max(.3, (len(lead.q)-1)*runtime.model.contract.period)
@@ -1082,8 +1090,9 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
                         stand_target=runtime.math.Motion(stand_target.q.copy(),stand_target.base.copy(),stand_target.quat.copy())
                         slots=modes.upper_follow.slots
                         stand_target.q[:,slots]=transition_q[slots]
-                    lead = stand_target.lead_in(
-                        transition_q,transition_root,runtime.config['body_profile']['lead_in'])
+                        stand_target.joint_vel=np.zeros_like(stand_target.q)
+                    lead = lead_in_with_velocity(stand_target,
+                        transition_q,transition_root,runtime.config['body_profile']['lead_in'],runtime.model.contract.period)
                     offset = runtime.math.yaw(transition_root)
                     if modes is not None:modes.paused()
                     stand_tick = 0

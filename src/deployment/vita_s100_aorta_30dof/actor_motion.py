@@ -211,6 +211,28 @@ def load_motion(runtime, config_path):
         source_duration_s=duration, end_hold_s=hold))
 
 
+def lead_in_with_velocity(motion, q, root, config, period):
+    """Preserve explicit source rates across the SDK's pose-only lead-in.
+
+    Only the newly generated dense transition is differentiated. Source
+    velocities retain their original contract; missing rates remain missing.
+    """
+    prepared = motion.lead_in(q, root, config)
+    source_velocity = getattr(motion, 'joint_vel', None)
+    if source_velocity is not None:
+        source_velocity = _finite(source_velocity, 'joint_vel')
+        if source_velocity.shape != motion.q.shape:
+            raise ValueError('Motion joint_vel must match joint positions')
+        if not math.isfinite(period) or period <= 0:
+            raise ValueError('Invalid lead-in reference period')
+        lead_frames = len(prepared.q)-len(motion.q)
+        lead = np.asarray(prepared.q[:lead_frames+1], dtype=float)
+        lead_velocity = (np.gradient(lead, period, axis=0, edge_order=1)[:lead_frames]
+                         if lead_frames else np.empty((0, motion.q.shape[1])))
+        prepared.joint_vel = np.concatenate((lead_velocity, source_velocity), axis=0)
+    return prepared
+
+
 class FixedMotion:
     def __init__(self, runtime, motion, end_hold_s, metadata):
         self.runtime, self.motion, self.end_hold_s, self.metadata = runtime, motion, end_hold_s, metadata
@@ -219,16 +241,9 @@ class FixedMotion:
 
     def begin(self, q, root):
         r, c, m = self.runtime, self.runtime.model.contract, self.runtime.math
-        prepared = self.motion.lead_in(q, root, r.config['body_profile']['lead_in'])
+        prepared = lead_in_with_velocity(self.motion, q, root,
+                                          r.config['body_profile']['lead_in'], c.period)
         self.lead_frames = len(prepared.q)-len(self.motion.q)
-        source_velocity = getattr(self.motion, 'joint_vel', None)
-        if source_velocity is not None:
-            # Differentiate the actual dense lead-in trajectory, not a sparse
-            # window; retain the source's explicit velocity on source frames.
-            lead = np.asarray(prepared.q[:self.lead_frames+1], dtype=float)
-            lead_velocity = (np.gradient(lead, c.period, axis=0, edge_order=1)[:self.lead_frames]
-                             if self.lead_frames else np.empty((0, self.motion.q.shape[1])))
-            prepared.joint_vel = np.concatenate((lead_velocity, np.asarray(source_velocity, dtype=float)), axis=0)
         # MimicLite consumes absolute reference base_link height. Blend it from
         # the model's stand height, as well as blending measured joint angles.
         if hasattr(c, 'nominal_root_height') and self.lead_frames:
