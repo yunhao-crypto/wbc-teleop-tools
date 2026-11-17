@@ -27,8 +27,11 @@ GEOMETRY = dict(lx=.05, ly=.02175, z_top=.31, z_bot=.235)
 MOTOR_LIMITS = (-.95975, .61075)
 ALIASES = {f'{s}_{b}_achilles_joint': f'{s}_ankle_{a}_joint'
            for s in ('left', 'right') for a, b in (('pitch', 'A'), ('roll', 'B'))}
+OBSERVATION_SCHEMA_V1 = 'mimic_lite.motor_observation.v1'
+OBSERVATION_SCHEMA_V2 = 'mimic_lite.motor_observation.v2'
 COMMAND_KINDS = {'ref_body_pos_future_local': 3, 'ref_root_ori_future_b': 6,
                  'ref_joint_pos_future': 28}
+COMMAND_KINDS_V2 = {**COMMAND_KINDS, 'ref_joint_vel_future': 28}
 HISTORY_KINDS = {'root_ang_vel_history': 3, 'projected_gravity_history': 3,
                  'joint_pos_history': 28, 'joint_vel_history': 28}
 
@@ -105,12 +108,16 @@ def validate_deployment(block):
             or any(type(v) is not int or not -64 <= v <= 64 for v in future)
             or future != sorted(set(future))):
         raise ValueError('Invalid MimicLite future offsets')
+    schema = d.get('observation_schema', OBSERVATION_SCHEMA_V1)
+    if schema not in (OBSERVATION_SCHEMA_V1, OBSERVATION_SCHEMA_V2):
+        raise ValueError('Unknown MimicLite observation_schema: '+repr(schema))
     observations = d.get('observations', {})
     if not isinstance(observations, dict) or set(observations) != {'command', 'policy'}:
         raise ValueError('MimicLite deploy must have command/policy inputs, not privileged teacher inputs')
     widths = {}
     for group, terms in observations.items():
-        expected = set(COMMAND_KINDS) if group == 'command' else set(HISTORY_KINDS) | {'prev_actions'}
+        command_kinds = COMMAND_KINDS_V2 if schema == OBSERVATION_SCHEMA_V2 else COMMAND_KINDS
+        expected = set(command_kinds) if group == 'command' else set(HISTORY_KINDS) | {'prev_actions'}
         if (not isinstance(terms, list) or len(terms) != len(expected)
                 or any(not isinstance(t, dict) or not isinstance(t.get('kind'), str) for t in terms)
                 or {t['kind'] for t in terms} != expected):
@@ -118,13 +125,21 @@ def validate_deployment(block):
         width = 0
         for term in terms:
             kind = term['kind']
-            if kind in COMMAND_KINDS:
+            if kind in command_kinds:
                 ids = _indices(term.get('future_indices'), len(future)-1, 'reference indices')
-                size = len(ids)*COMMAND_KINDS[kind]
+                if schema == OBSERVATION_SCHEMA_V2 and len(ids) != 8:
+                    raise ValueError('MimicLite v2 command terms require eight reference frames')
+                size = len(ids)*command_kinds[kind]
             elif kind in HISTORY_KINDS:
                 offsets = _indices(term.get('history_steps'), 128, 'history offsets')
                 if offsets != sorted(offsets) or offsets[0] != 0:
                     raise ValueError('MimicLite histories must start with the current frame')
+                if schema == OBSERVATION_SCHEMA_V2 and offsets != list(range(10)):
+                    raise ValueError('MimicLite v2 sensor histories must be [0..9]')
+                if schema == OBSERVATION_SCHEMA_V2 and kind == 'joint_pos_history' and term.get('relative_to_default') is not True:
+                    raise ValueError('MimicLite v2 joint_pos_history must set relative_to_default=true')
+                if schema == OBSERVATION_SCHEMA_V1 and 'relative_to_default' in term:
+                    raise ValueError('relative_to_default is only valid for MimicLite v2')
                 size = len(offsets)*HISTORY_KINDS[kind]
                 if kind.startswith('joint_') and (not isinstance(term.get('joint_names'), list)
                         or len(term['joint_names']) != 28
@@ -132,14 +147,26 @@ def validate_deployment(block):
                         or set(term['joint_names']) != set(names)):
                     raise ValueError('Invalid MimicLite history joint order')
             else:
+                if schema == OBSERVATION_SCHEMA_V2 and kind != 'prev_actions':
+                    raise ValueError('Unsupported MimicLite observation term: '+kind)
                 steps = term.get('steps')
                 if type(steps) is not int or not 1 <= steps <= 16:
                     raise ValueError('Invalid MimicLite previous-action history')
                 size = 28*steps
-            if type(term.get('size')) is not int or term['size'] != size:
+            if (type(term.get('size')) is not int or term['size'] != size
+                    or ('width' in term and (type(term['width']) is not int or term['width'] != size))):
                 raise ValueError('MimicLite observation size disagrees with its semantics')
             width += size
         widths[group] = width
+    if schema == OBSERVATION_SCHEMA_V2:
+        if widths != {'command': 520, 'policy': 704}:
+            raise ValueError('MimicLite v2 dimensions must resolve to command=520, policy=704, total=1224')
+        command_terms = {t['kind']: t for t in observations['command']}
+        if command_terms['ref_joint_vel_future'].get('future_indices') != command_terms['ref_joint_pos_future'].get('future_indices'):
+            raise ValueError('MimicLite v2 reference velocity indices must equal position indices')
+        actions = next(t for t in observations['policy'] if t['kind'] == 'prev_actions')
+        if actions.get('steps') != 3:
+            raise ValueError('MimicLite v2 prev_actions must use steps=3')
     return d, widths
 
 
@@ -233,6 +260,19 @@ def checked_reference(ankle, q):
     return motor
 
 
+def _projected_reference_yaw(wxyz):
+    """Training uses quat_rotate without normalizing float16 reference drift."""
+    q = np.asarray(wxyz, dtype=float)
+    if q.shape != (4,) or not np.isfinite(q).all() or abs(np.linalg.norm(q)-1) > 1e-3:
+        raise ValueError('Expected near-unit wxyz reference quaternion')
+    def rotate(v):
+        t = 2 * np.cross(q[1:], v)
+        return np.asarray(v) + q[0] * t + np.cross(q[1:], t)
+    x, z = rotate([1., 0., 0.]), rotate([0., 0., 1.])
+    heading = x[:2] if np.linalg.norm(x[:2]) > .1 else z[:2] * (1 if x[2] < 0 else -1)
+    return Rotation.from_euler('z', np.arctan2(heading[1], heading[0]))
+
+
 @functools.cache
 def policy_class(math_api):
     class MimicLitePolicy(serial_policy_class(math_api)):
@@ -251,7 +291,8 @@ def policy_class(math_api):
                                      if t['kind'] == 'prev_actions')
             self.previous_actions = np.zeros((self.action_steps, 28))
 
-        def observe(self, motion, ref_time, q, dq, quat, gyro, yaw_offset=0.):
+        def observe(self, motion, ref_time, q, dq, quat, gyro, yaw_offset=0.,
+                    reference_motor_q=None, reference_joint_velocity=None, reference=None):
             c, m = self.contract, math_api
             q, dq, gyro = m.finite(q, 'q'), m.finite(dq, 'dq'), m.finite(gyro, 'gyro')
             if q.shape != (28,) or dq.shape != (28,) or gyro.shape != (3,):
@@ -261,6 +302,9 @@ def policy_class(math_api):
             current = dict(root_ang_vel_history=gyro,
                 projected_gravity_history=rotation.inv().apply([0, 0, -1]),
                 joint_pos_history=c.ankle.to_policy(q), joint_vel_history=c.ankle.velocity_to_policy(q, dq))
+            # v2 follows MotorAngleInterface: measured motor q is relative to the
+            # named policy motor default, while reference q stays absolute.
+            schema = c.deployment.get('observation_schema', OBSERVATION_SCHEMA_V1)
             for kind, value in current.items():
                 old = self.signal_history.get(kind)
                 self.signal_history[kind] = (np.repeat(value[None], c.history_length, axis=0)
@@ -268,18 +312,81 @@ def policy_class(math_api):
             center_frame = int(round(ref_time/c.period))
             ids = np.clip(center_frame+np.asarray(c.deployment['future_steps']), 0, len(motion.q)-1)
             offset = m.yaw_quaternion(yaw_offset)
-            reference_rot = Rotation.from_quat(np.array([m.multiply(offset, motion.quat[i]) for i in ids])[:, [1, 2, 3, 0]])
-            reference_pos = np.asarray(motion.base[ids]) @ m.rotation(offset).T
+            if reference is not None and not isinstance(reference, dict):
+                raise ValueError('reference override must be a dict')
+            ref_quat = np.asarray(reference.get('root_quaternion', motion.quat[ids]) if reference else motion.quat[ids], dtype=float)
+            ref_pos = np.asarray(reference.get('root_position', motion.base[ids]) if reference else motion.base[ids], dtype=float)
+            if ref_quat.shape != (len(ids),4) or ref_pos.shape != (len(ids),3) or not np.isfinite(ref_quat).all() or not np.isfinite(ref_pos).all():
+                raise ValueError('Reference root arrays must match selected future frames')
+            if schema == OBSERVATION_SCHEMA_V2 and np.any(np.abs(np.linalg.norm(ref_quat,axis=-1)-1)>1e-3):
+                raise ValueError('Expected near-unit reference quaternions')
+            reference_quat = np.array([m.multiply(offset, value) for value in ref_quat])
+            reference_rot = Rotation.from_quat(reference_quat[:, [1, 2, 3, 0]])
+            reference_pos = ref_pos @ m.rotation(offset).T
             center = c.deployment['future_steps'].index(0)
             matrix = reference_rot[center].as_matrix()
             heading = matrix[:2, 0] if np.linalg.norm(matrix[:2, 0]) > .1 else matrix[:2, 2]*(1 if matrix[2, 0] < 0 else -1)
-            yaw = Rotation.from_euler('z', np.arctan2(heading[1], heading[0]))
+            yaw = (_projected_reference_yaw(reference_quat[center]) if schema == OBSERVATION_SCHEMA_V2
+                   else Rotation.from_euler('z', np.arctan2(heading[1], heading[0])))
             origin = reference_pos[center].copy(); origin[2] = 0.
             local = yaw.inv().apply(reference_pos-origin)
             orientation = (rotation.inv()*reference_rot).as_matrix()[:, :2, :]
-            motors = checked_reference(c.ankle, motion.q[ids])
+            if reference is not None:
+                if not isinstance(reference, dict):
+                    raise ValueError('reference parity override must be a dict')
+                if reference_motor_q is None:
+                    reference_motor_q = reference.get('joint_position', reference.get('motor_position'))
+                if reference_joint_velocity is None:
+                    reference_joint_velocity = reference.get('joint_velocity')
+                supplied_names = reference.get('joint_names')
+                if supplied_names is not None:
+                    if (not isinstance(supplied_names, (list,tuple)) or len(supplied_names)!=28
+                            or not all(isinstance(n,str) for n in supplied_names)
+                            or len(set(supplied_names))!=28 or set(supplied_names)!=set(c.motor_names)):
+                        raise ValueError('Invalid explicit reference joint_names')
+                    reorder = [supplied_names.index(n) for n in c.motor_names]
+                    if reference_motor_q is not None:
+                        value = np.asarray(reference_motor_q,dtype=float)
+                        if value.shape!=(len(ids),28):
+                            raise ValueError('Named reference_motor_q must be [future,28]')
+                        reference_motor_q = value[:,reorder]
+                    if reference_joint_velocity is not None:
+                        value = np.asarray(reference_joint_velocity,dtype=float)
+                        if value.shape!=(len(ids),28):
+                            raise ValueError('Named reference_joint_velocity must be [future,28]')
+                        reference_joint_velocity = value[:,reorder]
+            motors = (np.asarray(reference_motor_q, dtype=np.float64) if reference_motor_q is not None
+                      else checked_reference(c.ankle, motion.q[ids]))
+            if motors.shape != (len(ids), 28) or not np.isfinite(motors).all():
+                raise ValueError('reference_motor_q must be finite [future,28] motor radians')
+            if np.any(motors[:,c.ankle.slots] < MOTOR_LIMITS[0]-1e-7) or np.any(motors[:,c.ankle.slots] > MOTOR_LIMITS[1]+1e-7):
+                raise ValueError('MimicLite explicit reference exceeds coupled motor travel')
+            if reference_joint_velocity is None:
+                velocities = getattr(motion, 'joint_vel', None)
+                if velocities is None:
+                    # v2 never guesses from a bounded policy window.  Motion
+                    # loaders/live references must attach rates from the full
+                    # source timeline (or an explicit dense_derivative mode).
+                    if schema == OBSERVATION_SCHEMA_V2:
+                        raise ValueError('MimicLite v2 reference velocity is missing; provide explicit joint_velocity')
+                    # Legacy v1 compatibility remains deterministic for old
+                    # callers that supplied only pose samples.
+                    dense = np.asarray(motion.q, dtype=np.float64)
+                    if len(dense) < 2:
+                        velocities = np.zeros_like(dense)
+                    else:
+                        velocities = np.gradient(dense, c.period, axis=0, edge_order=1)
+                    velocities = c.ankle.velocity_to_policy(dense, velocities)
+                else:
+                    velocities = c.ankle.velocity_to_policy(np.asarray(motion.q, dtype=np.float64), velocities)
+                velocities = np.asarray(velocities, dtype=np.float64)[ids]
+            else:
+                velocities = np.asarray(reference_joint_velocity, dtype=np.float64)
+            if velocities.shape != (len(ids), 28) or not np.isfinite(velocities).all():
+                raise ValueError('reference_joint_velocity must be finite [future,28] motor rad/s')
             ref_order = [c.motor_names.index(n) for n in c.deployment['reference_joint_names']]
             motors = motors[:, ref_order]
+            velocities = velocities[:, ref_order]
             groups = []
             for group in c.input_groups:
                 parts = []
@@ -288,15 +395,23 @@ def policy_class(math_api):
                     if kind in current:
                         value = self.signal_history[kind][term['history_steps']]
                         if 'joint_names' in term:
-                            value = value[:, [c.motor_names.index(n) for n in term['joint_names']]]
+                            order = [c.motor_names.index(n) for n in term['joint_names']]
+                            value = value[:, order]
+                            if (schema == OBSERVATION_SCHEMA_V2 and kind == 'joint_pos_history'
+                                    and term.get('relative_to_default') is True):
+                                value = value - c.policy_default[order]
                     elif kind == 'prev_actions':
                         value = self.previous_actions[:term['steps']]
                     elif kind == 'ref_body_pos_future_local':
                         value = local[term['future_indices']]
                     elif kind == 'ref_root_ori_future_b':
                         value = orientation[term['future_indices']]
-                    else:
+                    elif kind == 'ref_joint_pos_future':
                         value = motors[term['future_indices']]
+                    elif kind == 'ref_joint_vel_future':
+                        value = velocities[term['future_indices']]
+                    else:
+                        raise ValueError('Unknown MimicLite observation term: '+kind)
                     parts.append(value.reshape(-1))
                 groups.append(np.concatenate(parts))
             observation = np.concatenate(groups).astype(np.float32)

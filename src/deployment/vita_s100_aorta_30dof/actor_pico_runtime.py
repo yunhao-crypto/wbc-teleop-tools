@@ -181,6 +181,9 @@ class ActorPicoRuntime:
         """Stand reference; MimicLite commands include absolute base_link height."""
         c = self.model.contract
         motion = self.math.Motion.hold(c.default)
+        # v2 has an explicit reference-velocity channel; a stand/hold is a
+        # constant pose, not an invitation to differentiate a one-frame clip.
+        motion.joint_vel = np.zeros_like(motion.q)
         if isinstance(c, MimicLiteContract):
             motion.base[:, 2] = c.nominal_root_height
         return motion
@@ -280,6 +283,7 @@ class ActorPicoRuntime:
             i, n = self.reference.current_index, len(motion.q)
             frame = lambda x: np.repeat(np.asarray(x)[i:i+1], n, axis=0)
             self.held_motion = self.math.Motion(frame(motion.q), frame(motion.base), frame(motion.quat))
+            self.held_motion.joint_vel = np.zeros_like(self.held_motion.q)
         return self.held_motion, True
 
     def infer_motion(self, motion, *, q, dq, root, gyro, diagnostics=None):

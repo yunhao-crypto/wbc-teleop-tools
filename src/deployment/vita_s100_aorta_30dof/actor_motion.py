@@ -33,10 +33,13 @@ def load_motion(runtime, config_path):
         config_path = runtime.root/config_path
     config_path = config_path.resolve()
     cfg = json.loads(config_path.read_text())
-    known = {'schema', 'path', 'sha256', 'root_body_index', 'end_hold_s', 'limit_projection_max_rad'}
+    known = {'schema', 'path', 'sha256', 'root_body_index', 'end_hold_s', 'limit_projection_max_rad',
+             'velocity_fallback'}
     if (cfg.get('schema') != 'vita_actor_motion_v1' or set(cfg)-known
             or not isinstance(cfg.get('path'), str) or not cfg['path']):
         raise ValueError('Invalid fixed-motion configuration')
+    if cfg.get('velocity_fallback') not in (None, 'dense_derivative'):
+        raise ValueError('Unsupported velocity_fallback; expected dense_derivative or omitted')
     root_index = cfg.get('root_body_index', 0)
     hold = cfg.get('end_hold_s', 1.)
     projection = cfg.get('limit_projection_max_rad', 1e-6)
@@ -75,12 +78,22 @@ def load_motion(runtime, config_path):
                 and str(np.asarray(f['root_body']).item()) != 'base_link'):
             raise ValueError('MimicLite references require base_link, not a waist anchor')
         raw_q = _finite(f['joint_pos'], 'joint_pos')
+        raw_qd = None
+        for velocity_key in ('joint_vel', 'joint_velocity'):
+            if velocity_key in f:
+                raw_qd = _finite(f[velocity_key], velocity_key)
+                break
+        if raw_qd is not None and (raw_qd.shape != raw_q.shape):
+            raise ValueError('Motion joint velocity shape must match joint_pos')
+        if getattr(c, 'deployment', {}).get('observation_schema') == 'mimic_lite.motor_observation.v2' and raw_qd is None and cfg.get('velocity_fallback') != 'dense_derivative':
+            raise ValueError('MimicLite v2 Motion needs joint_vel or explicit velocity_fallback=dense_derivative')
         if raw_q.ndim != 2 or raw_q.shape[1] != len(names) or not 1 <= len(raw_q) <= 180000:
             raise ValueError('Expected joint_pos [N,J], 1 <= N <= 180000')
         for name in set(names)-set(c.names):
             if name == 'waist_roll_joint' and np.any(np.abs(raw_q[:, names.index(name)]) > 1e-6):
                 raise ValueError('Nonzero waist_roll_joint cannot be represented by these 28-DOF policies')
         q = raw_q[:, [names.index(n) for n in c.names]]
+        qd = None if raw_qd is None else raw_qd[:, [names.index(n) for n in c.names]]
         base_keys = {'base_pos_w', 'base_quat_w'}
         body_keys = {'body_pos_w', 'body_quat_w'}
         keys = set(f.files)
@@ -132,6 +145,8 @@ def load_motion(runtime, config_path):
     corrections = [dict(frame=int(i), joint=c.names[j], original_rad=float(q[i,j]),
                         projected_rad=float(projected[i,j]), delta_rad=float(projected[i,j]-q[i,j]))
                    for i,j in np.argwhere(projected != q)]
+    if corrections and qd is not None and getattr(c, 'deployment', {}).get('observation_schema') == 'mimic_lite.motor_observation.v2':
+        raise ValueError('Cannot project v2 reference positions while preserving explicit velocities; provide a coherent projected trajectory')
     q = projected  # Reference-only projection; command/firmware bounds remain unchanged.
     duration = (len(q)-1)/fps
     count = int(math.ceil(duration/c.period-1e-9))+1
@@ -140,6 +155,17 @@ def load_motion(runtime, config_path):
     times, target = np.arange(len(q))/fps, np.arange(count)*c.period
     src = m.Motion(q, base, quat)
     qp = np.stack([np.interp(target, times, q[:, j]) for j in range(28)], axis=1)
+    if qd is not None:
+        qdp = np.stack([np.interp(target, times, qd[:, j]) for j in range(28)], axis=1)
+    elif cfg.get('velocity_fallback') == 'dense_derivative':
+        # Explicit fallback: finite-difference the complete source clip at its
+        # declared fps, then interpolate; never differentiate a sparse window.
+        qdp = np.gradient(q, 1.0/fps, axis=0, edge_order=1) if len(q) > 1 else np.zeros_like(q)
+        qdp = np.stack([np.interp(target, times, qdp[:, j]) for j in range(28)], axis=1)
+    else:
+        qdp = None
+    if qdp is not None:
+        qdp[target > duration + 1e-9] = 0.
     bp = np.stack([np.interp(target, times, base[:, j]) for j in range(3)], axis=1)
     rotations = []
     for t in target:
@@ -150,6 +176,11 @@ def load_motion(runtime, config_path):
             rotations.append(m.slerp(src.quat[i], src.quat[i+1], (t-times[i])*fps))
     bp[:, :2] -= bp[0, :2].copy()  # Remove the world origin; retain relative translation.
     motion = m.Motion(qp, bp, rotations)
+    if qdp is not None:
+        # SDK Motion remains the old API; this optional explicit virtual-joint
+        # rate channel is consumed by MimicLite and converted through its ankle
+        # Jacobian. Older policies ignore the attribute entirely.
+        motion.joint_vel = qdp
     if digest(path) != sha:
         raise ValueError('Motion file changed while loading')
     return FixedMotion(runtime, motion, hold, dict(path=str(path), sha256=sha,
@@ -159,6 +190,9 @@ def load_motion(runtime, config_path):
         limit_projection_max_rad=projection, limit_corrections=corrections,
         joint_space='virtual_pitch_roll', quaternion_order='wxyz',
         source_control_space=source_control_space,
+        velocity_source=('explicit_npz_virtual_rad_s' if qd is not None else
+                         'dense_source_derivative' if qdp is not None else 'legacy_unspecified'),
+        velocity_units='rad/s',
         joint_names=list(c.names), ignored_joints=sorted(set(names)-set(c.names)),
         source_duration_s=duration, end_hold_s=hold))
 
@@ -173,6 +207,14 @@ class FixedMotion:
         r, c, m = self.runtime, self.runtime.model.contract, self.runtime.math
         prepared = self.motion.lead_in(q, root, r.config['body_profile']['lead_in'])
         self.lead_frames = len(prepared.q)-len(self.motion.q)
+        source_velocity = getattr(self.motion, 'joint_vel', None)
+        if source_velocity is not None:
+            # Differentiate the actual dense lead-in trajectory, not a sparse
+            # window; retain the source's explicit velocity on source frames.
+            lead = np.asarray(prepared.q[:self.lead_frames+1], dtype=float)
+            lead_velocity = (np.gradient(lead, c.period, axis=0, edge_order=1)[:self.lead_frames]
+                             if self.lead_frames else np.empty((0, self.motion.q.shape[1])))
+            prepared.joint_vel = np.concatenate((lead_velocity, np.asarray(source_velocity, dtype=float)), axis=0)
         # MimicLite consumes absolute reference base_link height. Blend it from
         # the model's stand height, as well as blending measured joint angles.
         if hasattr(c, 'nominal_root_height') and self.lead_frames:
@@ -185,6 +227,9 @@ class FixedMotion:
         padding = max(hold_frames, r.reference.steps+2)
         repeat = lambda a: np.concatenate((a, np.repeat(a[-1:], padding, axis=0)))
         self.prepared = m.Motion(repeat(prepared.q), repeat(prepared.base), repeat(prepared.quat))
+        if hasattr(prepared, 'joint_vel'):
+            self.prepared.joint_vel = np.concatenate((np.asarray(prepared.joint_vel, dtype=np.float64),
+                                                     np.zeros((padding, prepared.q.shape[1]))), axis=0)
         self.yaw_offset = m.yaw(root)
         self.tick = 0
 
@@ -201,6 +246,8 @@ class FixedMotion:
         hi = min(len(p.q), self.tick+r.reference.steps-past)
         # Bound per-tick history/lookahead work independently of clip length.
         window = r.math.Motion(p.q[lo:hi], p.base[lo:hi], p.quat[lo:hi])
+        if hasattr(p, 'joint_vel'):
+            window.joint_vel = np.asarray(p.joint_vel[lo:hi], dtype=np.float64)
         return window, (self.tick-lo)*r.model.contract.period
 
     def infer(self, *, q, dq, root, gyro):

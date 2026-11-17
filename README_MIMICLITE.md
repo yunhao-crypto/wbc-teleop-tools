@@ -2,9 +2,11 @@
 
 `mimiclite` replaces the former MorphMimic deployment option. There is no legacy
 alias and old MorphMimic weights cannot be used. SONIC and SuperMimic are unchanged.
-The model is **not supplied**: `config/actor_pico_mimiclite.json` starts with
-`model_ready: false`, null model identity, and refuses inference/installation.
-No trained-weight, ARM execution or real-robot acceptance is claimed by this change.
+Model support does not replace the pinned model: this observation-ABI upgrade
+leaves `config/actor_pico_mimiclite.json` and its existing model identity unchanged.
+A new hist10 model must be imported as an explicitly reviewed replacement.
+Unconfigured packages (`model_ready: false`) refuse inference/installation.
+No ARM execution or real-robot acceptance is implied by host parity checks.
 
 ## 1. Export a real matching policy
 
@@ -75,6 +77,47 @@ is refused until a configured package is built. There is no policy fallback.
 
 ## Observation and control contract
 
+`motor_deployment.observation_schema` selects the observation ABI. A missing
+field is the preserved `mimic_lite.motor_observation.v1`; the only new value is
+`mimic_lite.motor_observation.v2`. Unknown values and unknown terms are rejected.
+V1 remains the 814-wide contract described below. V2 is exact: command terms add
+`ref_joint_vel_future` using the same future indices as `ref_joint_pos_future`;
+all four sensor histories use `[0,1,2,3,4,5,6,7,8,9]`,
+`joint_pos_history.relative_to_default: true`, and `prev_actions.steps: 3`.
+Its resolved widths are command=520, policy=704, total=1224. V2 joint history
+is motor radians relative to the named policy motor default; reference positions
+remain absolute motor radians.
+
+The policy API accepts exact parity fixtures through
+`observe(..., reference_motor_q=<[future,28] motor rad>,
+reference_joint_velocity=<[future,28] motor rad/s>)` (or
+`reference={'joint_position': ..., 'joint_velocity': ...}`). These explicit
+selected-frame joint arrays default to the contract's `joint_names` (policy motor)
+order; optional `reference['joint_names']` explicitly names another ordering and
+is validated/reordered. The actor then uses `reference_joint_names` for the feature.
+The reference mapping can also supply
+selected `root_position` and `root_quaternion` arrays. This retains the training
+float16 reference quaternion's near-unit norm drift for projected heading; v2
+matches the training non-renormalizing projected-yaw formula, while orientation
+matrices use normalized rotations. Production Motion/Pico
+uses physically coherent virtual-joint rates transformed to motor rates by the
+existing ankle Jacobian. NPZ references should provide `joint_vel` (or
+`joint_velocity`) in virtual-joint rad/s. A deterministic dense derivative is
+available only when the Motion config explicitly sets
+`velocity_fallback: dense_derivative`; it differentiates the complete declared-
+FPS clip before resampling, never a sparse reference window. Missing v2 velocity
+is otherwise an error, and rates are never silently zero-filled.
+Live Pico references have no recorded joint-rate channel: their explicit rule is
+`np.gradient(q, source_timestamps, edge_order=1)` over the retained full source
+timeline, then interpolation to the dense causal window and ankle-Jacobian
+conversion. This is a documented reconstruction, not a claim that live GMR rates
+are identical to independently recorded training-dataset velocities. Lead-in rates
+follow the actual dense lead-in trajectory. Stand, stale-reference hold and
+out-of-range endpoint padding explicitly use zero rates. V2 rejects position
+projection when it would invalidate supplied explicit velocities.
+
+The following sparse-history defaults describe **V1**, not V2:
+
 - The wrapper joins input groups in an embedded, validated order, then restores
   each original input's rank. Default recipe: `command=296`, `policy=518`, total
   814. Counts are derived from each export, not hardcoded as an unversioned ABI.
@@ -139,6 +182,12 @@ When the sibling MimicLite checkout exists, it additionally compares observation
 and history against its actual lightweight `MotorAngleInterface`; that checkout
 is only a test oracle, never a deployment dependency. Shared ankle/safety tests
 keep SONIC/SuperMimic behavior and cover MimicLite's native path.
+
+`tests/test_actor_mimiclite_v2.py` and `test_actor_mimiclite_v2_edges.py` cover
+1224-wide wrapper parity, ten-frame ordering, named/default-relative joints,
+reference velocity provenance, reset/hold/window boundaries, and quantized
+near-unit reference quaternions. Training-checkout oracle tests are optional;
+actual-checkpoint trajectory receipts should accompany a release.
 
 These tests do not substitute for a real trained policy, S100 native binary
 inference, HIL, real Pico quality or physical robot stability acceptance.

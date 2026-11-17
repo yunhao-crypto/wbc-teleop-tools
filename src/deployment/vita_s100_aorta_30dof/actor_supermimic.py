@@ -311,16 +311,27 @@ class NativeModel:
         return out[0]
 
 
-def window_motion(math_api, times, q, base, quat, query):
-    """Linear/slerp resampling at ``query``, clamped at both ends exactly like np.interp."""
+def window_motion(math_api, times, q, base, quat, query, velocities=None):
+    """Linear/slerp resampling at ``query``, with optional global velocities.
+
+    Velocities are interpolated from the complete source timeline, rather than
+    differentiated after a bounded window has been cut.  Samples beyond the
+    newest source frame are terminal holds and therefore have zero velocity.
+    """
     times = np.asarray(times, dtype=np.float64)
+    query = np.asarray(query, dtype=np.float64)
     index = np.clip(np.searchsorted(times, query, side='right')-1, 0, len(times)-2)
     alpha = np.clip((query-times[index])/(times[index+1]-times[index]), 0., 1.)
     def interp(values):
         values = np.asarray(values, dtype=np.float64)
         return values[index]+alpha[:, None]*(values[index+1]-values[index])
     roots = [math_api.slerp(quat[i], quat[i+1], float(a)) for i, a in zip(index, alpha)]
-    return math_api.Motion(interp(q), interp(base), roots)
+    motion = math_api.Motion(interp(q), interp(base), roots)
+    if velocities is not None:
+        velocity = interp(velocities)
+        velocity[(query < times[0]) | (query > times[-1])] = 0.
+        motion.joint_vel = velocity
+    return motion
 
 
 class SuperMimicReference:
@@ -377,11 +388,17 @@ class SuperMimicReference:
     def query(self, end):
         return end-self.span+np.arange(self.steps)*self.contract.period
 
+    def _source_velocity(self, stream):
+        # Derivative is defined on the complete retained source timeline.  It
+        # must never be recomputed from the sparse policy window.
+        return np.gradient(stream['q'], stream['t'], axis=0, edge_order=1)
+
     def motion(self):
         if not self.ready():
             raise RuntimeError('Waiting for complete causal actor reference window')
         s = self.export()
-        return window_motion(self.math, s['t'], s['q'], s['base'], s['quat'], self.query(s['t'][-1]))
+        return window_motion(self.math, s['t'], s['q'], s['base'], s['quat'],
+            self.query(s['t'][-1]), self._source_velocity(s))
 
     def playback(self, stream, now, margin):
         """Window ending at the source time usable ``margin`` before local ``now``.
@@ -399,7 +416,8 @@ class SuperMimicReference:
         end = now-offset-margin
         if not math.isfinite(end):
             raise ValueError('Pico stream clock offset is invalid')
-        motion = window_motion(self.math, t, q, base, quat, self.query(end))
+        source_velocity = np.gradient(q, t, axis=0, edge_order=1)
+        motion = window_motion(self.math, t, q, base, quat, self.query(end), source_velocity)
         return motion, dict(playback_lead_s=float(t[-1]-end), playback_time_s=end-self.delay,
                             clock_offset_s=offset)
 
