@@ -57,6 +57,27 @@ class NativeAuditTest(unittest.TestCase):
             with self.assertRaises(ValueError):
                 validate(r)
 
+    def test_timeline_sampling_clock_and_complete_coverage(self):
+        timing = dict(clock='linux_clock_monotonic', tick_ns=2**53+17,
+                      coverage_first_ns=2**53+17-160_000_000,
+                      coverage_last_ns=2**53+17+80_000_000,
+                      offset_ns=-111, buffer_rows=128, source_origin_ns=2**64-1)
+        r = record(present=1 << 24, timeline_sampling=timing)
+        validate(r)
+        for change in ({'clock': 'system_clock'}, {'buffer_rows': 129},
+                       {'coverage_last_ns': timing['coverage_first_ns']},
+                       {'tick_ns': float(timing['tick_ns'])}):
+            with self.subTest(change=change), self.assertRaises(ValueError):
+                validate(dict(r, timeline_sampling=dict(timing, **change)))
+        with self.assertRaises(ValueError):
+            validate(dict(r, present=0))
+        # Guard failures are legitimate recorded evidence, not malformed data.
+        failed = dict(r, timeline_sampling=dict(timing, coverage_last_ns=timing['coverage_last_ns']-1),
+                      reason='timeline_future_undercoverage')
+        validate(failed)
+        report = self.run_capture([header(), failed])
+        self.assertIn('recorded_timeline_undercoverage_not_physical_loss', report['diagnostics'])
+
     def test_duplicate_cross_epoch_malformed_and_partial(self):
         report = self.run_capture([header(), record(), record(), record(capture_epoch=2)], tail=b'{bad}\n{"')
         self.assertEqual(report['status'], 'PARTIAL')

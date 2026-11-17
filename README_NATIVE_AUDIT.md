@@ -27,6 +27,14 @@ before reference following; initial activation/prewarm frames are not covered.
 No automatic installation/restart is added. See `README_MIMICLITE.md` and native
 `tools/MIMICLITE_NATIVE.md` for capability configuration and collection workflow.
 
-Local validation: 165 tests +25 subtests passed (one upstream pytest deprecation
-warning), including existing offline audits/V2 tests, new native reader/CPU ORT,
+Timeline companion: native branch `feat/mimiclite-reference-timeline`, WTT
+`feat/mimiclite-reference-timeline-wtt`. The reader accepts optional bit24
+`timeline_sampling` (exact tick/coverage/offset/source-origin integers). A guard's
+recorded undercoverage remains evidence with a diagnostic, not malformed data or
+inferred physical loss. Source epoch identity is not a host-clock timestamp.
+See `README_REFERENCE_TIMELINE.md` in the source checkout and native
+`REFERENCE_TIMELINE_DELIVERY.md` for implementation and outstanding gates.
+
+Local timeline regression: 166 tests +29 subtests passed (one upstream pytest
+deprecation warning), including existing audits/V2 tests, native reader/CPU ORT,
 entrypoint guards and offline packaging. This is not native binary validation.

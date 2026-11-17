@@ -14,7 +14,7 @@ PRESENCE = {
     16: ('steady_ns',), 17: ('worker',), 18: ('dispatch',),
     19: ('robot_runtime_id',), 20: ('state_timing',), 21: ('inference_timing',),
     22: ('history_epoch', 'inference_step', 'history_sensor_committed', 'history_action_committed'),
-    23: ('activation_id',),
+    23: ('activation_id',), 24: ('timeline_sampling',),
 }
 LIMITATIONS = [
     'No independent observation/history reconstruction; pre-capture history is unknown.',
@@ -64,7 +64,7 @@ def validate(r):
                 if k.endswith(('_id', '_epoch', '_us', '_ns')) or k in (
                     'sequence', 'generation', 'inference_step', 'delivery_sequence',
                     'source_id', 'position_valid_mask', 'rewrite_reasons'):
-                    integer(v, k, k == 'receipt_steady_ns')
+                    integer(v, k, k in ('receipt_steady_ns', 'offset_ns'))
                 walk(v)
         elif isinstance(obj, list):
             for v in obj:
@@ -74,7 +74,7 @@ def validate(r):
         return
     integer(r.get('present'), 'present')
     p = r['present']
-    if p >> 24:
+    if p >> 25:
         raise ValueError('unknown presence bits')
     if type(r.get('kind')) is not int or not 1 <= r['kind'] <= 6:
         raise ValueError('unknown record kind')
@@ -147,6 +147,16 @@ def validate(r):
         if name in r:
             for field in fields:
                 integer(r[name].get(field), field)
+    if 'timeline_sampling' in r:
+        t = r['timeline_sampling']
+        if t.get('clock') != 'linux_clock_monotonic':
+            raise ValueError('unknown timeline sampling clock')
+        for key in ('tick_ns', 'coverage_first_ns', 'coverage_last_ns', 'offset_ns'):
+            integer(t.get(key), key, signed=True)
+        integer(t.get('buffer_rows'), 'buffer_rows')
+        integer(t.get('source_origin_ns'), 'source_origin_ns')
+        if not 2 <= t['buffer_rows'] <= 128 or t['coverage_first_ns'] >= t['coverage_last_ns']:
+            raise ValueError('invalid recorded timeline extent')
     if 'inference_timing' in r and r['inference_timing']['after_infer_vita_us'] < r['inference_timing']['before_infer_vita_us']:
         raise ValueError('reversed same-domain inference clock')
     if 'primary_imu' in r:
@@ -266,6 +276,12 @@ def audit(path, *, max_pending=256, max_line_bytes=2*1024*1024, onnx=None, atol=
                     footer = r
                 else:
                     counts['records'] += 1
+                    if 'timeline_sampling' in r:
+                        ts = r['timeline_sampling']
+                        counts['timeline_sampling_records'] += 1
+                        if (ts['coverage_first_ns'] > ts['tick_ns'] - 160_000_000 or
+                                ts['coverage_last_ns'] < ts['tick_ns'] + 80_000_000):
+                            issue('recorded_timeline_undercoverage_not_physical_loss')
                     if header is None or any(r[k] != header[k] for k in ('engine_id', 'capture_epoch')):
                         raise ValueError('cross-epoch/engine or missing header')
                     if r.get('joint_timestamps_truncated'):
