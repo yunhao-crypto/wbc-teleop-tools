@@ -285,6 +285,11 @@ class FixedMotion:
                     'clip' if self.tick < self.lead_frames+len(self.motion.q) else 'end_hold'))
         row['motion_reference'] = dict(q=window.q.tolist(), base=window.base.tolist(),
             root_wxyz=window.quat.tolist(), ref_time=ref_time, yaw_offset=self.yaw_offset)
+        if getattr(self.runtime, '_control_timeline', None) is not None and hasattr(window, 'joint_vel'):
+            # Preserve the actual dense-source derivative, never reconstruct it
+            # from sparse selected reference frames in offline shadow fixtures.
+            row['motion_reference']['joint_velocity'] = window.joint_vel.tolist()
+            row['motion_reference']['velocity_space'] = 'virtual_pitch_roll_rad_s'
         return command, obs, row
 
     def advance(self):

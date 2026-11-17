@@ -25,6 +25,7 @@ import numpy as np
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT/'src'))
 from deployment.vita_s100_aorta_30dof.actor_pico_runtime import ActorPicoRuntime, POLICY_CONFIGS
+from deployment.vita_s100_aorta_30dof.actor_control_timeline import header_metadata
 
 
 def check(runtime, args, write):
@@ -372,6 +373,8 @@ def main():
                         help='NPZ trials only: select command path; robot EXTERNAL configuration must match')
     parser.add_argument('--log', type=Path)
     parser.add_argument('--record-observations', action='store_true')
+    parser.add_argument('--audit-timing', action='store_true',
+                        help='live: emit optional host-monotonic control timeline telemetry')
     parser.add_argument('--confirm-motion', action='store_true', help='live only; explicit motion selection, with no typed MOVE prompt')
     parser.add_argument('--robot-id', help='live target identity, verified on-site; never inferred from old configs')
     parser.add_argument('--robot-config', type=Path, help='absolute path to this robot running effective locomotion YAML')
@@ -481,6 +484,7 @@ def main():
                    pico_stream=runtime.config.get('pico_stream') if args.motion_config is None else None,
                    pico_worker=runtime.config.get('pico_worker'),
                    head_control=runtime.config.get('head_control') if runtime.head is not None else None,
+                   audit_timing=header_metadata(args.audit_timing),
                    actions_sent=0))
         try:
             report = {'check': check, 'replay': replay, 'motion-check': motion_check, 'state-check': state_check,

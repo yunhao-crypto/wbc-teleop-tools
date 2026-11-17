@@ -1,0 +1,8 @@
+# Optional OFFLINE workstation tools. NOT installed by the S100 runtime bootstrap.
+# Use a separate analysis venv; never pip-upgrade the running robot/training environment.
+numpy>=1.26,<3
+scipy>=1.11,<2
+onnx>=1.16,<2
+onnxruntime>=1.18,<2
+mcap>=1.2,<2
+flatbuffers>=25.12.19,<26

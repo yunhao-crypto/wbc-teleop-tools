@@ -17,6 +17,7 @@ import time
 import numpy as np
 
 from .actor_parallel_ankle import command_space
+from .actor_control_timeline import ControlTimeline, association_metadata, sensor_timing
 
 STATE_AGE = .1
 STATUS_AGE = .5
@@ -923,6 +924,9 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
             if stop.is_set() or clock.monotonic() >= end:
                 break
             cycle = clock.monotonic()
+            timeline = ControlTimeline(clock) if getattr(args, 'audit_timing', False) else None
+            if timeline is not None:
+                runtime._control_timeline = timeline
             cpu_clock = getattr(clock,'thread_time',None)
             cpu_start = cpu_clock() if cpu_clock is not None else None
             status = guard.check(controller.status, entered)
@@ -946,6 +950,8 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
                     raise
                 deadline = advance(deadline)
                 continue
+            if timeline is not None:
+                timeline.mark('feedback_read')
             state_age_at_read = inputs.ages(state)
             state_end = clock.monotonic()
             identity = (int(state.state_id), int(state.ts_state_real_us))
@@ -1218,9 +1224,13 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
                 ts_client_created_us=clock.time_ns()//1000)
             state_age_before_publish = inputs.ages(state)
             before = clock.monotonic()
+            if timeline is not None:
+                timeline.mark('beforepublish')
             # SDK alone owns session + sequence, shared with end-effector output.
             sent = controller.publish(command, target_names=envelope.target_names,
                                       required_fields=BODY_FIELDS_ALL)
+            if timeline is not None:
+                timeline.mark('publishreturn')
             runtime.policy.last_action = pending_action
             if runtime.head is not None:
                 runtime.head.commit(pending_head)
@@ -1250,8 +1260,12 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
                     root_wxyz=root.tolist(),gyro=gyro.tolist(),
                     applied_session_id=int(state.applied_session_id),
                     applied_sequence=int(state.applied_sequence),
-                    ts_first_output_us=int(state.ts_first_output_us)),
+                    ts_first_output_us=int(state.ts_first_output_us),
+                    **(association_metadata(state) if timeline is not None else {})),
                 session_id=sent.session_id, sequence=sent.sequence,
+                **({'control_timeline': timeline.as_dict(), 'sensor_timing': sensor_timing(state),
+                    'runtime_id': getattr(state, 'runtime_id', None),
+                    'command_source_type': 1} if timeline is not None else {}),  # pinned Protocol3 EXTERNAL
                 publish_ms=(clock.monotonic()-before)*1000,
                 compute_ms=(compute_end-cycle)*1000,
                 sent_body_targets=[dict(q=j.q, dq=j.dq, tau=j.tau, kp=j.kp, kd=j.kd) for j in sent.joints]), obs)
@@ -1272,6 +1286,8 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
         print(f"ACTOR_STOP: {report['stop_reason']}, elapsed={report['elapsed_s']:.2f}s; CANCEL -> PASSIVE",flush=True)
         return report
     finally:
+        if getattr(args, 'audit_timing', False):
+            runtime._control_timeline = None
         if grippers is not None:
             # Opens and releases EE clients while EXTERNAL is still owned.
             try:

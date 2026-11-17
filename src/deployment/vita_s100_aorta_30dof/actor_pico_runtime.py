@@ -300,11 +300,19 @@ class ActorPicoRuntime:
         Only the explicit live runner may publish it. Offline/shadow callers
         retain their two-value API and never construct control handles.
         """
+        timeline = getattr(self, '_control_timeline', None)
+        if timeline is not None:
+            timeline.mark('observation_begin')
         begin = time.perf_counter()
         observation = self.policy.observe(motion, ref_time, q, dq, root, gyro, yaw_offset)
+        if timeline is not None:
+            timeline.mark('observation_end')
+            timeline.mark('onnx_begin')
         before_infer = time.perf_counter()
         action = self.model.infer(observation)
         after_infer = time.perf_counter()
+        if timeline is not None:
+            timeline.mark('onnx_end')
         # This constructs an inert DTO only. No publisher/controller is owned.
         command, decoded = self.policy.decode(action)
         row = dict(record_type='actor_inference', policy=self.policy_name, backend=self.model.backend,

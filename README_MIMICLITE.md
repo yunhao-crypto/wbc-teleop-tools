@@ -8,6 +8,11 @@ A new hist10 model must be imported as an explicitly reviewed replacement.
 Unconfigured packages (`model_ready: false`) refuse inference/installation.
 No ARM execution or real-robot acceptance is implied by host parity checks.
 
+For optional timestamp capture, offline contract/IMU audits, frozen-input shadow
+checks and controlled SDK-versus-exec comparison, see
+[README_ACTOR_CONTROL_AUDIT.md](README_ACTOR_CONTROL_AUDIT.md). These tools never
+start robot motion; the native-exec implementation remains external.
+
 ## 1. Export a real matching policy
 
 Use the MimicLite OP3 training-side `scripts/play.py` export with the exact

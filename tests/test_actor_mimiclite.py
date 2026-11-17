@@ -62,7 +62,7 @@ def make_runtime(imported,sdk,*,source='npz'):
 
 
 def test_default_is_unconfigured_and_legacy_entry_is_removed(tmp_path):
-    assert set(runtime_module.POLICY_CONFIGS)=={'sonic','supermimic','mimiclite'}
+    assert set(runtime_module.POLICY_CONFIGS)=={'sonic','supermimic','supermimic_op3','mimiclite'}
     config=json.loads((ROOT/'config/actor_pico_mimiclite.json').read_text())
     config['model_ready']=False
     (tmp_path/'config').mkdir()
