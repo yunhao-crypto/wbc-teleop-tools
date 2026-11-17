@@ -69,6 +69,7 @@ class ReferenceStream:
         if trace_enabled:
             import uuid
             self.trace_process = str(uuid.uuid4())
+            self.trace_sequence = 0
 
     def push(self, body, metadata, anchor):
         reference, retarget = self.reference, self.retarget
@@ -115,7 +116,9 @@ class ReferenceStream:
             source_log=None if self.source_path is None else str(self.source_path),
             retarget_ms=retarget_ms, retarget_cpu_ms=retarget_cpu_ms)
         if self.trace_enabled:
+            self.trace_sequence += 1
             snapshot['trace_process'] = self.trace_process
+            snapshot['trace_sequence'] = self.trace_sequence
             # Existing bounded latest-snapshot IPC; no subprocess writer/queue.
             snapshot['trace_points_us'] = (int(begin*1e6), int(solve_end*1e6),
                 int(filter_begin*1e6), int(filter_end*1e6), int(available*1e6), int(received*1e6), stamp//1000)
@@ -272,12 +275,18 @@ class PicoReferenceProcess:
                 points = self.previous['trace_points_us']
                 if self.trace_previous is None or identity[0] != self.trace_previous[0]:
                     self.trace_process_id = self.trace.new_id()
+                    self.trace_sequence = 0
                     self.trace.define('gmr', dict(source_process=identity[0], source_id=self.trace_process_id,
                         clock='same-host CLOCK_MONOTONIC', transport='existing bounded latest-snapshot IPC',
                         point_names=['gmr_begin', 'gmr_end', 'filter_append_begin', 'filter_append_end',
                                      'available', 'source_receipt', 'pico_source'],
                         point_domains=['client_monotonic']*6+['pico_source_unmapped'],
                         coverage='only received snapshots; dropped IPC snapshots remain unobserved'))
+                sequence = self.previous['trace_sequence']
+                if sequence != self.trace_sequence+1:
+                    self.trace.incomplete('gmr', missing_count=max(0, sequence-self.trace_sequence-1),
+                                          reference_id=self.trace_process_id)
+                self.trace_sequence = sequence
                 self.trace_input_id = self.trace.mark('pico_input', kind=11,
                     reference_id=self.trace_process_id, times_us=array('Q', points),
                     validity=array('B', [1]*len(points)))

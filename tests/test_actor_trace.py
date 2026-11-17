@@ -220,6 +220,7 @@ class TraceTests(unittest.TestCase):
             worker.head_pose = NS(snapshot=lambda: None)
             worker.controls = None
             worker.previous = dict(state='ready', trace_process='synthetic-worker',
+                trace_sequence=1,
                 pico_timestamp_ns=1794885630000123000, received_monotonic=1.,
                 trace_points_us=(100, 150, 151, 170, 171, 90, 1794885630000123))
             first = worker.snapshot()
@@ -234,6 +235,27 @@ class TraceTests(unittest.TestCase):
         measured = [r for r in rows if r['kind'] == Kind.USER_SPAN]
         self.assertEqual([(r['timestamp_us'], r['duration_us']) for r in measured], [(100, 51), (151, 20)])
         self.assertTrue(all(r['reference_id'] == first['trace_input_id'] for r in measured))
+
+    def test_gmr_latest_ipc_loss_marks_recording_incomplete_without_stopping_reader(self):
+        import queue
+        from deployment.vita_s100_aorta_30dof.actor_pico_worker import PicoReferenceProcess
+        with Trace(self.path, stages=STAGES) as trace:
+            worker = PicoReferenceProcess.__new__(PicoReferenceProcess)
+            worker.trace, worker.trace_previous, worker.trace_input_id = trace, None, 0
+            worker.output = queue.Queue(maxsize=2)
+            worker.process, worker.head_pose, worker.controls = NS(is_alive=lambda:True), NS(snapshot=lambda:None), None
+            worker.previous = dict(state='ready', trace_process='synthetic-worker', trace_sequence=1,
+                pico_timestamp_ns=100000, received_monotonic=1., trace_points_us=(100,150,151,170,171,90,100))
+            worker.snapshot()
+            worker.output.put(dict(worker.previous, trace_sequence=4, pico_timestamp_ns=400000))
+            result = worker.snapshot()
+            self.assertEqual(result['state'], 'ready')
+        reader = Reader(self.path)
+        rows = list(reader)
+        self.assertFalse(reader.integrity.complete)
+        losses = [r for r in rows if r['kind'] == Kind.ERROR]
+        self.assertEqual(len(losses), 1)
+        self.assertEqual(losses[0]['integers'], [2])
 
 
 if __name__ == '__main__':
