@@ -209,6 +209,32 @@ class TraceTests(unittest.TestCase):
         self.assertEqual(decision['reference_id'], inputs['attempt_id'])
         self.assertEqual(decision['integers'], [0, 0, 0, 3])
 
+    def test_gmr_ipc_cache_reuses_source_identity_and_original_endpoints(self):
+        import queue
+        from deployment.vita_s100_aorta_30dof.actor_pico_worker import PicoReferenceProcess
+        with Trace(self.path, stages=STAGES) as trace:
+            worker = PicoReferenceProcess.__new__(PicoReferenceProcess)
+            worker.trace, worker.trace_previous, worker.trace_input_id = trace, None, 0
+            worker.output = queue.Queue(maxsize=2)
+            worker.process = NS(is_alive=lambda: True)
+            worker.head_pose = NS(snapshot=lambda: None)
+            worker.controls = None
+            worker.previous = dict(state='ready', trace_process='synthetic-worker',
+                pico_timestamp_ns=1794885630000123000, received_monotonic=1.,
+                trace_points_us=(100, 150, 151, 170, 171, 90, 1794885630000123))
+            first = worker.snapshot()
+            second = worker.snapshot()
+            self.assertEqual(first['trace_input_id'], second['trace_input_id'])
+            self.assertEqual(first['received_monotonic'], second['received_monotonic'])
+        reader = Reader(self.path)
+        rows = list(reader)
+        self.assertTrue(reader.integrity.complete, reader.integrity.issues)
+        input_events = [r for r in rows if r['kind'] == Kind.INPUT_EVENT]
+        self.assertEqual(len(input_events), 1)
+        measured = [r for r in rows if r['kind'] == Kind.USER_SPAN]
+        self.assertEqual([(r['timestamp_us'], r['duration_us']) for r in measured], [(100, 51), (151, 20)])
+        self.assertTrue(all(r['reference_id'] == first['trace_input_id'] for r in measured))
+
 
 if __name__ == '__main__':
     unittest.main()
