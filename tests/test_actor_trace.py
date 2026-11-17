@@ -126,8 +126,9 @@ class TraceTests(unittest.TestCase):
         spec = importlib.util.spec_from_file_location('actor_trace_cli', ROOT/'scripts/actor_pico.py')
         cli = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(cli)
-        for enabled in (False, True):
-            with self.subTest(enabled=enabled):
+        for mode, explicit_output in ((None, False), ('off', False), ('on', True), ('on', False)):
+            enabled = mode == 'on'
+            with self.subTest(mode=mode, explicit_output=explicit_output):
                 runtime = NS(config={'artifacts': {'model': {}}, 'body_profile': {}, 'retargeting': {}},
                     reference=NS(delay=.2), retarget=None, reference_source='pico', head=None,
                     model=NS(contract=NS(input_dim=1520)))
@@ -136,13 +137,19 @@ class TraceTests(unittest.TestCase):
                 def check(runtime, args, write):
                     seen.append(runtime.trace)
                     if enabled:
+                        self.path = args.trace_output
+                        if not explicit_output:
+                            self.assertEqual(self.path.parent, Path('/tmp'))
+                            self.addCleanup(self.path.unlink, missing_ok=True)
                         self.assertIs(cli.trace_options(args)['trace_recorder'], runtime.trace)
                         with runtime.trace.span('actor_infer'):
                             pass
                     else:
                         self.assertEqual(cli.trace_options(args), {})
                     return {'actions_sent': 0}
-                options = ['--trace=fbs', '--trace-output', str(self.path)] if enabled else []
+                options = [] if mode is None else ['--trace', mode]
+                if explicit_output:
+                    options += ['--trace-output', str(self.path)]
                 with (redirect_stdout(io.StringIO()), patch.object(cli, 'ActorPicoRuntime', return_value=runtime),
                       patch.object(cli, 'check', side_effect=check),
                       patch.object(sys, 'argv', ['actor_pico.py', 'check', '--root', self.temp.name, *options])):
@@ -153,6 +160,25 @@ class TraceTests(unittest.TestCase):
                 else:
                     self.assertEqual(seen, [None])
                     self.assertFalse(self.path.exists())
+
+    def test_cli_rejects_invalid_trace_and_legacy_writer_before_runtime(self):
+        spec = importlib.util.spec_from_file_location('actor_trace_invalid_cli', ROOT/'scripts/actor_pico.py')
+        cli = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(cli)
+        cases = (['--trace=fbs'],
+                 ['--trace=off', '--trace-output', str(self.path)],
+                 ['--trace=on', '--trace-output', 'bad.txt'],
+                 ['--trace=on', '--profiling'],
+                 ['--trace=on', '--log', 'legacy.jsonl'],
+                 ['--trace=on', '--record-observations'])
+        for flags in cases:
+            with self.subTest(flags=flags), patch.object(cli, 'ActorPicoRuntime') as runtime, \
+                 patch.object(sys, 'argv', ['actor_pico.py', 'check', *flags]), \
+                 patch('sys.stderr', new_callable=io.StringIO):
+                with self.assertRaises(SystemExit) as stopped:
+                    cli.main()
+                self.assertEqual(stopped.exception.code, 2)
+                runtime.assert_not_called()
 
     def test_actual_future_ready_accept_and_fusion_keep_old_and_new_result_ids(self):
         from test_actor_sonic_planner import Tests

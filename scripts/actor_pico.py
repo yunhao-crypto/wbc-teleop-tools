@@ -21,6 +21,7 @@ import time
 import threading
 
 import numpy as np
+from locomotion_aorta.trace.cli import add_trace_arguments, resolve_trace_output
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT/'src'))
@@ -382,8 +383,7 @@ def main():
                         help='live/motion-check: fixed NPZ reference configuration; no Pico input')
     parser.add_argument('--ankle-command-space', choices=('motor_theta', 'virtual_pitch_roll'),
                         help='NPZ trials only: select command path; robot EXTERNAL configuration must match')
-    parser.add_argument('--trace', choices=('off', 'fbs'), default='off')
-    parser.add_argument('--trace-output', type=Path)
+    add_trace_arguments(parser)
     parser.add_argument('--log', type=Path)
     profiling = parser.add_mutually_exclusive_group()
     profiling.add_argument('--profiling', action='store_true',
@@ -411,13 +411,10 @@ def main():
                         help='live manual-Pico only: explicit OP3 gripper JSON; side grips close/open each gripper')
     parser.add_argument('--planner-config', type=Path, help='SONIC manual Pico: planner legs/root and Pico arms')
     args = parser.parse_args()
-    if args.trace == 'fbs' and (args.trace_output is None or args.trace_output.suffix != '.ftrace'):
-        parser.error('--trace=fbs requires a new --trace-output ending in .ftrace')
-    if args.trace == 'off' and args.trace_output is not None:
-        parser.error('--trace-output requires --trace=fbs')
-    if args.trace == 'fbs' and (args.profiling or args.log is not None or args.record_observations):
+    resolve_trace_output(parser, args)
+    if args.trace and (args.profiling or args.log is not None or args.record_observations):
         parser.error('FBS trace cannot run with legacy JSONL capture')
-    if args.trace == 'fbs' and os.environ.get('VITA_PICO_CAPTURE_DIR'):
+    if args.trace and os.environ.get('VITA_PICO_CAPTURE_DIR'):
         parser.error('FBS trace cannot run with VITA_PICO_CAPTURE_DIR legacy raw writer')
     if args.profiling_log is not None and not args.profiling:
         parser.error('--profiling-log requires --profiling')
@@ -489,7 +486,7 @@ def main():
               f"{notice['fitted_human_height_m']:g} m, this launch uses {notice['human_height_m']:g} m; "
               "calibration and planted-foot support are OFF for this run. Refit the profile for this operator.",
               file=sys.stderr, flush=True)
-    args.log = None if args.trace == 'fbs' else (args.log or args.root/'outputs'/f'actor_pico_{args.mode}_{time.time_ns()}.jsonl')
+    args.log = None if args.trace else (args.log or args.root/'outputs'/f'actor_pico_{args.mode}_{time.time_ns()}.jsonl')
     if args.profiling:
         args.profiling_log = args.profiling_log or args.log.with_suffix('')
     comparable_config = copy.deepcopy(runtime.config)
@@ -501,7 +498,8 @@ def main():
         # Outlives every SDK connection and model/input worker in this run.
         # Off starts no recorder, file or writer thread.
         args._trace_recorder = None
-        if args.trace == 'fbs':
+        if args.trace:
+            print(f'Trace output: {args.trace_output}')
             from locomotion_aorta.trace import Trace
             args._trace_recorder = recording.enter_context(
                 Trace(args.trace_output, stages=TRACE_STAGES))
@@ -554,7 +552,7 @@ def main():
         report.setdefault('actions_sent', 0)
         report.setdefault('control_handles_created', 0)
         report.update(log=None if args.log is None else str(args.log),
-                      trace=str(args.trace_output) if args.trace == 'fbs' else None,
+                      trace=str(args.trace_output) if args.trace else None,
                       s100_inference_timing='see_trace' if args.mode in ('shadow', 'live') else 'not_measured')
         write(dict(record_type='summary', **report))
     print(json.dumps(report, indent=2))

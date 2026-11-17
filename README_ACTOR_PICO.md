@@ -20,15 +20,18 @@ instrumentation. It does not wrap `publish`, add subscriptions, enable touch,
 or change the control handshake. With the matching SDK PR28 build:
 
 ```bash
-python scripts/actor_pico.py check --steps 10 --trace=fbs --trace-output=new-run.ftrace
+python scripts/actor_pico.py check --steps 10 --trace=on --trace-output=new-run.ftrace
 python -m locomotion_aorta.trace.summary new-run.ftrace
 python -m locomotion_aorta.trace.report new-run.ftrace --output reports/new-run
 ```
 
-The same `--trace=fbs --trace-output=...` options apply to an otherwise valid
+The same `--trace=on --trace-output=...` options apply to an otherwise valid
 `state-check`, `shadow` or explicitly authorized `live` invocation. They confer
-no motion permission. Default `--trace=off` starts no FBS writer; this increment
-still retains the legacy JSONL baseline and its default behavior until the
+no motion permission. `--trace` accepts only `on` or `off`; FBS is the single
+recording format. The boolean default is `false` (`--trace off`), with no FBS
+writer. `--trace on` without an output uses a timestamped unique `.ftrace`
+path in `/tmp` and prints it; an explicit `--trace-output` is still supported.
+This increment still retains the legacy JSONL baseline and its default behavior until the
 complete replacement is validated. FBS cannot be combined with `--profiling`,
 `--log` or `--record-observations` in the same invocation.
 
@@ -50,7 +53,7 @@ Trace; repeated SDK reads reference the captured sample instead of walking the
 Python DTO again. A decode record alone does not mean admission or device output.
 Python/GIL and target scheduling overhead still need measurement.
 
-The three actor configurations now name SDK source `edbfaaf7ae9d96c059e1901758bd15ab7c75c53f`
+The three actor configurations now name SDK source `b9f9ed87582106d51cf0874647a011995efca154`
 (`1.0.0rc1`) and the actual hashes of their math/Body DTO inputs. This is a source
 pairing for the Trace candidate. The existing sealed package/native-library
 guard remains in force: these edits do not replace its old wheel with a new
