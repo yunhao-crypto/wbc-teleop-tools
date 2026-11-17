@@ -24,7 +24,7 @@ from collections import deque
 import numpy as np
 
 from .actor_groot_ankle import create_policy as create_groot_policy, serial_policy_class
-from .actor_parallel_ankle import MotorThetaAnkle, decode_motor_theta
+from .actor_parallel_ankle import MotorThetaAnkle, command_space, decode_motor_theta
 
 CONTRACT_KEY = 'supermimic.tracking_contract.v1'
 POLICY_KIND = 'supermimic_vita02a_tracking'
@@ -76,14 +76,27 @@ class SuperMimicContract:
     policy_lower: np.ndarray = None
     policy_upper: np.ndarray = None
     ankle: MotorThetaAnkle = None
+    required_ankle_command_space: str = None
 
     @classmethod
     def from_metadata(cls, metadata):
         if CONTRACT_KEY not in metadata:
             raise ValueError(f'model is missing {CONTRACT_KEY}')
         raw = json.loads(metadata[CONTRACT_KEY])
+        schema = raw.get('schema_version')
+        required_space = None
+        if schema == 2:
+            if (raw.get('command_target_clipping') != 'none'
+                    or raw.get('joint_pos_limit_usage') != 'reference_only_not_PD_target_clipping'):
+                raise ValueError('schema 2 requires explicit unclipped PD target semantics')
+            if raw.get('ankle', {}).get('control_space') == 'motor_theta':
+                required_space = raw.get('required_ankle_command_space')
+                if required_space != 'motor_theta':
+                    raise ValueError('schema 2 motor targets require native motor_theta command space')
+            elif raw.get('required_ankle_command_space') is not None:
+                raise ValueError('required ankle command space disagrees with the model ankle space')
         obs, goal = raw.get('observation', {}), raw.get('goal', {})
-        if (raw.get('schema_version') != 1 or raw.get('policy_kind') != POLICY_KIND
+        if (type(schema) is not int or schema not in (1, 2) or raw.get('policy_kind') != POLICY_KIND
                 or raw.get('robot_type') != 'vita02a' or raw.get('action_dim') != 28
                 or raw.get('input_layout') != 'observation_history_then_goal'
                 or obs.get('history_order') != 'frame_major_oldest_first'
@@ -139,7 +152,8 @@ class SuperMimicContract:
         virtual_lower[slots], virtual_upper[slots] = -math.pi/2, math.pi/2
         return cls(names, virtual_default, scale, kp, kd, virtual_lower, virtual_upper, clip, period, count,
                    period, history, raw['input_dim'], frame_dim, goal_dim, float(goal['joint_velocity_scale']),
-                   policy_default=default, policy_lower=lower, policy_upper=upper, ankle=ankle)
+                   policy_default=default, policy_lower=lower, policy_upper=upper, ankle=ankle,
+                   required_ankle_command_space=required_space)
 
 
 def is_supermimic(contract):
@@ -215,6 +229,9 @@ def policy_class(math_api):
 
         def __init__(self, contract, profile, *, past_frames, tail_frames):
             super().__init__(contract, profile)
+            if (contract.required_ankle_command_space is not None
+                    and command_space(self) != contract.required_ankle_command_space):
+                raise ValueError('this SuperMimic model requires native motor_theta command space')
             if type(past_frames) is not int or type(tail_frames) is not int or past_frames < 0 or tail_frames < 0:
                 raise ValueError('invalid SuperMimic reference window')
             self.past_frames, self.tail_frames = past_frames, tail_frames
@@ -254,6 +271,9 @@ def policy_class(math_api):
             return obs
 
         def decode(self, raw_action, **timing):
+            if (self.contract.required_ankle_command_space is not None
+                    and command_space(self) != self.contract.required_ankle_command_space):
+                raise ValueError('this SuperMimic model requires native motor_theta command space')
             if self.contract.ankle is None:
                 return super().decode(raw_action, **timing)
             return decode_motor_theta(self, math_api, raw_action, **timing)
@@ -308,7 +328,7 @@ class SuperMimicReference:
     at a control-clock time, which needs ``history_s`` of extra samples.
     """
     def __init__(self, contract, math_api, *, past_frames, tail_frames, capacity=1024, history_s=0.):
-        if getattr(contract, 'policy_kind', '') not in (POLICY_KIND, 'morphmimic_vita02a_tracking') or capacity < 3 or not 0 <= history_s <= 2:
+        if getattr(contract, 'policy_kind', '') not in (POLICY_KIND, 'supermimic_op3_tracking', 'morphmimic_vita02a_tracking') or capacity < 3 or not 0 <= history_s <= 2:
             raise ValueError('Invalid SuperMimic reference settings')
         self.contract, self.math = contract, math_api
         self.samples = deque(maxlen=capacity)
@@ -389,6 +409,12 @@ def reference_window(config):
 
 
 def create_policy(contract, profile, math_api, config):
+    if getattr(contract, 'policy_kind', '') == 'supermimic_op3_tracking':
+        from .actor_supermimic_op3 import policy_class as op3_policy
+        past, tail = reference_window(config)
+        if past < 1 or tail < 1:
+            raise ValueError('OP3 streaming needs a past frame and derivative tail')
+        return op3_policy(math_api)(contract, profile)
     if getattr(contract, 'policy_kind', '') == 'morphmimic_vita02a_tracking':
         from .actor_morphmimic import policy_class as morph_policy
         return morph_policy(math_api)(contract, profile)
@@ -399,11 +425,13 @@ def create_policy(contract, profile, math_api, config):
 
 
 def create_reference(contract, math_api, config):
-    if not is_supermimic(contract) and getattr(contract, 'policy_kind', '') != 'morphmimic_vita02a_tracking':
+    if not is_supermimic(contract) and getattr(contract, 'policy_kind', '') not in ('morphmimic_vita02a_tracking', 'supermimic_op3_tracking'):
         from .actor_pico_reference import CausalActorReference
         return CausalActorReference(contract, math_api)
     from .actor_pico_stream import stream_settings
     past, tail = reference_window(config)
+    if getattr(contract, 'policy_kind', '') == 'supermimic_op3_tracking' and (past < 1 or tail < 1):
+        raise ValueError('OP3 streaming needs a past frame and derivative tail')
     settings = stream_settings(config)
     # Playback lags the newest sample by the margin and, before the hold
     # rule takes over, by up to pico_hold_age_s; keep samples for both.

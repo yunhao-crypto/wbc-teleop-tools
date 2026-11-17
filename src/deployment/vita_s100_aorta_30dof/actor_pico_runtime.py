@@ -14,6 +14,7 @@ import time
 
 import numpy as np
 
+from .actor_supermimic_op3 import OP3Contract, POLICY_KIND as OP3_KIND
 from .actor_morphmimic import MorphMimicContract, POLICY_KIND as MORPHMIMIC_KIND
 from .actor_groot_ankle import contract_from_metadata as groot_contract
 from .actor_pico_gmr import create_retargeter
@@ -22,7 +23,7 @@ from .actor_pico_stream import stream_settings, worker_settings
 from .actor_supermimic import (POLICY_KIND as SUPERMIMIC_KIND, NativeModel, SuperMimicContract,
                                create_policy, create_reference, reference_window)
 
-POLICY_CONFIGS = {'sonic': 'config/actor_pico.json', 'supermimic': 'config/actor_pico_supermimic.json', 'morphmimic': 'config/actor_pico_morphmimic.json'}
+POLICY_CONFIGS = {'sonic': 'config/actor_pico.json', 'supermimic': 'config/actor_pico_supermimic.json', 'morphmimic': 'config/actor_pico_morphmimic.json', 'supermimic_op3': 'config/actor_pico_supermimic_op3.json'}
 
 
 def digest(path):
@@ -41,9 +42,9 @@ def load_actor_config(root, policy='sonic'):
     if config['schema'] != 'vita_actor_pico_shadow_v1':
         raise ValueError('Unsupported actor/Pico configuration')
     if config.get('policy_kind', 'groot_vita02a_tracking') != {
-            'sonic': 'groot_vita02a_tracking', 'supermimic': SUPERMIMIC_KIND, 'morphmimic': MORPHMIMIC_KIND}[policy]:
+            'sonic': 'groot_vita02a_tracking', 'supermimic': SUPERMIMIC_KIND, 'morphmimic': MORPHMIMIC_KIND, 'supermimic_op3': OP3_KIND}[policy]:
         raise ValueError('Actor configuration does not match the selected policy')
-    if policy in ('supermimic', 'morphmimic'):
+    if policy in ('supermimic', 'supermimic_op3', 'morphmimic'):
         reference_window(config)
     if not np.isfinite(config['pico_max_age_s']) or config['pico_max_age_s'] <= 0:
         raise ValueError('Invalid Pico maximum data age')
@@ -51,7 +52,7 @@ def load_actor_config(root, policy='sonic'):
     if (isinstance(hold, bool) or not isinstance(hold, (int, float)) or not np.isfinite(hold)
             or not 0 < hold < config['pico_max_age_s']):
         raise ValueError('Pico reference hold age must be positive and below pico_max_age_s')
-    if stream_settings(config) is not None and policy not in ('supermimic', 'morphmimic'):
+    if stream_settings(config) is not None and policy not in ('supermimic', 'supermimic_op3', 'morphmimic'):
         raise ValueError('pico_stream playback is only implemented for the SuperMimic reference')
     worker_settings(config)
     head_settings(config)
@@ -86,7 +87,8 @@ class ActorModel:
             backend = 'sdk' if platform.machine() == 'aarch64' else 'ort'
         self.backend = backend
         # The GR00T ankle control space comes only from the ONNX metadata.
-        parse = (functools.partial(MorphMimicContract.from_metadata, math_api) if policy_kind == MORPHMIMIC_KIND else
+        parse = (OP3Contract.from_metadata if policy_kind == OP3_KIND else
+                 functools.partial(MorphMimicContract.from_metadata, math_api) if policy_kind == MORPHMIMIC_KIND else
                  SuperMimicContract.from_metadata if policy_kind == SUPERMIMIC_KIND
                  else functools.partial(groot_contract, math_api))
         if backend == 'sdk':

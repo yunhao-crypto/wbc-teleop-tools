@@ -22,7 +22,8 @@ ROOT = Path(__file__).resolve().parents[1]
 DELIVERY = Path('deploy/actor_s100')
 # Mirrors actor_pico_runtime.POLICY_CONFIGS; bootstrap runs before the venv exists.
 POLICY_CONFIGS = {'sonic': 'config/actor_pico.json', 'supermimic': 'config/actor_pico_supermimic.json',
-                  'morphmimic': 'config/actor_pico_morphmimic.json'}
+                  'morphmimic': 'config/actor_pico_morphmimic.json',
+                  'supermimic_op3': 'config/actor_pico_supermimic_op3.json'}
 
 
 def sha(path):

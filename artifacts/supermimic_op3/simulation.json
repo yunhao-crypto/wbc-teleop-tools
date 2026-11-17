@@ -1,0 +1,13 @@
+{
+  "steps": 474,
+  "requested_steps": 474,
+  "failed": false,
+  "return_sum": 45.21185003221035,
+  "max_body31_target_rounding_error": 5.956918558425173e-08,
+  "onnx_sha256": "8a6e5e6ad3e493042e0ba8a754358dc6effdf24bd464c7ab243f0a3145457395",
+  "motion": "op3-qualified-smoke.npz",
+  "hardware_tested": false,
+  "scope": "single-reference MJLab replay through WTT observation, ORT and native Body31 decode",
+  "motion_sha256": "b97c258f090fca43d060b926d6e51d5b2d259e8c4fc88031e4e248a6f2418267",
+  "motion_id": "bones__708fc075bdeb593095185642fd364d3857d59e06ae7e7d958cfbdbfc008836bb"
+}

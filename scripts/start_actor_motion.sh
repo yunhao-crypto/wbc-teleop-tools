@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 ROOT=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
-usage() { echo 'Usage: start_actor_motion.sh sonic|supermimic|morphmimic [check|live] [--motion-config PATH] [actor options]'; }
+usage() { echo 'Usage: start_actor_motion.sh sonic|supermimic|supermimic_op3|morphmimic [check|live] [--motion-config PATH] [actor options]'; }
 if [[ "${1:-}" == --help || "${1:-}" == -h ]]; then usage; exit 0; fi
 POLICY=${1:-}
-case "$POLICY" in sonic|supermimic|morphmimic) shift ;; *) usage >&2; exit 2 ;; esac
+case "$POLICY" in sonic|supermimic|supermimic_op3|morphmimic) shift ;; *) usage >&2; exit 2 ;; esac
 MODE=live
 if [[ "${1:-}" == check || "${1:-}" == live ]]; then MODE=$1; shift; fi
 CONFIG="$ROOT/config/actor_motion.json"

@@ -21,7 +21,8 @@ def main():
     root = ROOT
     actor_path = root/'ACTOR-PICO-MANIFEST.json'
     actor = json.loads(actor_path.read_text())
-    configs = {'sonic': 'config/actor_pico.json', 'supermimic': 'config/actor_pico_supermimic.json', 'morphmimic': 'config/actor_pico_morphmimic.json'}
+    configs = {'sonic': 'config/actor_pico.json', 'supermimic': 'config/actor_pico_supermimic.json', 'morphmimic': 'config/actor_pico_morphmimic.json',
+                  'supermimic_op3': 'config/actor_pico_supermimic_op3.json'}
     external = []
     for policy, config in configs.items():
         model = json.loads((root/config).read_text())['artifacts']['model']
@@ -76,6 +77,11 @@ def main():
                    'tests/test_pico_camera_bridge.py', 'tests/test_pico_viewer_prepare.py']
     additional += [str(p.relative_to(root)) for directory in ('deploy/pico_viewer', 'tests/pico_viewer')
                    for p in (root/directory).rglob('*') if p.is_file() and '__pycache__' not in p.parts]
+    additional += ['config/actor_pico_supermimic_op3.json',
+                   'src/deployment/vita_s100_aorta_30dof/actor_supermimic_op3.py',
+                   'scripts/export_supermimic_op3.py', 'scripts/check_supermimic_op3.py',
+                   'scripts/simulate_supermimic_op3.py', 'tests/test_supermimic_op3.py',
+                   'artifacts/supermimic_op3/actor.contract.json']
     additional += [str(p.relative_to(root)) for p in (root/'third_party/motion_stream_bridge').rglob('*')
                    if p.is_file() and '__pycache__' not in p.parts]
     for name in additional:
@@ -120,6 +126,9 @@ def main():
                 'third_party/pico_binding/include/PXREARobotSDK.h',
                 'third_party/double-conversion/double-conversion/double-to-string.cc',
                 'tests/fixtures/actor_pico/pico_replay.npz', 'deploy/actor_s100/requirements.txt']
+    required += ['config/actor_pico_supermimic_op3.json',
+                 'src/deployment/vita_s100_aorta_30dof/actor_supermimic_op3.py',
+                 'artifacts/supermimic_op3/actor.contract.json']
     required += [str(p.relative_to(root)) for p in sorted((root/'deploy/actor_s100/wheelhouse').glob('*.whl'))]
     archives = [dict(path='deploy/actor_s100/runtime/pico_service_arm64.tar.gz', role='pico_service',
                      destination='vendor_packages/xrobotoolkit-arm64/opt/apps/roboticsservice',
@@ -133,7 +142,7 @@ def main():
     missing = set(required)-set(names)
     if missing:
         raise RuntimeError('Stage these required delivery files first: '+', '.join(sorted(missing)))
-    record = dict(schema='vita_actor_s100_delivery_v1', version='2026.11.04-actor23-native-ab-pico-camera',
+    record = dict(schema='vita_actor_s100_delivery_v1', version='2026.11.17-official-supermimic-op3',
                   target=dict(os='Linux', architecture='aarch64', python='3.10', glibc_min='2.35'),
                   scope='offline/shadow checks and explicitly armed supported EXTERNAL trials; hardware not_measured',
                   required_inputs=required, external_resources=external, archives=archives,

@@ -6,8 +6,8 @@
   "files": [
     {
       "path": "README_ACTOR_PICO.md",
-      "sha256": "bb3fb624a235b28eca517302b61f8c083d990a4d7767ff3038b8d87f50eccfcc",
-      "bytes": 68574,
+      "sha256": "72891f53422efd0cc8f6b2f809737d3e8de0bd559e05831e86e6ba9dae56b510",
+      "bytes": 73014,
       "mode": "0o644"
     },
     {
@@ -30,8 +30,8 @@
     },
     {
       "path": "scripts/start_actor_pico.sh",
-      "sha256": "627df2decb2f482814149120cc5585ee802480a32f271db68582fb8054683f8c",
-      "bytes": 6075,
+      "sha256": "01b608a32f6e87b7360a5460e5295d15408051fc527670c454d2d85fef28cf02",
+      "bytes": 6340,
       "mode": "0o755"
     },
     {
@@ -42,8 +42,8 @@
     },
     {
       "path": "src/deployment/vita_s100_aorta_30dof/actor_pico_runtime.py",
-      "sha256": "4062fc87b9dad18a8c8062e41cd19cb60ea2a257ea7e7ca673f128a12ac38694",
-      "bytes": 15963,
+      "sha256": "ad9def8c1e1b85e2966341e5a4aa88dfdf2d941c37caa83bfe9e1e4285031d79",
+      "bytes": 16232,
       "mode": "0o644"
     },
     {
@@ -222,8 +222,8 @@
     },
     {
       "path": "src/deployment/vita_s100_aorta_30dof/actor_supermimic.py",
-      "sha256": "042d966c5ce1c14f7836031fa8d0ad1dc5f2b9eae64de5e994f67b9470d102cd",
-      "bytes": 21744,
+      "sha256": "3448ebf576e2f1abba4911cec4b0add5120b4ac28c03049fc0c325b4c16a0065",
+      "bytes": 23833,
       "mode": "0o644"
     },
     {
@@ -522,14 +522,14 @@
     },
     {
       "path": "scripts/start_actor_motion.sh",
-      "sha256": "1699e3f17f698dfe5500b28d87d2fa7eeff6f1183620ccd75d9a0051ebbbdeb0",
-      "bytes": 1204,
+      "sha256": "7bb76cfa1b90dc1ce3d4d6622e7f5de6fc2324ab4f46ff3457f5d7a3c6dcd8bd",
+      "bytes": 1234,
       "mode": "0o755"
     },
     {
       "path": "src/deployment/vita_s100_aorta_30dof/actor_motion.py",
-      "sha256": "14e8851894e708f585d1e98b4aca9bf526101589a49ccff83b22a2d6941a4334",
-      "bytes": 12481,
+      "sha256": "70868549451e45d4bb9ebc153cf5cf4540fe6780bf00a37d5cc727d01c2a4592",
+      "bytes": 14145,
       "mode": "0o644"
     },
     {
@@ -560,6 +560,48 @@
       "path": "tests/test_morph_reference_feasibility.py",
       "sha256": "12649ea0759fd9711657668a14244cbe621d7d4d166441cbfc95102fbf22e0fe",
       "bytes": 6009,
+      "mode": "0o644"
+    },
+    {
+      "path": "config/actor_pico_supermimic_op3.json",
+      "sha256": "d6fd909885ee58c27b31151eb5fd4ab2a4b7995aa8cfab5404b3f5e8d5fa26e8",
+      "bytes": 8290,
+      "mode": "0o644"
+    },
+    {
+      "path": "src/deployment/vita_s100_aorta_30dof/actor_supermimic_op3.py",
+      "sha256": "6b7e6e14c1e69d10bc5c713ecf4fe5bc12f9f11d676f0be5c3d1c36d13362dae",
+      "bytes": 11912,
+      "mode": "0o644"
+    },
+    {
+      "path": "scripts/export_supermimic_op3.py",
+      "sha256": "c0c2959ad9c5ab71dfb4169881a55b268f3e189ae9be2cca65eaf47922aeb362",
+      "bytes": 8284,
+      "mode": "0o644"
+    },
+    {
+      "path": "scripts/check_supermimic_op3.py",
+      "sha256": "a796c592a59eea5c592a5ffdec666b50d9e6ece0d069003c2c94ec16c14dd816",
+      "bytes": 5142,
+      "mode": "0o644"
+    },
+    {
+      "path": "scripts/simulate_supermimic_op3.py",
+      "sha256": "d20c9387ca7db9b5526d38c16074c7113f33428b1b13ca561de4a2b017e5cb49",
+      "bytes": 5242,
+      "mode": "0o644"
+    },
+    {
+      "path": "tests/test_supermimic_op3.py",
+      "sha256": "c162cee303d583df3282f30e0b1294a0a5a59e6c63044e6a27a863cfdea3b768",
+      "bytes": 6376,
+      "mode": "0o644"
+    },
+    {
+      "path": "artifacts/supermimic_op3/actor.contract.json",
+      "sha256": "d931979ead877e80861bec9edbe70d114f3ee037827b95ab95ceb2b5a3e9ca60",
+      "bytes": 8093,
       "mode": "0o644"
     }
   ],
@@ -594,6 +636,12 @@
       "sha256": "77216ff87069dc8ec5b4b780de9e9f85232470ef936219736ffa6907f82f36ca",
       "bytes": 35507011,
       "provision": "Supply separately using bootstrap_actor_s100.py --policy morphmimic --model"
+    },
+    {
+      "path": "artifacts/supermimic_op3/actor.onnx",
+      "sha256": "8a6e5e6ad3e493042e0ba8a754358dc6effdf24bd464c7ab243f0a3145457395",
+      "bytes": 36892130,
+      "provision": "Supply separately using bootstrap_actor_s100.py --policy supermimic_op3 --model"
     }
   ]
 }
