@@ -17,6 +17,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT/'src'))
 from deployment.vita_s100_aorta_30dof.actor_pico_runtime import ActorPicoRuntime
 from deployment.vita_s100_aorta_30dof.actor_sonic_planner import PlannerPipeline, Command, G1_INDEX
+from deployment.vita_s100_aorta_30dof.actor_trace import STAGES
 from locomotion_aorta.trace import Trace, Kind, Outcome
 from locomotion_aorta.trace.reader import Reader
 
@@ -61,19 +62,19 @@ class TraceTests(unittest.TestCase):
         return p
 
     def test_initial_background_map_and_control_thread_replan_map_are_separate(self):
-        with Trace(self.path, stages=('planner_infer', 'planner_map')) as trace:
+        with Trace(self.path, stages=STAGES) as trace:
             p = self.pipeline(trace)
             with ThreadPoolExecutor(max_workers=1) as pool:
                 pool.submit(p.start, np.zeros(28)).result(timeout=2)
                 prediction = pool.submit(p.predict, 10, Command()).result(timeout=2)
                 p.accept(prediction, 10)
-        rows = sorted(self.records(), key=lambda row: row['timestamp_us'])
+        rows = sorted((r for r in self.records() if r['stage'] in (12+STAGES.index('planner_infer'), 12+STAGES.index('planner_map'))), key=lambda row: row['timestamp_us'])
         self.assertEqual(len(rows), len(p.observed_intervals))
         for row, (begin, end) in zip(rows, p.observed_intervals):
             self.assertLessEqual(row['timestamp_us'], begin)
             self.assertGreaterEqual(row['timestamp_us'] + row['duration_us'], end)
             self.assertGreaterEqual(row['duration_us'], 1)
-        self.assertEqual([r['stage'] for r in rows], [12, 13, 12, 13])
+        self.assertEqual([r['stage'] for r in rows], [12+STAGES.index('planner_infer'), 12+STAGES.index('planner_map')]*2)
         self.assertEqual(len({r['producer'] for r in rows[:3]}), 1)
         self.assertNotEqual(rows[2]['producer'], rows[3]['producer'])
         self.assertEqual(len({r['inference_id'] for r in rows}), 4)
@@ -81,18 +82,18 @@ class TraceTests(unittest.TestCase):
 
     def test_planner_failure_keeps_original_exception_and_failed_span(self):
         failure = RuntimeError('model failed')
-        with Trace(self.path, stages=('planner_infer', 'planner_map')) as trace:
+        with Trace(self.path, stages=STAGES) as trace:
             p = self.pipeline(trace)
             with patch.object(p.planner, 'run', side_effect=failure):
                 with self.assertRaises(RuntimeError) as raised:
                     p.start(np.zeros(28))
                 self.assertIs(raised.exception, failure)
-        rows = self.records()
+        rows = [r for r in self.records() if r['stage'] == 12+STAGES.index('planner_infer')]
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0]['outcome'], Outcome.FAILED)
 
     def test_actor_observe_infer_decode_measure_actual_calls_separately(self):
-        with Trace(self.path, stages=('actor_observe', 'actor_infer', 'actor_decode')) as trace:
+        with Trace(self.path, stages=STAGES) as trace:
             runtime = ActorPicoRuntime.__new__(ActorPicoRuntime)
             runtime.trace = trace
             runtime.policy_name = 'synthetic-test'
@@ -109,7 +110,7 @@ class TraceTests(unittest.TestCase):
             runtime.model = NS(backend='synthetic-test', infer=measured(lambda observation: np.ones(2)))
             command, observation, row = runtime.infer_motion_command(None, q=(), dq=(), root=(), gyro=())
             self.assertEqual(observation.shape, (3,))
-            self.assertEqual(row['raw_action'], [1., 1.])
+            self.assertIsNone(row['raw_action'])
             identity = runtime.last_trace_inference_id
         rows = sorted(self.records(), key=lambda r: r['timestamp_us'])
         self.assertEqual(len(rows), len(intervals))
@@ -117,6 +118,9 @@ class TraceTests(unittest.TestCase):
             self.assertLessEqual(span['timestamp_us'], begin)
             self.assertGreaterEqual(span['timestamp_us'] + span['duration_us'], end)
         self.assertEqual(rows[1]['inference_id'], identity)
+        raw = list(Reader(self.path))
+        action = [r for r in raw if r['kind'] == Kind.USER_MARK and r['stage'] == 12+STAGES.index('actor_action')]
+        self.assertEqual(action[0]['values'], [1., 1.])
 
     def test_offline_cli_uses_one_run_recorder_and_off_has_no_trace_resource(self):
         spec = importlib.util.spec_from_file_location('actor_trace_cli', ROOT/'scripts/actor_pico.py')
@@ -149,6 +153,61 @@ class TraceTests(unittest.TestCase):
                 else:
                     self.assertEqual(seen, [None])
                     self.assertFalse(self.path.exists())
+
+    def test_actual_future_ready_accept_and_fusion_keep_old_and_new_result_ids(self):
+        from test_actor_sonic_planner import Tests
+        with Trace(self.path, stages=STAGES) as trace:
+            reference = Tests().pending_reference(10)
+            reference.runtime.trace = trace
+            reference.pipeline = self.pipeline(trace)
+            reference.pipeline.start(np.zeros(28))
+            reference.trace_result_id = old = trace.new_id()
+            with ThreadPoolExecutor(max_workers=1) as pool:
+                reference.pool = pool
+                reference._submit(reference.pipeline.predict, 10, Command())
+                reference.future.result(timeout=2)
+                incoming = reference.pending_trace['result_id']
+                reference.tick(None, None, 1., [1, 0, 0, 0], robot_q=np.zeros(28))
+                accepted = reference.trace_result_id
+        reader = Reader(self.path)
+        rows = list(reader)
+        self.assertTrue(reader.integrity.complete, reader.integrity.issues)
+        stage = lambda name: 12 + STAGES.index(name)
+        ready, = [r for r in rows if r['stage'] == stage('planner_ready')]
+        admit, = [r for r in rows if r['stage'] == stage('planner_accept')]
+        fusion, = [r for r in rows if r['stage'] == stage('planner_fusion')]
+        self.assertEqual(ready['reference_id'], incoming)
+        self.assertEqual(admit['reference_id'], accepted)
+        self.assertEqual(admit['integers'][0], incoming)
+        self.assertEqual(fusion['reference_id'], accepted)
+        self.assertEqual(fusion['integers'][:2], [old, incoming])
+        self.assertNotEqual(ready['producer'], admit['producer'])
+        self.assertEqual(reference.runtime.trace_planner_result_id, accepted)
+
+    def test_grip_trace_preserves_invalid_input_open_and_records_real_decision(self):
+        import test_actor_pico_gripper as fixture
+        fixture.FakeClient.infos, fixture.FakeClient.created = {}, []
+        clock = fixture.Clock()
+        shared = fixture.shared(left=float('nan'), right=.7, received=clock(), stamp=1)
+        sdk = NS(**vars(fixture.SDK), EndEffectorClient=fixture.FakeClient)
+        with Trace(self.path, stages=STAGES) as trace:
+            runner = fixture.GripperRunner(fixture.load_config(fixture.EXAMPLE), shared,
+                connection='synthetic-controller', sdk=sdk, clock=clock, trace_recorder=trace)
+            try:
+                for client in runner.clients.values(): client.received=clock()
+                runner.tick()
+                self.assertEqual(runner.clients['left'].published[0][0].pos, (.112,))
+                self.assertFalse(runner.gates['left'].valid)
+            finally:
+                runner.close()
+        reader = Reader(self.path)
+        rows = list(reader)
+        self.assertTrue(reader.integrity.complete, reader.integrity.issues)
+        inputs, = [r for r in rows if r['kind'] == Kind.INPUT_EVENT]
+        decision = next(r for r in rows if r['kind'] == Kind.GRIP_DECISION and r['stream'] == 2)
+        self.assertEqual(inputs['validity'][:2], [0, 1])
+        self.assertEqual(decision['reference_id'], inputs['attempt_id'])
+        self.assertEqual(decision['integers'], [0, 0, 0, 3])
 
 
 if __name__ == '__main__':

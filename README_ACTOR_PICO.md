@@ -22,6 +22,7 @@ or change the control handshake. With the matching SDK PR28 build:
 ```bash
 python scripts/actor_pico.py check --steps 10 --trace=fbs --trace-output=new-run.ftrace
 python -m locomotion_aorta.trace.summary new-run.ftrace
+python -m locomotion_aorta.trace.report new-run.ftrace --output reports/new-run
 ```
 
 The same `--trace=fbs --trace-output=...` options apply to an otherwise valid
@@ -49,18 +50,29 @@ Trace; repeated SDK reads reference the captured sample instead of walking the
 Python DTO again. A decode record alone does not mean admission or device output.
 Python/GIL and target scheduling overhead still need measurement.
 
-The three actor configurations now name SDK source `ee0fb7075d9b3faea713b0648e8f5c48ba408e15`
+The three actor configurations now name SDK source `627b79f4b5593dbd1e6203bf3db16be601b13598`
 (`1.0.0rc1`) and the actual hashes of their math/Body DTO inputs. This is a source
 pairing for the Trace candidate. The existing sealed package/native-library
 guard remains in force: these edits do not replace its old wheel with a new
 release, and current-source ARM packaging/installation still needs verification.
 
 This is an incremental source candidate, **not complete JSONL retirement**.
-Pico/GMR worker capture, full cycle/grip diagnostics, Planner acceptance and
-consumption links, model observations/actions, MCAP/HTML, validated ARM packaging
-and same-input timing acceptance remain unfinished. In FBS mode the generic
+Native SDK-stage summaries and offline HTML/MCAP analysis are available through
+the paired SDK. Planner preprocess/model/postprocess, initial/replan Map,
+ready/accept/fusion links retain old and new result identities. Actor observation
+and action buffers go through one native call without tolist conversion. The
+existing bounded GMR snapshot IPC carries measured monotonic endpoints; only
+received snapshots are observed, never reconstructed dropped work. Cached
+snapshots retain their original input identity. Independent gripper input/gate/
+submission and firmware/cycle outcomes use the same run recorder.
+
+Full fixed-model Actor integration, complete legacy diagnostic parity, target
+ARM/performance acceptance and the remaining JSONL retirement gate are open.
+The grip source stamp in the existing floating shared-memory interface has no
+verified units/precision here: it is not claimed as an exact source timestamp. In FBS mode the generic
 policy-row JSONL writer is disabled; the listed model spans and SDK records do
-not yet replace every old diagnostic field. No runtime guard/pinned dependency
+not yet replace every old diagnostic field. GMR source JSONL is suppressed in
+FBS mode; VITA_PICO_CAPTURE_DIR cannot be combined with FBS recording. No runtime guard/pinned dependency
 is weakened to make this development build pass. The existing released/sealed
 SDK does not acquire Trace merely by checking out these WTT sources.
 

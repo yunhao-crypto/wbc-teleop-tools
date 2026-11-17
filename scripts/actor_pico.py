@@ -25,9 +25,7 @@ import numpy as np
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT/'src'))
 from deployment.vita_s100_aorta_30dof.actor_pico_runtime import ActorPicoRuntime, POLICY_CONFIGS
-
-
-TRACE_STAGES = ('actor_observe', 'actor_infer', 'actor_decode', 'planner_infer', 'planner_map')
+from deployment.vita_s100_aorta_30dof.actor_trace import STAGES as TRACE_STAGES
 
 
 def trace_options(args):
@@ -419,6 +417,8 @@ def main():
         parser.error('--trace-output requires --trace=fbs')
     if args.trace == 'fbs' and (args.profiling or args.log is not None or args.record_observations):
         parser.error('FBS trace cannot run with legacy JSONL capture')
+    if args.trace == 'fbs' and os.environ.get('VITA_PICO_CAPTURE_DIR'):
+        parser.error('FBS trace cannot run with VITA_PICO_CAPTURE_DIR legacy raw writer')
     if args.profiling_log is not None and not args.profiling:
         parser.error('--profiling-log requires --profiling')
     if args.profiling and args.mode != 'live':
@@ -506,6 +506,13 @@ def main():
             args._trace_recorder = recording.enter_context(
                 Trace(args.trace_output, stages=TRACE_STAGES))
         runtime.trace = args._trace_recorder
+        if runtime.trace is not None:
+            runtime.trace.define('cycle', dict(mode=args.mode, feedback_source=(
+                'synthetic_model_stand' if args.mode == 'check' else 'replay_input' if args.mode == 'replay' else 'robot'),
+                policy=args.policy, **ankle_type(runtime)))
+            runtime.trace.define('actor_infer', dict(model=runtime.config['artifacts']['model'],
+                input_dim=runtime.model.contract.input_dim,
+                backend=getattr(runtime.model, 'backend', None), threads=args.threads), model=True)
         stream = recording.enter_context(args.log.open('x', buffering=1024*1024)) if args.log is not None else None
         def write(row, observation=None):
             if stream is None:

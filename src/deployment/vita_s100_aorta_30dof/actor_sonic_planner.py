@@ -5,6 +5,7 @@ Vita adds bridge history and arm fusion.
 Quaternions are wxyz throughout. The actor remains the only motor policy.
 """
 from concurrent.futures import ThreadPoolExecutor
+from array import array
 from contextlib import nullcontext
 from dataclasses import dataclass
 import hashlib
@@ -14,6 +15,7 @@ import threading
 from pathlib import Path
 import time
 import numpy as np
+from .actor_trace import span as trace_span
 
 VITA_NAMES = tuple(
     [f'{s}_{j}_joint' for s in ('left','right') for j in
@@ -132,33 +134,39 @@ class PlannerPipeline:
         self.moving_lookahead=22;self.idle_lookahead=2;self.blend_frames=8;self.walk_mode=1
 
     def infer(self, context, command):
-        if not np.isfinite([command.speed,command.heading]).all() or not 0 <= command.speed <= getattr(self,'max_speed',.3):
-            raise ValueError('Planner command exceeds configured walking limit')
-        heading=command.heading
-        facing=np.array([[np.cos(heading),np.sin(heading),0]],np.float32)
-        moving=command.speed > 0
-        inputs=dict(context_mujoco_qpos=np.asarray(context[None],np.float32),
-            target_vel=np.array([command.speed if moving else -1],np.float32),
-            mode=np.array([getattr(self,'walk_mode',1) if moving else int(command.turning)],np.int64),
-            movement_direction=facing*(-1 if command.backward else 1) if moving else np.zeros((1,3),np.float32),
-            facing_direction=facing,random_seed=np.array([int(self.rng.integers(0,2**31-1))],np.int64),
-            has_specific_target=np.zeros((1,1),np.int64),specific_target_positions=np.zeros((1,4,3),np.float32),
-            specific_target_headings=np.zeros((1,4),np.float32),
-            allowed_pred_num_tokens=np.array([[int(24+4*i in self.allowed_counts) for i in range(11)]],np.int64),height=np.array([-1],np.float32))
+        runtime = getattr(self, 'runtime', None)
+        trace = getattr(runtime, 'trace', None)
+        identity = trace.new_id() if trace is not None else 0
+        with trace_span(runtime, 'planner_preprocess', inference_id=identity):
+            if not np.isfinite([command.speed,command.heading]).all() or not 0 <= command.speed <= getattr(self,'max_speed',.3):
+                raise ValueError('Planner command exceeds configured walking limit')
+            heading=command.heading
+            facing=np.array([[np.cos(heading),np.sin(heading),0]],np.float32)
+            moving=command.speed > 0
+            inputs=dict(context_mujoco_qpos=np.asarray(context[None],np.float32),
+                target_vel=np.array([command.speed if moving else -1],np.float32),
+                mode=np.array([getattr(self,'walk_mode',1) if moving else int(command.turning)],np.int64),
+                movement_direction=facing*(-1 if command.backward else 1) if moving else np.zeros((1,3),np.float32),
+                facing_direction=facing,random_seed=np.array([int(self.rng.integers(0,2**31-1))],np.int64),
+                has_specific_target=np.zeros((1,1),np.int64),specific_target_positions=np.zeros((1,4,3),np.float32),
+                specific_target_headings=np.zeros((1,4),np.float32),
+                allowed_pred_num_tokens=np.array([[int(24+4*i in self.allowed_counts) for i in range(11)]],np.int64),height=np.array([-1],np.float32))
         started=time.perf_counter()
         trace = getattr(getattr(self, 'runtime', None), 'trace', None)
-        with trace.span('planner_infer') if trace is not None else nullcontext():
+        with trace.span('planner_infer', inference_id=identity) if trace is not None else nullcontext() as capture:
             pred,count=self.planner.run(['mujoco_qpos','num_pred_frames'],inputs)
+        self.last_trace_planner_id = capture.inference_id if capture is not None else 0
         self.last_inference_ms=(time.perf_counter()-started)*1000
-        if pred.shape!=(1,64,36) or pred.dtype!=np.float32 or count.shape!=(1,) or count.dtype!=np.int32:
-            raise ValueError('Invalid planner output signature')
-        n=int(count[0])
-        if n not in self.allowed_counts:
-            raise ValueError('Invalid planner output signature')
-        seq=pred[0,:n].astype(float)
-        if not np.isfinite(seq).all() or np.any(np.linalg.norm(seq[:,3:7],axis=1)<.5):
-            raise ValueError('Invalid planner pose')
-        return sample(seq,np.arange(n*5//3)*.6)
+        with trace_span(runtime, 'planner_postprocess', inference_id=identity):
+            if pred.shape!=(1,64,36) or pred.dtype!=np.float32 or count.shape!=(1,) or count.dtype!=np.int32:
+                raise ValueError('Invalid planner output signature')
+            n=int(count[0])
+            if n not in self.allowed_counts:
+                raise ValueError('Invalid planner output signature')
+            seq=pred[0,:n].astype(float)
+            if not np.isfinite(seq).all() or np.any(np.linalg.norm(seq[:,3:7],axis=1)<.5):
+                raise ValueError('Invalid planner pose')
+            return sample(seq,np.arange(n*5//3)*.6)
 
     def start(self, q, quat=(1.,0.,0.,0.)):
         q=np.asarray(q,dtype=float);quat=np.asarray(quat,dtype=float)
@@ -174,18 +182,24 @@ class PlannerPipeline:
         return self.map(self.motion,0),0
 
     def map(self, motion, origin):
-        features=[sample(motion,np.arange(len(motion))+offset*50/30)[:,7:] for offset in (-4,-2,0,2,4)]
-        w,x,y,z=motion[:,3:7].T
-        gravity=np.stack((-2*(x*z-w*y),-2*(y*z+w*x),-(1-2*(x*x+y*y))),axis=1)
-        features=np.concatenate(features+[gravity],axis=1).astype(np.float32)
+        runtime = getattr(self, 'runtime', None)
+        trace = getattr(runtime, 'trace', None)
+        identity = trace.new_id() if trace is not None else 0
+        with trace_span(runtime, 'map_preprocess', inference_id=identity):
+            features=[sample(motion,np.arange(len(motion))+offset*50/30)[:,7:] for offset in (-4,-2,0,2,4)]
+            w,x,y,z=motion[:,3:7].T
+            gravity=np.stack((-2*(x*z-w*y),-2*(y*z+w*x),-(1-2*(x*x+y*y))),axis=1)
+            features=np.concatenate(features+[gravity],axis=1).astype(np.float32)
         trace = getattr(getattr(self, 'runtime', None), 'trace', None)
-        with trace.span('planner_map') if trace is not None else nullcontext():
+        with trace.span('planner_map', inference_id=identity) if trace is not None else nullcontext() as capture:
             residual=self.bridge.run(['joint_residual'],{'window_features':features})[0]
-        if residual.shape!=(len(motion),28) or not np.isfinite(residual).all():
-            raise ValueError('Invalid bridge residual')
-        ramp=np.clip((origin+np.arange(len(motion)))/25,0,1)[:,None]
-        q=motion[:,7+self.g1]+ramp*residual[:,self.order]
-        return q,motion[:,:3].copy(),motion[:,3:7].copy()
+        self.last_trace_map_id = capture.inference_id if capture is not None else 0
+        with trace_span(runtime, 'map_postprocess', inference_id=identity):
+            if residual.shape!=(len(motion),28) or not np.isfinite(residual).all():
+                raise ValueError('Invalid bridge residual')
+            ramp=np.clip((origin+np.arange(len(motion)))/25,0,1)[:,None]
+            q=motion[:,7+self.g1]+ramp*residual[:,self.order]
+            return q,motion[:,:3].copy(),motion[:,3:7].copy()
 
     def predict(self, absolute_cursor, command):
         """Worker-only inference; the playing timeline is not modified here."""
@@ -278,6 +292,14 @@ class PlannerReference:
             seed=settings.get('seed',1234),
             max_speed=max(.3,self.stick.limit,self.stick.backward_limit))
         self.pipeline.runtime = runtime
+        trace = getattr(runtime, 'trace', None)
+        if trace is not None:
+            for name, key, model in (('planner_infer', 'planner', self.pipeline.planner),
+                                     ('planner_map', 'bridge', self.pipeline.bridge)):
+                trace.define(name, dict(asset=settings[key], backend='onnxruntime-python',
+                    inputs=[dict(name=x.name, shape=x.shape, dtype=x.type) for x in model.get_inputs()],
+                    outputs=[dict(name=x.name, shape=x.shape, dtype=x.type) for x in model.get_outputs()],
+                    execution='wall-call; no inferred GPU/BPU execution time'), model=True)
         self.replan_ticks=round(float(settings.get('replan_interval_s',.4))*50)
         self.pipeline.moving_lookahead=round(float(settings.get('moving_lookahead_s',.44))*50)
         self.pipeline.idle_lookahead=round(float(settings.get('idle_lookahead_s',.04))*50)
@@ -293,6 +315,7 @@ class PlannerReference:
 
     def reset(self):
         # Only called while inactive; an old worker result is discarded before restart.
+        self.trace_result_id = 0
         self.active=False;self.clip=None;self.cursor=0;self.origin=0;self.last_request=-100
         self.stick.reset();self.fusion=ArmFusion(self.pipeline.names,self.runtime.model.contract.default)
         self.last_command=None;self.heading=None;self.stop_started=None
@@ -302,13 +325,38 @@ class PlannerReference:
     def close(self):
         self.pool.shutdown(wait=True,cancel_futures=True)
 
+    def _submit(self, function, *args):
+        trace = getattr(self.runtime, 'trace', None)
+        if trace is None:
+            self.future = self.pool.submit(function, *args)
+            return
+        # Future metadata belongs to this exact task, including an old worker
+        # completing after reset. It never changes the model's return contract.
+        task = dict(task_id=trace.new_id(), result_id=0, planner_id=0, map_id=0)
+        self.pending_trace = task
+        trace.mark('planner_submit', kind=18, reference_id=task['task_id'])
+        def work():
+            try:
+                result = function(*args)
+            except BaseException:
+                trace.mark('planner_reject', kind=18, outcome=3, reference_id=task['task_id'])
+                raise
+            task['planner_id'] = getattr(self.pipeline, 'last_trace_planner_id', 0)
+            task['map_id'] = getattr(self.pipeline, 'last_trace_map_id', 0) if function == self.pipeline.start else 0
+            task['result_id'] = trace.new_id()
+            trace.mark('planner_ready', kind=18, inference_id=task['planner_id'],
+                       reference_id=task['result_id'], integers=array('Q', [task['task_id'], task['map_id']]))
+            return result
+        self.future = self.pool.submit(work)
+
     def tick(self, upper, stick_sample, now, robot_root, *, robot_q, input_enabled=True):
         r=self.runtime
+        r.trace_planner_result_id = 0
         self.control_tick+=1
         if not self.active:
             if self.future is not None and not self.future.done():
                 return r.hold_motion(),r.math.yaw(robot_root),{'planner_state':'waiting_previous'}
-            self.future=self.pool.submit(self.pipeline.start,np.asarray(robot_q).copy(),np.asarray(robot_root).copy())
+            self._submit(self.pipeline.start,np.asarray(robot_q).copy(),np.asarray(robot_root).copy())
             self.future_initial=True
             self.active=True;self.heading=r.math.yaw(robot_root)
         command=self.stick.update(stick_sample if upper is not None and self.stop_started is None else None,now,enabled=input_enabled)
@@ -317,6 +365,10 @@ class PlannerReference:
                 result=self.future.result()
                 mapped,origin=result if self.future_initial else self.pipeline.accept(result,self.cursor)
             except Exception as error:
+                trace = getattr(r, 'trace', None)
+                if trace is not None:
+                    trace.mark('planner_reject', kind=18, outcome=2,
+                               reference_id=getattr(self, 'pending_trace', {}).get('result_id', 0))
                 raise ValueError('Planner inference failed: '+str(error)) from error
             self.future=None
             # Mapping sees future neighbours, so even a zero-weight G1 frame
@@ -331,6 +383,19 @@ class PlannerReference:
                 correction=self.clip[0][indices[at]]-mapped[0][at]
                 mapped[0][:]+=(1-weight[:,None])*correction
             initial=self.clip is None
+            trace = getattr(r, 'trace', None)
+            if trace is not None:
+                task = getattr(self, 'pending_trace', {})
+                previous = getattr(self, 'trace_result_id', 0)
+                self.trace_result_id = trace.new_id()
+                trace.mark('planner_accept', kind=18, inference_id=task.get('planner_id', 0),
+                           reference_id=self.trace_result_id,
+                           integers=array('Q', [task.get('result_id', 0),
+                                                getattr(self.pipeline, 'last_trace_map_id', 0)]))
+                if previous:
+                    trace.mark('planner_fusion', kind=17, reference_id=self.trace_result_id,
+                               integers=array('Q', [previous, task.get('result_id', 0),
+                                                    max(0, origin), len(mapped[0]), max(0, self.cursor)]))
             self.clip,self.origin=mapped,origin
             if initial:
                 self.reference_yaw=r.math.yaw(mapped[2][0])
@@ -352,6 +417,7 @@ class PlannerReference:
                 if getattr(r,'teleop_modes',None) is not None:self.lead=None
         if self.clip is None:
             return r.hold_motion(),self.heading,{'planner_state':'loading'}
+        r.trace_planner_result_id = getattr(self, 'trace_result_id', 0)
         if self.lead is not None:
             if self.lead_cursor<len(self.lead[0])-1:
                 indices=np.minimum(self.lead_cursor+np.arange(self.steps),len(self.lead[0])-1)
@@ -369,7 +435,7 @@ class PlannerReference:
             or (command.speed>0 and command!=self.last_command))
         periodic=self.control_tick-self.last_request>=self.replan_ticks and (command.speed>0 or command.turning)
         if self.future is None and (changed or periodic):
-            self.future=self.pool.submit(self.pipeline.predict,self.cursor,command)
+            self._submit(self.pipeline.predict,self.cursor,command)
             self.future_initial=False
             self.last_request=self.control_tick;self.last_command=command
         indices=np.minimum(local+np.arange(self.steps),len(self.clip[0])-1)

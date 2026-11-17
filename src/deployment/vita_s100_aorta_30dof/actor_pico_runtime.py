@@ -4,6 +4,7 @@
 SuperMimic/MorphMimic actors. They share feedback validation and Body31 decode.
 """
 import hashlib
+from array import array
 import importlib
 import json
 from contextlib import nullcontext
@@ -23,6 +24,7 @@ from .actor_pico_head import PicoHeadControl, head_settings
 from .actor_pico_stream import stream_settings, worker_settings
 from .actor_supermimic import (POLICY_KIND as SUPERMIMIC_KIND, NativeModel, SuperMimicContract,
                                create_policy, create_reference, reference_window)
+from .actor_trace import span as trace_span
 
 POLICY_CONFIGS = {'sonic': 'config/actor_pico.json', 'supermimic': 'config/actor_pico_supermimic.json', 'morphmimic': 'config/actor_pico_morphmimic.json'}
 
@@ -209,9 +211,17 @@ class ActorPicoRuntime:
         if self.reference.last_stamp_ns is not None and stamp_ns <= self.reference.last_stamp_ns:
             raise ValueError('Pico frame did not advance')
         start = time.perf_counter()
-        q, root, residual = self.retarget.solve(body, robot_root=robot_root, stamp_ns=stamp_ns)
-        self.reference.append(stamp_ns, q, root, received_monotonic=received_monotonic,
-                              base=self.retarget.last_qpos[:3])
+        trace = getattr(self, 'trace', None)
+        input_id = 0
+        if trace is not None:
+            input_id = trace.mark('pico_input', kind=11, times_us=array('Q', [int(stamp_ns)//1000,
+                int(received_monotonic*1e6)]), validity=array('B', [1, 1]))
+        with trace_span(self, 'gmr', inference_id=input_id):
+            q, root, residual = self.retarget.solve(body, robot_root=robot_root, stamp_ns=stamp_ns)
+        with trace_span(self, 'reference_filter', inference_id=input_id):
+            self.reference.append(stamp_ns, q, root, received_monotonic=received_monotonic,
+                                  base=self.retarget.last_qpos[:3])
+        self.trace_input_id = input_id
         self.last_residual = residual
         self.last_retarget_ms = (time.perf_counter()-start)*1000
         self.latest_pico = dict(raw_body_poses=np.asarray(body).copy(),
@@ -293,25 +303,37 @@ class ActorPicoRuntime:
         """
         begin = time.perf_counter()
         trace = getattr(self, 'trace', None)
-        with trace.span('actor_observe') if trace is not None else nullcontext():
+        iteration = (getattr(self, 'trace_cycle_id', 0) or trace.new_id()) if trace is not None else 0
+        inference = trace.new_id() if trace is not None else 0
+        self.last_trace_iteration_id = iteration
+        if trace is not None:
+            reference = getattr(self, 'trace_planner_result_id', 0) or getattr(self, 'trace_input_id', 0)
+            if reference:
+                trace.mark('planner_consume', kind=17, iteration_id=iteration,
+                           inference_id=inference, reference_id=reference)
+        with trace_span(self, 'actor_observe', iteration_id=iteration, inference_id=inference):
             observation = self.policy.observe(motion, ref_time, q, dq, root, gyro, yaw_offset)
+        if trace is not None:
+            trace.vector('actor_observation', observation, iteration_id=iteration, inference_id=inference)
         before_infer = time.perf_counter()
-        with trace.span('actor_infer') if trace is not None else nullcontext() as capture:
+        with trace_span(self, 'actor_infer', iteration_id=iteration, inference_id=inference) as capture:
             action = self.model.infer(observation)
         self.last_trace_inference_id = 0 if capture is None else capture.inference_id
+        if trace is not None:
+            trace.vector('actor_action', action, iteration_id=iteration, inference_id=inference)
         after_infer = time.perf_counter()
         # This constructs an inert DTO only. No publisher/controller is owned.
-        with trace.span('actor_decode') if trace is not None else nullcontext():
+        with trace_span(self, 'actor_decode', iteration_id=iteration, inference_id=inference):
             command, decoded = self.policy.decode(action)
         row = dict(record_type='actor_inference', policy=self.policy_name, backend=self.model.backend,
                    observation_dim=len(observation), action_dim=len(action),
                    observation_ms=(before_infer-begin)*1000,
                    inference_ms=(after_infer-before_infer)*1000,
                    total_ms=(time.perf_counter()-begin)*1000,
-                   raw_action=action.tolist(), decoded=decoded,
+                   raw_action=action.tolist() if trace is None else None, decoded=decoded,
                    body_order=list(self.policy.order),
-                   body_targets=[dict(q=j.q, dq=j.dq, tau=j.tau, kp=j.kp, kd=j.kd)
-                                 for j in command.joints],
+                   body_targets=([dict(q=j.q, dq=j.dq, tau=j.tau, kp=j.kp, kd=j.kd)
+                                 for j in command.joints] if trace is None else None),
                    actions_sent=0, control_handles_created=0,
                    **(diagnostics or {}))
         return command, observation, row

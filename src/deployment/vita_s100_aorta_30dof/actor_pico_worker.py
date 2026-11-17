@@ -55,7 +55,7 @@ class ReferenceStream:
     ``clock`` is the local monotonic clock shared with the control process.
     """
     def __init__(self, root, config, contract, math_api, source_log=None, source_path=None,
-                 clock=time.monotonic):
+                 clock=time.monotonic, trace_enabled=False):
         self.reference = create_reference(contract, math_api, config)
         self.retarget = create_retargeter(root, config, contract, math_api)
         self.source_log, self.source_path = source_log, source_path
@@ -65,6 +65,10 @@ class ReferenceStream:
         self.filter = StreamFilter(self.settings) if self.settings is not None else None
         self.source_clock = SourceClock()
         self.pending_log = None
+        self.trace_enabled = trace_enabled
+        if trace_enabled:
+            import uuid
+            self.trace_process = str(uuid.uuid4())
 
     def push(self, body, metadata, anchor):
         reference, retarget = self.reference, self.retarget
@@ -80,6 +84,7 @@ class ReferenceStream:
         base = retarget.last_qpos[:3].copy()
         received = float(metadata['timestamp_monotonic'])
         source_s = 0. if reference.origin_ns is None else (stamp-reference.origin_ns)*1e-9
+        filter_begin = time.monotonic() if self.trace_enabled else None
         if self.filter is not None:
             q, base, root_quat = self.filter(source_s, q, base, root_quat)
         gap_info = dict(source_gap_s=0. if reference.last_stamp_ns is None else
@@ -87,6 +92,7 @@ class ReferenceStream:
             receipt_gap_s=0. if reference.last_receive_monotonic is None else
             received-reference.last_receive_monotonic)
         reference.append(stamp,q,root_quat,received_monotonic=received,base=base)
+        filter_end = time.monotonic() if self.trace_enabled else None
         available = self.clock()
         offset = self.source_clock.update(source_s, available)
         # Written after the snapshot is published (flush_log), never inside
@@ -99,7 +105,8 @@ class ReferenceStream:
             reader_monotonic_ns=metadata.get('reader_monotonic_ns'))
         if retarget.last_foot_support is not None:
             timing['foot_support'] = retarget.last_foot_support
-        self.pending_log = (stamp, received, available, body, retarget.last_qpos.copy(), residual, timing)
+        self.pending_log = ((stamp, received, available, body, retarget.last_qpos.copy(), residual, timing)
+                            if self.source_log is not None else None)
         snapshot = dict(state='collecting', received_monotonic=received,
             **gap_info,
             pico_timestamp_ns=stamp, gmr_task_error=residual,
@@ -107,6 +114,12 @@ class ReferenceStream:
             retarget_q=raw_q.tolist(), retarget_root_wxyz=list(map(float, raw_root)),
             source_log=None if self.source_path is None else str(self.source_path),
             retarget_ms=retarget_ms, retarget_cpu_ms=retarget_cpu_ms)
+        if self.trace_enabled:
+            snapshot['trace_process'] = self.trace_process
+            # Existing bounded latest-snapshot IPC; no subprocess writer/queue.
+            snapshot['trace_points_us'] = (int(begin*1e6), int(solve_end*1e6),
+                int(filter_begin*1e6), int(filter_end*1e6), int(available*1e6), int(received*1e6), stamp//1000)
+            snapshot['trace_reader_sequence'] = metadata.get('reader_frame_sequence')
         if reference.ready():
             if self.settings is not None:
                 snapshot.update(state='ready', stream=dict(reference.export(), clock_offset_s=offset))
@@ -128,7 +141,7 @@ class ReferenceStream:
 
 
 def _capture(root, config, contract, lower, upper, commands, output, stop, controls=None,
-             head_pose=None):
+             head_pose=None, trace_enabled=False):
     # All descendants (including the owned vendor service) belong to this
     # process group so the parent can clean up even if vendor init blocks.
     os.setsid()
@@ -147,9 +160,11 @@ def _capture(root, config, contract, lower, upper, commands, output, stop, contr
             return
         from .pico_input import create_pico_source
         math_api = sdk_math(root, config)
-        stream = ReferenceStream(root, config, contract, math_api)
-        source_path = Path(root)/'outputs'/f'actor_pico_gmr_input_{time.time_ns()}.jsonl'
-        source_log = source_path.open('x')
+        stream = ReferenceStream(root, config, contract, math_api, trace_enabled=trace_enabled)
+        source_path = None
+        if not trace_enabled:
+            source_path = Path(root)/'outputs'/f'actor_pico_gmr_input_{time.time_ns()}.jsonl'
+            source_log = source_path.open('x')
         sdk = Path(root)/'vendor_packages/xrobotoolkit-arm64/opt/apps/roboticsservice'
         log = (Path(root)/'outputs/pico_service_actor.log').open('a')
         service = subprocess.Popen([str(sdk/'RoboticsServiceProcess')], cwd=sdk,
@@ -167,11 +182,12 @@ def _capture(root, config, contract, lower, upper, commands, output, stop, contr
             buttons = TriggerReader(pico.reader.sdk,controls,maximum_age=config['pico_max_age_s'])
             buttons.start()
         gmr_affinity = thread_affinity(settings.gmr_cpus)
-        source_log.write(json.dumps(dict(record_type='header',
-            retargeting=config['retargeting'], model=config['artifacts']['model'],
-            pico_stream=config.get('pico_stream'), pico_worker=config.get('pico_worker'),
-            worker_affinity=worker_affinity,
-            gmr_affinity=gmr_affinity, reader_poll_interval_s=poll))+'\n')
+        if source_log is not None:
+            source_log.write(json.dumps(dict(record_type='header',
+                retargeting=config['retargeting'], model=config['artifacts']['model'],
+                pico_stream=config.get('pico_stream'), pico_worker=config.get('pico_worker'),
+                worker_affinity=worker_affinity,
+                gmr_affinity=gmr_affinity, reader_poll_interval_s=poll))+'\n')
         stream.source_log, stream.source_path = source_log, source_path
         _latest(output, dict(state='waiting_pico'))
         while not stop.is_set():
@@ -216,11 +232,14 @@ class PicoReferenceProcess:
         # [trigger count, event time, controller receipt, grip receipt, grip stamp, left grip, right grip]
         self.controls = context.Array('d',[0.]*14) if buttons else None
         self.head_pose = LatestPicoPose(context)
+        self.trace = getattr(runtime, 'trace', None)
+        self.trace_previous = None
+        self.trace_input_id = 0
         # The reader can own an optional raw-frame writer process. A daemon
         # cannot spawn it; close() owns and reaps the entire process group.
         self.process = context.Process(target=_capture, args=(str(runtime.root), runtime.config,
             runtime.model.contract, runtime.policy.lower, runtime.policy.upper,
-            self.commands, self.output, self.stop,self.controls,self.head_pose))
+            self.commands, self.output, self.stop,self.controls,self.head_pose,self.trace is not None))
         self.connected = False
         self.closed = False
         self.previous = dict(state='idle')
@@ -246,6 +265,26 @@ class PicoReferenceProcess:
                 break
         if not self.process.is_alive() and self.previous['state'] != 'failed':
             self.previous = dict(state='failed', error='Pico worker exited')
+        if self.trace is not None and 'trace_points_us' in self.previous:
+            identity = (self.previous.get('trace_process'), self.previous.get('pico_timestamp_ns'))
+            if identity != self.trace_previous:
+                from array import array
+                points = self.previous['trace_points_us']
+                if self.trace_previous is None or identity[0] != self.trace_previous[0]:
+                    self.trace_process_id = self.trace.new_id()
+                    self.trace.define('gmr', dict(source_process=identity[0], source_id=self.trace_process_id,
+                        clock='same-host CLOCK_MONOTONIC', transport='existing bounded latest-snapshot IPC',
+                        point_names=['gmr_begin', 'gmr_end', 'filter_append_begin', 'filter_append_end',
+                                     'available', 'source_receipt', 'pico_source'],
+                        point_domains=['client_monotonic']*6+['pico_source_unmapped'],
+                        coverage='only received snapshots; dropped IPC snapshots remain unobserved'))
+                self.trace_input_id = self.trace.mark('pico_input', kind=11,
+                    reference_id=self.trace_process_id, times_us=array('Q', points),
+                    validity=array('B', [1]*len(points)))
+                self.trace.observed_span('gmr', points[0], points[1], reference_id=self.trace_input_id)
+                self.trace.observed_span('reference_filter', points[2], points[3], reference_id=self.trace_input_id)
+                self.trace_previous = identity
+            self.previous['trace_input_id'] = self.trace_input_id
         result = dict(self.previous)
         head = self.head_pose.snapshot()
         if head is not None:
