@@ -53,7 +53,7 @@ Trace; repeated SDK reads reference the captured sample instead of walking the
 Python DTO again. A decode record alone does not mean admission or device output.
 Python/GIL and target scheduling overhead still need measurement.
 
-The three actor configurations now name SDK source `c278728fa6140d17e2e315012026c6dc4e4b3f26`
+The three actor configurations now name SDK source `6f68acfb0f5e90d17d0581b9f3f91cc4c2222b44`
 (`1.0.0rc1`) and the actual hashes of their math/Body DTO inputs. This is a source
 pairing for the Trace candidate. The existing sealed package/native-library
 guard remains in force: these edits do not replace its old wheel with a new
