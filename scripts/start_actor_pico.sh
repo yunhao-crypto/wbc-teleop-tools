@@ -1,21 +1,21 @@
 #!/usr/bin/env bash
 set -euo pipefail
 ROOT=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
-USAGE='Usage: start_actor_pico.sh [sonic|supermimic|morphmimic] [connect|check|replay|motion-check|state-check|shadow|configure|live|auto] [options] [--no-camera] [--camera-topic TOPIC]'
+USAGE='Usage: start_actor_pico.sh [sonic|supermimic|morphmimic|pico_smpl|pico_teleop] [connect|check|replay|motion-check|state-check|shadow|configure|live|auto] [options] [--no-camera] [--camera-topic TOPIC]'
 # The actor policy is always an explicit choice: a positional name, --policy,
 # or the interactive menu. There is no default and no substitute policy.
 POLICY=
 choose_policy() {
   case "$1" in
-    sonic|supermimic|morphmimic) ;;
-    *) echo "Unknown policy '$1'; choose sonic, supermimic or morphmimic. $USAGE" >&2; exit 2 ;;
+    sonic|supermimic|morphmimic|pico_smpl|pico_teleop) ;;
+    *) echo "Unknown policy '$1'; choose sonic, supermimic, morphmimic, pico_smpl or pico_teleop. $USAGE" >&2; exit 2 ;;
   esac
   if [[ -n "$POLICY" && "$POLICY" != "$1" ]]; then
     echo "Conflicting policy selections: $POLICY and $1; nothing started." >&2; exit 2
   fi
   POLICY=$1
 }
-if [[ "${1:-}" == sonic || "${1:-}" == supermimic || "${1:-}" == morphmimic ]]; then
+if [[ "${1:-}" == sonic || "${1:-}" == supermimic || "${1:-}" == morphmimic || "${1:-}" == pico_smpl || "${1:-}" == pico_teleop ]]; then
   choose_policy "$1"; shift
 fi
 if [[ "${1:-}" == --help || "${1:-}" == -h ]]; then
@@ -30,7 +30,7 @@ case "$MODE" in
   connect|auto|check|replay|motion-check|state-check|shadow|live|configure) shift ;;
   *) echo "$USAGE" >&2; exit 2 ;;
 esac
-if [[ "${1:-}" == sonic || "${1:-}" == supermimic || "${1:-}" == morphmimic ]]; then
+if [[ "${1:-}" == sonic || "${1:-}" == supermimic || "${1:-}" == morphmimic || "${1:-}" == pico_smpl || "${1:-}" == pico_teleop ]]; then
   choose_policy "$1"; shift
 fi
 HELP=0
@@ -42,7 +42,7 @@ while (( $# )); do
     --motion-config) (( $# >= 2 )) || { echo '--motion-config requires a path' >&2; exit 2; }
               FILE_REFERENCE=1; REST+=("$1" "$2"); shift 2 ;;
     --motion-config=*) FILE_REFERENCE=1; REST+=("$1"); shift ;;
-    --policy) (( $# >= 2 )) || { echo '--policy requires sonic, supermimic or morphmimic' >&2; exit 2; }
+    --policy) (( $# >= 2 )) || { echo '--policy requires sonic, supermimic, morphmimic, pico_smpl or pico_teleop' >&2; exit 2; }
               choose_policy "$2"; shift 2 ;;
     --policy=*) choose_policy "${1#--policy=}"; shift ;;
     --no-camera) CAMERA_OPTIONS+=("$1"); shift ;;
@@ -66,12 +66,16 @@ if [[ "$MODE" != configure && "$MODE" != connect && $HELP == 0 && -z "$POLICY" ]
       echo '  1) sonic       GR00T G1 actor     config/actor_pico.json'
       echo '  2) supermimic  SuperMimic actor   config/actor_pico_supermimic.json'
       echo '  3) morphmimic  MorphMimic actor   config/actor_pico_morphmimic.json'
+      echo '  4) pico_smpl   27000 human encoder (independent BodyCmd4 package)'
+      echo '  5) pico_teleop 27000 three-point encoder (independent BodyCmd4 package)'
     } >&2
-    read -r -p 'Policy [1/2/3]: ' answer || answer=
+    read -r -p 'Policy [1/2/3/4/5]: ' answer || answer=
     case "$answer" in
       1|sonic) POLICY=sonic ;;
       2|supermimic) POLICY=supermimic ;;
       3|morphmimic) POLICY=morphmimic ;;
+      4|pico_smpl) POLICY=pico_smpl ;;
+      5|pico_teleop) POLICY=pico_teleop ;;
       *) echo 'No policy selected; nothing started.' >&2; exit 2 ;;
     esac
   else
@@ -81,6 +85,14 @@ fi
 if [[ -n "$POLICY" && "$MODE" != configure && "$MODE" != connect ]]; then
   echo "ACTOR_POLICY: $POLICY" >&2
   set -- --policy "$POLICY" "$@"
+fi
+ACTOR_ENTRY="$ROOT/scripts/actor_pico.py"
+if [[ "$POLICY" == pico_smpl || "$POLICY" == pico_teleop ]]; then
+  ACTOR_ENTRY="$ROOT/scripts/pico_actor_aligned.py"
+  if [[ ! -f "$ACTOR_ENTRY" ]]; then
+    echo 'Build the independent 27000 BodyCmd4 delivery; this legacy package is preserved.' >&2
+    exit 2
+  fi
 fi
 if [[ "$MODE" == connect && $HELP == 1 ]]; then
   exec "${VITA_ACTOR_PYTHON:-python3}" "$ROOT/scripts/pico_session_services.py" --help
@@ -114,8 +126,12 @@ if [[ $HELP == 0 && ( "$MODE" == connect || "$MODE" == state-check || "$MODE" ==
   flock -n 9 || { echo 'Another onboard operator or connect session is running; exit it before starting another session.' >&2; exit 1; }
 fi
 if [[ $HELP == 0 && ( "$MODE" == state-check || "$MODE" == shadow || "$MODE" == live ) ]]; then
+  SESSION_SOURCE=/app_param/zenoh/s100_session_peer.json5
+  if [[ "$POLICY" == pico_smpl || "$POLICY" == pico_teleop ]]; then
+    SESSION_SOURCE="${ZENOH_SESSION_CONFIG_URI:-$SESSION_SOURCE}"
+  fi
   "$PYTHON" "$ROOT/scripts/prepare_zenoh_session.py" \
-    --source /app_param/zenoh/s100_session_peer.json5 \
+    --source "$SESSION_SOURCE" \
     --output "$ROOT/outputs/actor_pico_zenoh_session.json5" \
     --cli-output "$ROOT/outputs/actor_pico_cli_session.json5"
   export ZENOH_SESSION_CONFIG_URI="$ROOT/outputs/actor_pico_zenoh_session.json5"
@@ -128,6 +144,6 @@ fi
 if [[ $HELP == 0 && $FILE_REFERENCE == 0 && ( "$MODE" == shadow || "$MODE" == live ) ]]; then
   exec "$PYTHON" "$ROOT/scripts/pico_session_services.py" \
     ${CAMERA_OPTIONS[@]+"${CAMERA_OPTIONS[@]}"} -- \
-    "$PYTHON" "$ROOT/scripts/actor_pico.py" "$MODE" "$@"
+    "$PYTHON" "$ACTOR_ENTRY" "$MODE" "$@"
 fi
-exec "$PYTHON" "$ROOT/scripts/actor_pico.py" "$MODE" "$@"
+exec "$PYTHON" "$ACTOR_ENTRY" "$MODE" "$@"

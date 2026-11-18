@@ -1,0 +1,18 @@
+{
+  "schema": "vita_pico_smpl_physical_workflow_v1",
+  "route": "pico_smpl",
+  "policy_step": 27000,
+  "entry_policy": "policy-online",
+  "stand_preparation_seconds": 3.0,
+  "bindings": {
+    "config/actor_smpl.json": "b6843dd5048b1948222f62890606ed74b6e54a151b409da13fefaa4e9d1dff77",
+    "config/pico_smpl_workflow.json": "17dd9381c681740df31d5f0e9eaa115dca8e99834a7ab1273f4ab8a6dc1d9697",
+    "src/deployment/vita_s100_aorta_30dof/pico_realtime.py": "93ee0f04f0cadb7cee9a3ae6e8405ad1cf7ab88edfac96edccb1f22d82ea2ac6",
+    "src/deployment/vita_s100_aorta_30dof/pico_input_process.py": "4fea5324f2b3f934e1f33e9e0e11f4d8e1f4de15f9fc52b54db986a567d2f189"
+  },
+  "output": "actual_original_sdk_body31",
+  "robot_configuration_modified": false,
+  "protection_relaxed": false,
+  "body_cmd_protocol_version": 4,
+  "body_cmd_coordinate_contract": "native_motor_ab_ankles_virtual_pr_feedback"
+}

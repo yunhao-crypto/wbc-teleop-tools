@@ -1,0 +1,214 @@
+{
+  "schema": "vita_actor_threepoint_v1",
+  "policy_kind": "groot_vita02a_threepoint_stationary",
+  "artifacts": {
+    "model": {
+      "path": "artifacts/actor_threepoint/model_step_027000_teleop.onnx",
+      "sha256": "eaca18b86cb86285a22b512629514e6e163eb74e427c893f95c44fcff2be9e21",
+      "bytes": 54688166
+    },
+    "encoder": {
+      "path": "artifacts/actor_threepoint/teleop_encoder_step027000.onnx",
+      "sha256": "5c7592d25904c3ed6febc58ba71599941bd9fc8317410ed93ec2d752e598010d",
+      "bytes": 14059084
+    },
+    "decoder": {
+      "path": "artifacts/actor_threepoint/model_step_027000_decoder.onnx",
+      "sha256": "b00a482aa9d4c0c3edf31b40ffdca43ad4f376b5169e789a0d752a4e3e9e4b6b",
+      "bytes": 40630956
+    },
+    "source_contract": {
+      "path": "artifacts/actor_threepoint/control_contract.json",
+      "sha256": "07238d62fd8e0f463f30188f09e0df71aaf69da39ccefd1b97a7563a478ecf80",
+      "bytes": 10390
+    },
+    "standing_reference": {
+      "path": "artifacts/actor_threepoint/standing_reference.npz",
+      "sha256": "81d55f6b0abf7460c3abb5ad5aa8e56f897a5c85dfd42574b436b196943f1a01",
+      "bytes": 2055
+    },
+    "contract": {
+      "path": "config/sonic_threepoint_27000_contract.json",
+      "sha256": "edc7dd4d731645e689cbf7d53135433e4e60b00d55f7312c98fc48438975318c"
+    }
+  },
+  "sdk_sources": {
+    "wbc_tracking_policy.py": "8bf9ecbcce9d06fde34eaaa817fe7966354958be012f74af159cfd711ce53b9e",
+    "_policy_state.py": "d28cacb350f3c838848ba6978745cb943a2406585a26d35e06b1b1d4828f1c67",
+    "body_types.py": "a6c591cf2d9e74a0ba78fb32b76c1cba3ff86b10b273d2aae26c908daee3829e"
+  },
+  "body_profile": {
+    "joint_limits": {
+      "left_hip_pitch_joint": [
+        -2.879793,
+        1.745329
+      ],
+      "right_hip_pitch_joint": [
+        -2.879793,
+        1.745329
+      ],
+      "waist_yaw_joint": [
+        -1.570796,
+        1.570796
+      ],
+      "left_hip_roll_joint": [
+        -0.436332,
+        2.181662
+      ],
+      "right_hip_roll_joint": [
+        -2.181662,
+        0.436332
+      ],
+      "waist_pitch_joint": [
+        -0.523599,
+        0.523599
+      ],
+      "left_hip_yaw_joint": [
+        -1.570796,
+        1.570796
+      ],
+      "right_hip_yaw_joint": [
+        -1.570796,
+        1.570796
+      ],
+      "left_shoulder_pitch_joint": [
+        -2.565634,
+        2.565634
+      ],
+      "right_shoulder_pitch_joint": [
+        -2.565634,
+        2.565634
+      ],
+      "left_knee_joint": [
+        0.0,
+        2.181662
+      ],
+      "right_knee_joint": [
+        0.0,
+        2.181662
+      ],
+      "left_shoulder_roll_joint": [
+        -0.235619,
+        2.277655
+      ],
+      "right_shoulder_roll_joint": [
+        -2.277655,
+        0.235619
+      ],
+      "left_ankle_pitch_joint": [
+        -0.751,
+        0.414
+      ],
+      "right_ankle_pitch_joint": [
+        -0.751,
+        0.414
+      ],
+      "left_shoulder_yaw_joint": [
+        -2.45829625,
+        2.4281675
+      ],
+      "right_shoulder_yaw_joint": [
+        -2.4281675,
+        2.45829625
+      ],
+      "left_ankle_roll_joint": [
+        -0.43625,
+        0.43625
+      ],
+      "right_ankle_roll_joint": [
+        -0.43625,
+        0.43625
+      ],
+      "left_elbow_joint": [
+        -0.667414,
+        2.421819
+      ],
+      "right_elbow_joint": [
+        -0.667414,
+        2.421819
+      ],
+      "left_wrist_roll_joint": [
+        -2.321288,
+        2.321288
+      ],
+      "right_wrist_roll_joint": [
+        -2.32129,
+        2.32129
+      ],
+      "left_wrist_yaw_joint": [
+        -0.912807,
+        1.70519
+      ],
+      "right_wrist_yaw_joint": [
+        -1.70519,
+        0.912807
+      ],
+      "left_wrist_pitch_joint": [
+        -1.87099,
+        1.96873
+      ],
+      "right_wrist_pitch_joint": [
+        -1.87099,
+        1.96873
+      ]
+    },
+    "fixed_joints": {
+      "neck_pitch_joint": {
+        "q": 0.0,
+        "kp": 20.0,
+        "kd": 1.0
+      },
+      "neck_yaw_joint": {
+        "q": 0.0,
+        "kp": 20.0,
+        "kd": 1.0
+      }
+    },
+    "ankle_clamp_feedforward": false,
+    "lead_in": {
+      "speed_q_per_s": 1.2,
+      "min_duration_s": 0.3,
+      "max_duration_s": 3.0,
+      "stand_on_activate": true
+    },
+    "fall_tilt_threshold_rad": 0.8,
+    "schema_version": 1,
+    "command_slots": 31,
+    "state_slots": 31,
+    "source": "vita-robot 6f674d249: actions/policy_profiles/vt_human_v2_tracking_asample.yaml",
+    "body_joint_order": [
+      "left_hip_pitch_joint",
+      "left_hip_roll_joint",
+      "left_hip_yaw_joint",
+      "left_knee_joint",
+      "left_ankle_pitch_joint",
+      "left_ankle_roll_joint",
+      "right_hip_pitch_joint",
+      "right_hip_roll_joint",
+      "right_hip_yaw_joint",
+      "right_knee_joint",
+      "right_ankle_pitch_joint",
+      "right_ankle_roll_joint",
+      "waist_yaw_joint",
+      "waist_pitch_joint",
+      "waist_roll_joint",
+      "left_shoulder_pitch_joint",
+      "left_shoulder_roll_joint",
+      "left_shoulder_yaw_joint",
+      "left_elbow_joint",
+      "left_wrist_roll_joint",
+      "left_wrist_yaw_joint",
+      "left_wrist_pitch_joint",
+      "right_shoulder_pitch_joint",
+      "right_shoulder_roll_joint",
+      "right_shoulder_yaw_joint",
+      "right_elbow_joint",
+      "right_wrist_roll_joint",
+      "right_wrist_yaw_joint",
+      "right_wrist_pitch_joint",
+      "neck_pitch_joint",
+      "neck_yaw_joint"
+    ],
+    "ankle_command_space": "policy"
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "schema": "vita_pico_git_alignment_v1",
+  "upstream_url": "https://github.com/yunhao-crypto/wbc-teleop-tools",
+  "upstream_commit": "ca0aa6ec8496d0c65932350b38eba5103f570140",
+  "live_function_sha256": "0696a7dc1bc2909bdaef5b8cfb4472c4333ed378158fc510e164f9b3f8a11e0d",
+  "retained_sdk": "1.0.0rc1+bodycmdv4.6863ad7",
+  "body_command_protocol_version": 4,
+  "feedback_coordinates": "BodyState3 virtual PR",
+  "command_coordinates": "BodyCmd4 native motor AB",
+  "reference_age_ms": 100,
+  "control_cpus": [
+    2,
+    3,
+    4
+  ],
+  "model_weights_changed": false,
+  "additional_protection": "per-frame RobotInfo measured q ranges/runtime-id, existing 0.03 rad margin",
+  "physical_stability_verified": false
+}
