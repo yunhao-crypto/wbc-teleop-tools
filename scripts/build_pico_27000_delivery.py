@@ -3,7 +3,7 @@
 import argparse,email,gzip,hashlib,json,shutil,sys,tarfile,tempfile,zipfile
 from pathlib import Path
 from bootstrap_actor_s100 import inside,sha
-from build_actor_delivery import source_revision,resolve_wheels
+from build_actor_delivery import source_revision,resolve_wheels,runtime_inputs,POLICY_CONFIGS
 ROOT=Path(__file__).resolve().parents[1]
 
 def validate_target_closure(stage):
@@ -73,12 +73,29 @@ def stage_delivery(root,assets,destination,*,allow_dirty=False):
             raise ValueError('Missing or changed separately supplied asset: '+name)
         seen.add(name);out=inside(destination,name);out.parent.mkdir(parents=True,exist_ok=True);shutil.copyfile(src,out)
     refresh_json_bindings(destination)
+    # Merge the original actor package into the SAME root/venv/manifest.
+    legacy_names,external_models=runtime_inputs(root,'base')
+    for name in legacy_names:
+        name=name.replace('\\','/')
+        if name in ('config/sdk021-wheel-guard.json','deploy/actor_s100/requirements.txt'):continue
+        out=inside(destination,name);out.parent.mkdir(parents=True,exist_ok=True)
+        shutil.copyfile(inside(root,name),out)
+    guard=json.loads((destination/'config/sdk021-wheel-guard.json').read_text())
+    for path in (destination/'deploy/actor_s100/wheelhouse').glob('locomotion_aorta-*.whl'):
+        if path.name!=guard['wheel']['filename']:path.unlink()
+    for filename in POLICY_CONFIGS.values():
+        path=destination/filename;settings=json.loads(path.read_text())
+        settings['sdk_sources']={name:guard['source_sha256'][name] for name in settings['sdk_sources']}
+        settings.update(sdk_version=guard['sdk_version'],sdk_commit=guard['sdk_commit'])
+        path.write_text(json.dumps(settings,indent=2)+'\n',encoding='utf-8')
     # Code bindings are sealed against this reviewed checkout; model hashes stay pinned.
     for route in ('pico_smpl','pico_teleop'):
         path=destination/f'config/{route}_live.json';settings=json.loads(path.read_text())
         settings['bindings']={name:sha(inside(destination,name)) for name in settings['bindings']}
         path.write_text(json.dumps(settings,indent=2)+'\n',encoding='utf-8')
     manifest=inputs['template'];manifest['source']=source
+    manifest['external_resources']=external_models
+    manifest['pico_inputs_release']['unified_environment']=True
     if sys.platform=='win32':validate_target_closure(destination)
     else:
         with tempfile.TemporaryDirectory() as resolved:
@@ -98,8 +115,8 @@ def build(root,assets,output,*,allow_dirty=False):
     output=Path(output).resolve();output.mkdir(parents=True,exist_ok=True);reports=[]
     with tempfile.TemporaryDirectory(prefix='pico27000-') as temp:
         stage=Path(temp)/'stage';manifest=stage_delivery(root,assets,stage,allow_dirty=allow_dirty)
-        for route in ('pico_smpl','pico_teleop'):
-            top=f'vita_{route}_27000_{manifest["source"]["commit"][:12]}_{manifest["payload_sha256"][:12]}'
+        for route in ('all',):
+            top=f'actor-s100-base-{manifest["source"]["commit"][:12]}-{manifest["payload_sha256"][:12]}'
             archive=output/(top+'.tar.gz')
             with archive.open('xb') as stream,gzip.GzipFile(fileobj=stream,filename='',mode='wb',mtime=0) as zipped:
                 with tarfile.open(fileobj=zipped,mode='w') as tar:
@@ -110,7 +127,7 @@ def build(root,assets,output,*,allow_dirty=False):
                         with path.open('rb') as data:tar.addfile(info,data)
             digest=sha(archive);archive.with_suffix('.gz.sha256').write_text(digest+'  '+archive.name+'\n',encoding='ascii')
             reports.append(dict(route=route,archive=str(archive),sha256=digest,payload_sha256=manifest['payload_sha256']))
-    return reports
+    return reports[0]
 def main():
     p=argparse.ArgumentParser(description=__doc__);p.add_argument('--assets-root',type=Path,required=True)
     p.add_argument('--output-dir',type=Path,default=ROOT/'outputs/pico27000_delivery')

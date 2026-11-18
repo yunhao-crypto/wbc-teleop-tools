@@ -62,7 +62,7 @@ def main():
     from bootstrap_pico_inputs_s100 import require_target,verify_inputs,sha
     require_target()
     root=args.root.resolve();manifest=verify_inputs(root)
-    receipt=json.loads((root/'build/pico_inputs_s100_install.json').read_text())
+    receipt=json.loads((root/'build/actor_s100_install.json').read_text())
     if (manifest['pico_inputs_release'].get('physical_workflow') is not True
             or receipt.get('payload_sha256')!=manifest['payload_sha256']
             or receipt.get('sdk_workflow_check',{}).get('status')!='PASS_SMPL_NO_ACTION_WORKFLOW_REPLAY'):

@@ -66,8 +66,8 @@ if [[ "$MODE" != configure && "$MODE" != connect && $HELP == 0 && -z "$POLICY" ]
       echo '  1) sonic       GR00T G1 actor     config/actor_pico.json'
       echo '  2) supermimic  SuperMimic actor   config/actor_pico_supermimic.json'
       echo '  3) morphmimic  MorphMimic actor   config/actor_pico_morphmimic.json'
-      echo '  4) pico_smpl   27000 human encoder (independent BodyCmd4 package)'
-      echo '  5) pico_teleop 27000 three-point encoder (independent BodyCmd4 package)'
+      echo '  4) pico_smpl   27000 human encoder'
+      echo '  5) pico_teleop 27000 three-point encoder'
     } >&2
     read -r -p 'Policy [1/2/3/4/5]: ' answer || answer=
     case "$answer" in
@@ -87,13 +87,6 @@ if [[ -n "$POLICY" && "$MODE" != configure && "$MODE" != connect ]]; then
   set -- --policy "$POLICY" "$@"
 fi
 ACTOR_ENTRY="$ROOT/scripts/actor_pico.py"
-if [[ "$POLICY" == pico_smpl || "$POLICY" == pico_teleop ]]; then
-  ACTOR_ENTRY="$ROOT/scripts/pico_actor_aligned.py"
-  if [[ ! -f "$ACTOR_ENTRY" ]]; then
-    echo 'Build the independent 27000 BodyCmd4 delivery; this legacy package is preserved.' >&2
-    exit 2
-  fi
-fi
 if [[ "$MODE" == connect && $HELP == 1 ]]; then
   exec "${VITA_ACTOR_PYTHON:-python3}" "$ROOT/scripts/pico_session_services.py" --help
 fi

@@ -2,14 +2,16 @@
 
 `pico_smpl` and `pico_teleop` retain their original 27000 encoders, FSQ and shared
 decoder. Both use the Git actor's `run_live` function body through explicit typed
-reference hooks. The existing SONIC, SuperMimic and MorphMimic choices keep their
-entry, default SDK and requirements.
+reference hooks. All five policies use the same actor directory, `venv`,
+build/bootstrap/launch entry points and installation receipt.
 
-The new modalities require an **independent BodyCmd4 package**. The repository's
-default SDK 0.3.0 is not replaced. The separate build selects the pinned
+Enable 27000 support in the original base build to select the shared pinned
 `1.0.0rc1+bodycmdv4.6863ad7` wheel: native motor A/B commands, virtual PR feedback.
 It retains the original ankle IK/Jacobian, affine PD targets, model gains, command
-envelope, SDK ownership and cancellation protections. This codec build is not an
+envelope, SDK ownership and cancellation protections. Existing policies retain
+their original BodyCmd3 default; 27000 explicitly selects BodyCmd4. One environment
+supports both protocols. Builds without the 27000 option retain SDK 0.3.0.
+This codec build is not an
 official SDK release and has no new hardware acceptance claim.
 
 ## Build and installation
@@ -22,20 +24,21 @@ verified 27000 package can serve as the asset root). Only explicitly listed file
 are read; the builder never copies its venv, logs, credentials or install receipts.
 
 ```bash
-python scripts/build_pico_27000_delivery.py --assets-root /absolute/27000-assets
+python scripts/build_actor_delivery.py --variant base --pico27000-assets /absolute/27000-assets
 ```
 
 The builder resolves the ARM64 wheel closure offline, verifies all external
-assets and seals code bindings and source revision. It builds two independent
-archives with identical payloads and different root directories. Commit the
+assets and seals code bindings and source revision. It builds one standard
+`actor-s100-base-*` archive containing both modalities and all original actor
+entry points. Original actor weights remain separately supplied as before. Commit the
 source before a release; `--allow-dirty` marks development builds explicitly.
 Extract an archive in a new `/userdata` directory and execute each step only
 after its predecessor passes:
 
 ```bash
 source /app/script/env.sh
-python3.10 scripts/bootstrap_pico_inputs_s100.py --verify-only
-python3.10 scripts/bootstrap_pico_inputs_s100.py
+python3.10 scripts/bootstrap_actor_s100.py --verify-only
+python3.10 scripts/bootstrap_actor_s100.py --policy pico_smpl
 bash scripts/start_actor_pico.sh configure --robot-id <local-S100-IP> --robot-config /absolute/effective.yaml
 bash scripts/start_actor_pico.sh pico_smpl check --steps 240
 bash scripts/start_actor_pico.sh pico_smpl state-check --seconds 5
@@ -45,6 +48,11 @@ Bootstrap performs ORT and native SDK checks for both modalities and an in-memor
 BodyCmd4 codec check, with no Pico initialization, service or controller creation.
 The live entry requires the current payload's successful installation receipt.
 Use `pico_teleop` in place of `pico_smpl` for the other modality.
+Both choices initialize the same `venv/.actor_bootstrap_owned` environment and
+write `build/actor_s100_install.json`; the original policies use that same
+environment with their usual `--policy sonic|supermimic|morphmimic --model ...`.
+No second venv or SDK is installed for a policy switch. The old 27000-specific
+builder/bootstrap scripts remain compatibility helpers, not a separate runtime.
 
 After confirming current firmware/configuration, fresh healthy feedback and
 on-site support, first run a supported short stand/exit trial without triggers:

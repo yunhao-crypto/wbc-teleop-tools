@@ -59,8 +59,14 @@ def verify_inputs(root):
     release_schema='vita_pico_inputs_s100_physical_v1' if physical else 'vita_pico_inputs_s100_no_action_v1'
     if (release.get('schema') != release_schema
             or release.get('primary_route') != 'pico_smpl' or release.get('motion_enabled') is not physical
-            or release.get('backend') != 'ort' or manifest.get('external_resources') != []):
+            or release.get('backend') != 'ort'):
         raise ValueError('Not a sealed, model-included Pico input delivery with an explicit action capability')
+    if manifest.get('external_resources'):
+        from bootstrap_actor_s100 import POLICY_CONFIGS
+        expected=[dict(json.loads((root/name).read_text())['artifacts']['model'],role=policy+'_actor')
+            for policy,name in POLICY_CONFIGS.items()]
+        if not release.get('unified_environment') or manifest['external_resources']!=expected:
+            raise ValueError('Unreviewed external model declarations')
     names = seen
     for config in ('config/actor_smpl.json', 'config/actor_threepoint.json'):
         settings = json.loads((root/config).read_text())
@@ -126,14 +132,16 @@ def require_target():
 
 def install(root, manifest):
     require_target()
-    venv = root/'venv'; marker = venv/'.pico_inputs_bootstrap_owned'
+    if verify_inputs(root)['payload_sha256']!=manifest['payload_sha256']:
+        raise ValueError('Shared installation payload changed')
+    venv = root/'venv'; marker = venv/'.actor_bootstrap_owned'
     if venv.exists() and not marker.is_file():
         raise RuntimeError('Existing unowned venv is preserved; use a new deployment directory')
     if not venv.exists():
         import ensurepip
         import venv as venv_module
         venv_module.EnvBuilder(with_pip=True).create(venv)
-        marker.write_text('Created by bootstrap_pico_inputs_s100.py; isolated no-action delivery\n')
+        marker.write_text('Created by shared actor bootstrap; installation performs no motion\n')
     python = venv/'bin/python'; env = environment(root)
     pip_env = env.copy(); pip_env.pop('PYTHONPATH',None)
     subprocess.run([str(python),'-m','pip','install','--no-index','--no-cache-dir','--find-links',
@@ -205,6 +213,7 @@ def install(root, manifest):
                 raise RuntimeError('Aligned original-encoder check failed')
             receipt['aligned_model_checks'][route][backend]=proof
     (root/'build/pico_inputs_s100_install.json').write_text(json.dumps(receipt,indent=2)+'\n')
+    (root/'build/actor_s100_install.json').write_text(json.dumps(receipt,indent=2)+'\n')
     return receipt
 
 
