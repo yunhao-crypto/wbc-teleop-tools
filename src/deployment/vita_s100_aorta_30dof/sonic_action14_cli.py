@@ -146,9 +146,11 @@ def main(argv=None):
             parser.error('--plan cannot be combined with motion, fixed-neck, or follow-head')
         payload = plan()
         if args.gripper_config is not None:
-            from .sonic_action14_gripper import describe
+            from .actor_pico_native_accessories import load_native_gripper_config
             try:
-                payload.update(describe(args.gripper_config))
+                config = load_native_gripper_config(args.gripper_config)
+                payload.update(gripper_schema=config['schema'], gripper_device=config['device_model'],
+                               gripper_sides=sorted(config['sides']), gripper_opened=False)
             except (OSError, ValueError) as error:
                 parser.error('gripper config: '+str(error))
         print(json.dumps(payload, indent=2, sort_keys=True))
@@ -170,6 +172,11 @@ def main(argv=None):
     from .sonic_action14_orchestrator import Action14Session
     root = CONFIG.parents[1]
     load_source_config(root)
+    gripper_config = None
+    if args.gripper_config is not None:
+        from .actor_pico_native_accessories import load_native_gripper_config, require_grip_binding
+        gripper_config = load_native_gripper_config(args.gripper_config)
+        require_grip_binding()
     stop = threading.Event()
     passive_on_exit = threading.Event()
     previous = {}
@@ -195,9 +202,6 @@ def main(argv=None):
         print('PICO_WAIT: receiver starting; action14 stand does not depend on receiving Pico. '
               'Connect the headset to this robot on TCP 63901 at any time while this script is running.',
               flush=True)
-        if args.gripper_config is not None:
-            from .sonic_action14_gripper import attach
-            gripper = attach(args.gripper_config, publisher.transport, source.controls)
         # From PASSIVE or QUIET_PASSIVE, wait out the non-interruptible damping
         # curve and issue one FIXED_STAND request. No fault reset or motor enable.
         def pause(seconds):
@@ -208,7 +212,12 @@ def main(argv=None):
         print('ACTION14_POSTURE: '+posture, flush=True)
         if not stop.is_set():
             session.initialize()
-            if gripper is not None:
+            if gripper_config is not None:
+                from .actor_pico_native_accessories import NativePicoAccessories, require_accessories
+                require_accessories(session._capabilities(), gripper=gripper_config)
+                def send_accessories(name, payload):
+                    return control.event(session.request_id, name, payload, timeout=.35)
+                gripper = NativePicoAccessories(send_accessories, source.controls, gripper=gripper_config)
                 gripper.start()
             started = time.monotonic()
             print('ACTION14_STAND: native policy active. A fresh dual-trigger engages only after the robot has accepted a reference. Ctrl-C requests PASSIVE; stiffness drops and a loaded limb may fall.', flush=True)
@@ -228,6 +237,9 @@ def main(argv=None):
                     print('ACTION14_POSTURE_AMBIGUOUS: return-to-stand was not confirmed. The native policy may still be active.', flush=True)
                     announced = 'ambiguous'
                 session.tick()
+                if gripper is not None:
+                    gripper.update(session.following)
+                    gripper.check()
                 if not source.process.is_alive():
                     raise RuntimeError('reference worker exited')
                 stop.wait(.002)
@@ -237,6 +249,8 @@ def main(argv=None):
     finally:
         # Ctrl-C/SIGTERM requests PASSIVE and waits for that status. A timed
         # --seconds exit still uses return_to_stand and leaves the policy active.
+        if gripper is not None:
+            gripper.close()
         try:
             if passive_on_exit.is_set() and control is not None:
                 print('ACTION14_PASSIVE: requesting one PASSIVE cancel. Stiffness will drop.', flush=True)
@@ -264,8 +278,6 @@ def main(argv=None):
                 if control is not None:
                     control.close()
         finally:
-            if gripper is not None:
-                gripper.close()
             if source is not None:
                 source.close()
             for sig, handler in previous.items():

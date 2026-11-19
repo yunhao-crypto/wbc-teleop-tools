@@ -112,8 +112,6 @@ def worker_settings(config):
             or not math.isfinite(poll) or not 0 < poll <= .01):
         raise ValueError('pico_worker.reader_poll_interval_s must lie in (0, 0.01] seconds')
     cpus, gmr, control = (_cpu_list(raw, n) for n in ('worker_cpus', 'gmr_cpus', 'control_cpus'))
-    if cpus and not set(gmr) <= set(cpus):
-        raise ValueError('pico_worker.gmr_cpus must lie within worker_cpus')
     if set(control) & set(gmr):
         raise ValueError('pico_worker.control_cpus must not overlap gmr_cpus')
     return WorkerSettings(iterations, float(poll), cpus, gmr, control)

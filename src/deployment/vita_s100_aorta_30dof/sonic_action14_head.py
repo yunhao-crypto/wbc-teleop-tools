@@ -25,6 +25,10 @@ class _Command:
 class Action14Head:
     def __init__(self, control):
         self.control = control
+        self.reset()
+
+    def reset(self):
+        self.control.reset()
         self.command = _Command(joints=tuple(_Joint() for _ in NECK_NAMES))
 
     def preview_targets(self, snapshot, now):

@@ -4,6 +4,7 @@ from contextlib import redirect_stdout
 import importlib.util
 import io
 import json
+import os
 from pathlib import Path
 import sys
 import tempfile
@@ -411,6 +412,28 @@ class TraceTests(unittest.TestCase):
         measured = [r for r in rows if r['kind'] == Kind.USER_SPAN]
         self.assertEqual([(r['timestamp_us'], r['duration_us']) for r in measured], [(100, 51), (151, 20)])
         self.assertTrue(all(r['reference_id'] == first['trace_input_id'] for r in measured))
+
+    def test_mimiclite_reference_only_runtime_owns_and_closes_its_trace(self):
+        from deployment.vita_s100_aorta_30dof.actor_pico_worker import PicoReferenceProcess
+
+        runtime = NS(root=ROOT, config={'policy_kind': 'mimiclite_vita02a_tracking'},
+                     model=NS(contract=None))
+        with patch.dict(os.environ, {'MIMICLITE_WTT_TRACE_OUTPUT': str(self.path)}):
+            worker = PicoReferenceProcess(runtime, buttons=False, record_logs=False)
+        self.assertEqual(worker.process._kwargs, {'record_logs': False, 'trace_enabled': True})
+        worker.process = NS(start=lambda: None, pid=None, is_alive=lambda: True)
+        try:
+            worker.start()
+            worker.previous = dict(state='ready', trace_process='native-mimiclite',
+                trace_sequence=1, pico_timestamp_ns=100000, received_monotonic=1.,
+                trace_points_us=(100, 150, 151, 170, 171, 90, 100))
+            self.assertGreater(worker.snapshot()['trace_input_id'], 0)
+        finally:
+            worker.close()
+        reader = Reader(self.path)
+        rows = list(reader)
+        self.assertTrue(reader.integrity.complete, reader.integrity.issues)
+        self.assertEqual(sum(r['kind'] == Kind.INPUT_EVENT for r in rows), 1)
 
     def test_gmr_latest_ipc_loss_marks_recording_incomplete_without_stopping_reader(self):
         import queue

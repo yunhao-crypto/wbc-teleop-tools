@@ -1,0 +1,48 @@
+{
+  "policy_kind": "mimiclite_vita02a_tracking",
+  "pico_max_age_s": 0.6,
+  "pico_hold_age_s": 0.25,
+  "retargeting": {
+    "implementation": "motion_stream_bridge_gmr_vita02a",
+    "source_commit": "763f5607c3f0accb61a415cfd676af54b72e1232",
+    "human_height_m": 1.8,
+    "robot": "vita02a",
+    "offset_to_ground": true,
+    "ankle_reference_limits": {
+      "pitch": [
+        -0.751,
+        0.414
+      ],
+      "roll": [
+        -0.3926987648,
+        0.3926987648
+      ]
+    }
+  },
+  "pico_stream": {
+    "playback_margin_s": 0.06,
+    "joint_filter": {
+      "min_cutoff_hz": 3.0,
+      "beta": 0.5,
+      "d_cutoff_hz": 1.0
+    },
+    "root_filter": {
+      "min_cutoff_hz": 1.5,
+      "beta": 0.3,
+      "d_cutoff_hz": 1.0
+    },
+    "root_max_tilt_deg": 25.0
+  },
+  "pico_worker": {
+    "ik_max_iter": 3,
+    "reader_poll_interval_s": 0.002,
+    "worker_cpus": [
+      0,
+      2,
+      3
+    ],
+    "gmr_cpus": [
+      1
+    ]
+  }
+}

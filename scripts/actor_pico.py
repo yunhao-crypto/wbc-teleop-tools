@@ -185,6 +185,7 @@ def shadow(runtime, args, write):
                 raise RuntimeError('SDK source group mismatch')
             source.get_robot_info(timeout=5.)
             pico = create_pico_source(logger=logging.getLogger('actor-pico'), maximum_age=runtime.config['pico_max_age_s'],
+                                      timeline_sampling=runtime.config.get('policy_kind') == 'mimiclite_vita02a_tracking',
                                       duplicate_poll_interval_s=runtime.worker.reader_poll_interval_s)
             resources.callback(pico.stop)
             pico.start()

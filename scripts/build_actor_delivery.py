@@ -29,6 +29,7 @@ ARCHIVES = [
 SCRIPTS = ('actor_pico.py', 'bootstrap_actor_s100.py', 'configure_actor_s100.py',
            'start_actor_pico.sh', 'start_actor_motion.sh', 'prepare_zenoh_session.py',
            'pico_session_services.py', 'pico_camera_bridge.py', 'build_pico_arm64.sh',
+           'start_mimiclite_native.sh', 'pin_native_inference.py', 'start_sonic_action14.sh',
            'prepare_external_ankle_config.py', 'import_actor_motion.py')
 MODULES = ('__init__.py', 'policy_contract.py', 'state_adapter.py', 'sdkmain_adapter.py',
            'sdk021_guard.py', 'pico_input.py', 'pico_camera_bridge.py')
@@ -74,13 +75,15 @@ def extract_bundle(archive, destination):
 def runtime_inputs(root, variant):
     """Explicit runtime boundary; no tests, machine-local files or developer docs."""
     names = {str(DELIVERY/'requirements.txt'), 'config/sdk021-wheel-guard.json',
-             'config/actor_motion.json', 'config/pico_op3_gripper.example.json'}
+             'config/actor_motion.json', 'config/pico_op3_gripper.example.json',
+             'config/mimiclite_native_reference.json'}
     names.update('scripts/'+name for name in SCRIPTS)
     module = 'src/deployment/vita_s100_aorta_30dof/'
     names.update(module+name for name in MODULES)
     names.update(str(p.relative_to(root)) for p in (root/module).glob('actor_*.py')
                  if p.name not in ('actor_pico_session_replay.py','actor_smpl.py',
                                    'actor_threepoint.py','actor_human_encoder.py'))
+    names.update(str(p.relative_to(root)) for p in (root/module).glob('sonic_action14*.py'))
     human = 'src/deployment/unitree_g1_ros2_29dof/src/humanoid_policy/'
     names.update(human+name for name in ('__init__.py', 'local_smpl_source.py', 'pico_body_pose_reader.py'))
     for directory in ('third_party/motion_stream_bridge', 'third_party/pico_binding',

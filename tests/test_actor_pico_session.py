@@ -53,7 +53,7 @@ class StreamSettingsTests(unittest.TestCase):
                          stream.WorkerSettings(3, .0001, (0, 1, 2), (1,), (2,)))
         for change in (dict(ik_max_iter=11), dict(ik_max_iter=True), dict(worker_cpus=[1, 1]), dict(unknown=1),
                        dict(gmr_cpus=[True]), dict(gmr_cpus=[1, 1]), dict(gmr_cpus=[-1]),
-                       dict(worker_cpus=[0], gmr_cpus=[1], control_cpus=[]), dict(reader_poll_interval_s=0),
+                       dict(reader_poll_interval_s=0),
                        dict(reader_poll_interval_s=float('nan')), dict(reader_poll_interval_s=float('inf')),
                        dict(control_cpus=2), dict(control_cpus=[True]), dict(control_cpus=[2, 2]),
                        dict(control_cpus=[-1]), dict(control_cpus=[1, 2])):
@@ -61,6 +61,9 @@ class StreamSettingsTests(unittest.TestCase):
                 stream.worker_settings(dict(pico_worker=dict(good, **change)))
         with self.assertRaises(ValueError):
             stream.worker_settings(dict(pico_worker=[]))
+        # A GMR CPU outside worker_cpus keeps the launcher and receivers off it.
+        self.assertEqual(stream.worker_settings(dict(pico_worker=dict(good, worker_cpus=[0, 2], gmr_cpus=[1]))).gmr_cpus,
+                         (1,))
 
     def test_both_policies_ship_the_same_worker_with_control_off_the_gmr_cpu(self):
         sonic, supermimic = (ActorPicoRuntime(ROOT, backend='auto', policy=p) for p in ('sonic', 'supermimic'))
@@ -151,7 +154,10 @@ class CaptureSchedulingTests(unittest.TestCase):
                       patch.object(worker.subprocess,'Popen',return_value=service),
                       patch.object(pico_input,'create_pico_source',return_value=source) as factory):
                     worker._capture(tmp,config,None,None,None,commands,output,stop)
-                header=json.loads(next((Path(tmp)/'outputs').glob('actor_pico_gmr_input_*.jsonl')).read_text())
+                rows=[json.loads(line) for line in next((Path(tmp)/'outputs').glob('actor_pico_gmr_input_*.jsonl')).read_text().splitlines()]
+                header=rows[0]
+                self.assertEqual(rows[-1]['record_type'],'footer')
+                self.assertEqual(rows[-1]['complete_scope'],'accepted_records_drained')
                 self.assertEqual(seen,dict(sdk=cpus,gmr=[cpus[0]]))
                 self.assertEqual(header['worker_affinity'],cpus)
                 self.assertEqual(header['gmr_affinity'],[cpus[0]])
@@ -202,7 +208,9 @@ class PlaybackTests(unittest.TestCase):
             reader_realtime_ns=123,reader_monotonic_ns=1_000_000_000),(1.,0.,0.,0.))
         self.assertEqual(capture.getvalue(),'')
         worker.flush_log()
-        row=json.loads(capture.getvalue())
+        self.assertTrue(worker.source_log.close(timeout=1.)['complete'])
+        rows=[json.loads(line) for line in capture.getvalue().splitlines()]
+        row=next(row for row in rows if row['record_type']=='gmr_frame')
         self.assertEqual(row['reader_frame_sequence'],42)
         self.assertEqual(row['reader_realtime_ns'],123)
         self.assertLessEqual(row['gmr_start_monotonic'],row['gmr_end_monotonic'])

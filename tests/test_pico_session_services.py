@@ -113,11 +113,20 @@ while True:time.sleep(.01)
         self.assertEqual(child.returncode, -signal.SIGKILL)
 
     def test_sigterm_is_forwarded_and_primary_shutdown_precedes_video(self):
+        self.assert_signal_cleanup(signal.SIGTERM)
+
+    def test_ssh_hangup_reaps_the_detached_camera(self):
+        self.assert_signal_cleanup(signal.SIGHUP)
+
+    def assert_signal_cleanup(self, number):
         primary = self.code('signal_primary', f'''
 def stop(*_):
+    signal.signal(signal.SIGHUP, signal.SIG_IGN)
+    signal.signal(signal.SIGTERM, signal.SIG_IGN)
     with Path({str(self.events)!r}).open('a') as f:f.write('primary_stop\\n')
     raise SystemExit(0)
 signal.signal(signal.SIGTERM,stop)
+signal.signal(signal.SIGHUP,stop)
 Path({str(self.primary_pid)!r}).write_text(str(os.getpid()))
 while True:time.sleep(.01)
 ''')
@@ -131,13 +140,23 @@ raise SystemExit(session.supervise({primary!r},camera_command={self.camera()!r},
                                  start_new_session=True)
         self.addCleanup(lambda:session.stop_child(child, 1.))
         self.wait_file(self.primary_pid); self.wait_file(self.ready)
-        child.send_signal(signal.SIGTERM)
+        if number == signal.SIGHUP:
+            os.killpg(child.pid, signal.SIGHUP)
+        else:
+            child.send_signal(number)
         output, _ = child.communicate(timeout=5)
-        self.assertEqual(child.returncode, 143, output)
-        self.assertEqual(self.events.read_text().splitlines(), ['primary_stop', 'camera_stop'])
-        for path in (self.primary_pid, self.camera_pid):
-            with self.assertRaises(ProcessLookupError):
-                os.kill(int(path.read_text()), 0)
+        try:
+            self.assertEqual(child.returncode, 128+number, output)
+            self.assertEqual(self.events.read_text().splitlines(), ['primary_stop', 'camera_stop'])
+            self.assertFalse(self.ready.exists())
+            for path in (self.primary_pid, self.camera_pid):
+                with self.assertRaises(ProcessLookupError):
+                    os.kill(int(path.read_text()), 0)
+        finally:
+            try:
+                os.kill(int(self.camera_pid.read_text()), signal.SIGTERM)
+            except ProcessLookupError:
+                pass
 
     def test_connection_startup_failure_is_not_reported_as_success(self):
         with self.assertRaisesRegex(RuntimeError, 'before listening'):
@@ -211,6 +230,26 @@ print('actor_reused_shell_lock')
         import fcntl
         with lock_path.open('a') as released:
             fcntl.flock(released,fcntl.LOCK_EX|fcntl.LOCK_NB)
+
+    def test_camera_starts_without_persisting_logs_or_statistics(self):
+        scripts = self.root/'scripts'
+        scripts.mkdir()
+        (scripts/'pico_camera_bridge.py').write_text(
+            'import json, os, sys, time\nfrom pathlib import Path\n'
+            'assert "--stats" not in sys.argv\n'
+            'ready=Path(sys.argv[sys.argv.index("--ready-file")+1])\n'
+            'ready.write_text(json.dumps(dict(pid=os.getpid(), address=["127.0.0.1", 13579], topic="test")))\n'
+            f'Path({str(self.ready)!r}).touch()\n'
+            'while True: time.sleep(.01)\n')
+        profile = self.root/'camera-profile.json5'
+        profile.touch()
+        result = subprocess.run([sys.executable, str(SCRIPT), '--root', str(self.root),
+            '--camera-session-profile', str(profile), '--no-camera-logs', '--', *self.primary()],
+            capture_output=True, text=True, timeout=6, env=dict(os.environ, XDG_RUNTIME_DIR=str(self.root)))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('PICO_VIDEO: ready', result.stdout)
+        self.assertEqual(list(self.root.glob('pico_camera_*.ready.json')), [])
+        self.assertEqual(list((self.root/'outputs').iterdir()), [])
 
     def test_unrelated_descriptor_nine_is_not_passed_to_actor(self):
         build=self.root/'build';build.mkdir()

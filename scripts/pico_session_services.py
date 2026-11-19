@@ -67,7 +67,8 @@ def supervise(command, *, camera_command=None, camera_env=None, camera_log=None,
         nonlocal requested
         requested = requested or number
 
-    previous = {s: signal.signal(s, stopped) for s in (signal.SIGINT, signal.SIGTERM)}
+    previous = {s: signal.signal(s, stopped) for s in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP)}
+    camera_log_note = ' (log '+str(camera_log)+')' if camera_log else ''
     start = time.monotonic()
     try:
         if camera_command:
@@ -77,7 +78,7 @@ def supervise(command, *, camera_command=None, camera_env=None, camera_log=None,
                     files.append(output)
                 camera = subprocess.Popen(camera_command, env=camera_env, stdout=output,
                     stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, start_new_session=True)
-                report('PICO_VIDEO: starting; log='+str(camera_log), flush=True)
+                report('PICO_VIDEO: starting'+camera_log_note, flush=True)
             except OSError as error:
                 camera_failed = True
                 report('PICO_VIDEO: unavailable: '+str(error)+'; primary session continues', flush=True)
@@ -95,7 +96,7 @@ def supervise(command, *, camera_command=None, camera_env=None, camera_log=None,
         while True:
             if requested and not signalled:
                 if primary.poll() is None:
-                    primary.send_signal(requested)
+                    primary.send_signal(signal.SIGTERM if requested == signal.SIGHUP else requested)
                 signalled = True
                 stop_deadline = time.monotonic()+shutdown_timeout
             result = primary.poll()
@@ -114,7 +115,7 @@ def supervise(command, *, camera_command=None, camera_env=None, camera_log=None,
             if camera is not None and not camera_failed:
                 if camera.poll() is not None:
                     camera_failed = True
-                    report('PICO_VIDEO: unavailable; see '+str(camera_log)+'; primary session continues', flush=True)
+                    report('PICO_VIDEO: unavailable'+camera_log_note+'; primary session continues', flush=True)
                 elif not camera_announced and camera_ready and Path(camera_ready).is_file():
                     try:
                         info = json.loads(Path(camera_ready).read_text())
@@ -149,6 +150,7 @@ def main():
     p.add_argument('--root', type=Path, default=ROOT)
     p.add_argument('--connect-only', action='store_true', help='Receive Pico and video only; no model or robot control')
     p.add_argument('--no-camera', action='store_true')
+    p.add_argument('--no-camera-logs', action='store_true', help='Skip camera log and statistics files')
     p.add_argument('--camera-topic', choices=TOPICS, default=TOPICS[0])
     p.add_argument('--camera-port', type=int, default=13579)
     p.add_argument('--camera-session-profile', type=Path, default=Path('/app_param/zenoh/factory.json5'))
@@ -164,8 +166,9 @@ def main():
     output = root/'outputs'
     output.mkdir(parents=True, exist_ok=True)
     stamp = str(time.time_ns())
-    camera_log = output/f'pico_camera_{stamp}.log'
-    camera_ready = output/f'pico_camera_{stamp}.ready.json'
+    camera_log = None if args.no_camera_logs else output/f'pico_camera_{stamp}.log'
+    ready_dir = Path(os.environ.get('XDG_RUNTIME_DIR', output)) if args.no_camera_logs else output
+    camera_ready = ready_dir/f'pico_camera_{stamp}.ready.json'
     camera_command = None
     camera_env = dict(os.environ, ZENOH_SESSION_CONFIG_URI=str(args.camera_session_profile),
                       AORTA_GROUP='default', OPENBLAS_NUM_THREADS='1', OMP_NUM_THREADS='1')
@@ -173,8 +176,9 @@ def main():
         if args.camera_session_profile.is_file():
             camera_command = ['nice', '-n', '10', os.environ.get('VITA_CAMERA_PYTHON', sys.executable),
                 str(root/'scripts/pico_camera_bridge.py'), '--port', str(args.camera_port),
-                '--topic', args.camera_topic, '--stats', str(output/f'pico_camera_{stamp}.json'),
-                '--ready-file', str(camera_ready)]
+                '--topic', args.camera_topic, '--ready-file', str(camera_ready)]
+            if camera_log is not None:
+                camera_command += ['--stats', str(output/f'pico_camera_{stamp}.json')]
         else:
             print('PICO_VIDEO: profile missing: '+str(args.camera_session_profile)+
                   '; video disabled for this session', flush=True)
