@@ -12,6 +12,12 @@ The optional SuperMimic actor has its own pinned model in
 `config/actor_pico_supermimic.json`; install it with
 `--policy supermimic --model /path/to/supermimic_vita02a.onnx` (see
 [policy selection](../../README_ACTOR_PICO.md#policy-selection)).
+The optional MimicLite actor is configured in `config/actor_pico_mimiclite.json`
+and requires the BodyCmd4 SDK named there; a package sealing SDK 0.3.0 refuses
+`--policy mimiclite` before installing anything (see
+[MimicLite deployment](../../README_MIMICLITE.md)). The official SuperMimic OP3
+actor uses `config/actor_pico_supermimic_op3.json` and
+`--policy supermimic_op3 --model /path/to/actor.onnx`.
 Use a freshly extracted package directory for a changed model delivery. A different existing
 model/environment is preserved rather than overwritten.
 The URDF, source code, tests and configuration are tracked. Tests and developer

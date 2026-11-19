@@ -16,8 +16,10 @@ launchers, SDK installation and protocol guards are not replaced.
 
 `start_actor_pico.sh` requires an explicit policy for every mode except
 `configure` and the connection-only `connect` mode: `sonic` (`config/actor_pico.json`),
-`supermimic` (`config/actor_pico_supermimic.json`) or `morphmimic`
-(`config/actor_pico_morphmimic.json`), given as the first word
+`supermimic` (`config/actor_pico_supermimic.json`), `morphmimic`
+(`config/actor_pico_morphmimic.json`), `mimiclite`
+(`config/actor_pico_mimiclite.json`, see [README_MIMICLITE.md](README_MIMICLITE.md))
+or `supermimic_op3` (`config/actor_pico_supermimic_op3.json`), given as the first word
 (`start_actor_pico.sh supermimic shadow ...`), after the mode, or as `--policy`.
 Without one, a terminal shows a menu with no default; an empty answer or a
 non-interactive run starts nothing. Conflicting selections are rejected. A
@@ -271,6 +273,34 @@ SONIC's serial-ankle checkpoint cannot become a native A/B policy by changing
 a flag. Supply a real closed-loop motor-theta export and update its pinned
 model identity. The three native decoders are covered by offline tests; this
 does not constitute physical robot validation.
+
+## MimicLite Vita02A OP3
+
+`mimiclite` (`config/actor_pico_mimiclite.json`) is an additional native motor-
+angle policy; MorphMimic and its configuration above are unchanged. See
+[MimicLite deployment](README_MIMICLITE.md) for host import, the BodyCmd4 SDK
+requirement, the exact observation ABI, the native locomotion entry and
+validation limits.
+
+The host importer preserves the trained graph and normalizers, wraps its named
+`command`/`policy` inputs into the SDK's single tensor, selects the action output,
+and verifies original/wrapped ORT parity before pinning SHA256/size. MimicLite
+retains raw actions and native A/B targets without action/position clipping; the
+live loop also refuses an adapter whose effort/velocity caps differ from the
+reviewed 50 Nm / 117 rpm. A mismatched model, reference or robot contract is
+rejected, not relabelled. Only native `motor_theta` output is supported; the
+legacy virtual-wire trial is refused.
+
+```bash
+# Host only, before building the sealed package; no robot connection:
+python3 scripts/import_mimiclite_policy.py --policy-yaml /path/to/policy.yaml
+# From a package/venv that seals the configured BodyCmd4 SDK:
+python3.10 scripts/bootstrap_actor_s100.py --policy mimiclite --model /path/to/wrapped-policy.onnx
+bash scripts/start_actor_pico.sh mimiclite check --steps 100
+```
+
+Synthetic weights and fake transport tests are not a substitute for ARM
+inference, HIL or standing acceptance.
 
 ## Data path and calibration
 
@@ -1164,19 +1194,26 @@ same GMR chain with the same parameters:
 - `reader_poll_interval_s` waits between duplicate body snapshots (2 ms);
   new frames are processed immediately when observed. Shadow mode uses the
   same interval for its in-process reader.
-- `worker_cpus` is inherited by SDK/body/trigger threads. Only after those
-  threads start does `gmr_cpus` narrow the calling GMR thread. The reviewed
-  six-core S100 profile uses CPU 0–4 for receivers and CPU 1 for GMR, avoiding
-  CPU 5's measured contention. These indices must be reviewed on other CPU
-  layouts; unavailable CPUs fail startup. The vendor service keeps its
-  inherited mask. No CPU frequency or vendor-service affinity is changed.
+- `worker_cpus` is applied before the vendor service is forked, so the vendor
+  service and SDK/body/trigger threads inherit it. Only after those threads
+  start does `gmr_cpus` set the calling GMR thread's mask; it may lie inside
+  `worker_cpus` or outside it (including outside the launcher's mask). The
+  reviewed six-core S100 profile for sonic/supermimic uses CPU 0–4 for
+  receivers and CPU 1 for GMR, avoiding CPU 5's measured contention. MimicLite
+  uses CPU 0, 2, 3 for receivers and CPU 1 for GMR alone: in native mode CPU 4
+  carries the pinned native inference thread and CPU 5 the locomotion
+  real-time threads, and `scripts/start_mimiclite_native.sh` starts the whole
+  session under `taskset -c 0,2,3` (see README_MIMICLITE.md). These indices
+  must be reviewed on other CPU layouts; unavailable CPUs fail startup. No CPU
+  frequency is changed.
 - `control_cpus` pins every thread of the live control process (SCHED_RR
   policy loop, native inference, transport) after the Pico worker has been
-  spawned, so the worker and vendor service keep the unrestricted mask. It
+  spawned, so the worker and vendor service keep the `worker_cpus` mask. It
   must not overlap `gmr_cpus`: a real-time control thread on the GMR CPU
   preempts the pinned GMR thread, which cannot migrate. The S100 profile uses
-  CPU 2–4 (layout B in the full-load replay below). The live log records the
-  applied mask as `control_affinity`. Stand-only runs apply it too.
+  CPU 2–4 (layout B in the full-load replay below); MimicLite uses CPU 2–3.
+  The live log records the applied mask as `control_affinity`. Stand-only
+  runs apply it too.
 
 Without the block the worker is unchanged: 10 iterations, 0.1 ms polling and
 no CPU pinning. The GMR input log header records `pico_worker` and the
@@ -1317,3 +1354,88 @@ Physical travel limits, finite-value checks, gains, adapter effort caps,
 watchdog/interpolation, ownership and checked exit remain in place. Removing
 an extra Python gate restores this contract; hardware stability still requires
 an attended motion trial.
+
+## Official SuperMimic OP3 (GenCoord)
+
+Use **`--policy supermimic_op3`** / `start_actor_pico.sh supermimic_op3 check`.
+The existing `supermimic` selection remains the trackerlab actor. Their weights,
+observations and reference protocols are incompatible; do not swap their files.
+The new config pins the evaluated official **45,000-iteration** checkpoint.
+
+The adapter consumes virtual Body31 feedback and emits native Achilles A/B
+motor setpoints. EXTERNAL must use `ankle_command_space: motor_theta` and
+`ankle_virtual_pd_intent: false`; the existing robot configuration checks still
+apply. Motor targets must not go through ankle IK a second time. Actions and
+PD setpoints are unclipped, matching this training run; physical travel and
+robot-side effort limits remain separate from those setpoints.
+
+The single-input ONNX contains the actor and its normalizers only:
+
+- Input: 1×1760 float32. Ten term-major history frames of gravity (3), body
+  gyro (3), motor position relative to default (28), motor velocity (28), and
+  previous action (28), followed by the 860-dimensional goal.
+- Goal: ten `[q40, qd40]` frames, then ten relative root rotations (first two
+  matrix columns, row-major). Offsets are 0, 5, …, 45 at 50 Hz. Rotations are
+  relative to the actual robot root, including the calibrated reference yaw.
+- Output: 1×28 float32 native motor actions in the contract's named order.
+- Reset repeats the first observed frame. End-of-clip references clamp both
+  positions and recorded velocities to the final frame, matching training.
+
+Pico uses one past frame and one derivative tail: **0.92 s intentional reference
+lag**, plus the configured playback margin. Startup requires 0.94 s of samples.
+This is not the old 0.22 s reference delay. Existing stream-age checks measure
+freshness of incoming data, independently of that intentional lag. Streaming
+28-joint references use central/one-sided virtual gradients and reconstruct all
+40 closed-linkage coordinates and rates. Impossible linkage poses are rejected.
+Native training NPZ replay instead preserves its recorded 40-joint rates via
+`actor_supermimic_op3.load_native_motion`; it requires the exact joint order and
+50 Hz and checks linkage closure.
+
+Export on the training host (trusted committed full checkpoint directory):
+
+```bash
+/path/to/supermimic/.venv/bin/python scripts/export_supermimic_op3.py \
+  --supermimic-repo /path/to/supermimic \
+  --checkpoint /path/to/checkpoint_00045000
+/path/to/supermimic/.venv/bin/python scripts/check_supermimic_op3.py \
+  --supermimic-repo /path/to/supermimic \
+  --checkpoint /path/to/checkpoint_00045000
+```
+
+The host needs ONNX Runtime in addition to training dependencies. Do not install
+ARM wheels on the host or modify a running training environment. The exporter
+writes `artifacts/supermimic_op3/actor.onnx`, contract/validation sidecars and the
+hash-pinned config. Like the other actors, the ONNX is an **external resource**,
+not a Git blob. Transfer that exact file separately. On this branch, first build and extract
+a base offline package with `scripts/build_actor_delivery.py --variant base`;
+run the following from the extracted package root. Bootstrap verifies the hash:
+
+```bash
+python scripts/bootstrap_actor_s100.py --policy supermimic_op3 --model /path/to/actor.onnx
+scripts/start_actor_pico.sh supermimic_op3 check --steps 100
+```
+
+For simulation through the deployment adapter and decoded Body31 setpoints:
+
+```bash
+/path/to/supermimic/.venv/bin/python scripts/simulate_supermimic_op3.py \
+  --supermimic-repo /path/to/supermimic --motion /path/to/qualified-op3.npz \
+  --steps 474 --output outputs/op3-simulation.json
+```
+
+Validation reports in `artifacts/supermimic_op3/` describe host parity and a
+single-reference simulation smoke test, not broad policy robustness or S100
+performance. Hardware movement and S100 20 ms timing have not been tested.
+Build offline packages with `scripts/build_actor_delivery.py`; manifests are
+generated inside the package and are not committed on this branch.
+
+Fixed-file playback also accepts the official OP3 `root_pos_w/root_quat_w`
+NPZ layout. It preserves native joint rates through lead-in and bounded playback
+windows; generated lead-in and terminal hold segments use reconstructed rates.
+Files needing joint-limit projection are rejected on this native path, since
+projection would invalidate the recorded closed-linkage trajectory. Check a
+hash-pinned `vita_actor_motion_v1` config without creating a robot controller:
+
+```bash
+scripts/start_actor_motion.sh supermimic_op3 check --motion-config /path/to/motion.json
+```

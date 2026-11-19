@@ -43,6 +43,19 @@ XRT 连接、全身追踪准备与 A+B+X+Y 四键视角切换。安装 APK 不�
 在已部署的机器人目录运行 `bash scripts/start_actor_pico.sh connect`，可以先启动 XRT 连接和
 视频转发进行无机器人动作的联调；退出后，原有 `sonic` / `supermimic` 跟随入口默认带视频启动。
 
+## MimicLite OP3 与 SuperMimic OP3（新增策略）
+
+新增 `mimiclite` 与 `supermimic_op3` 两个策略入口；SONIC、SuperMimic、MorphMimic
+的入口、配置和模型保持不变。MimicLite 配置固定 BodyCmd4 SDK
+`1.0.0rc1+bodycmdv4.6863ad7`（与 `config/pico_27000_sdk_guard.json` 一致），
+封装 SDK 0.3.0 的包会在安装前拒绝 `--policy mimiclite`。导入、观察量契约和验证边界见
+[MimicLite 部署说明](README_MIMICLITE.md)；SuperMimic OP3 见
+[README_ACTOR_PICO.md](README_ACTOR_PICO.md#official-supermimic-op3-gencoord)。
+
+已单独安装 native MimicLite 部署包的机器人使用
+`bash scripts/start_mimiclite_native.sh --model NAME --native-root /absolute/package`
+（或设置 `MIMICLITE_NATIVE_ROOT`）；由 locomotion 推理，WTT 只负责入口、CPU 布局和推理线程绑核。
+`--plan` 只打印命令，见 [native 启动说明](README_MIMICLITE.md#native-locomotion-actor-entry)。
 ## 固定 NPZ 动作评测
 
 新增 `scripts/start_actor_motion.sh`，共用一个参考动作文件，由所选策略生成自己的 observation。
@@ -59,7 +72,7 @@ bash scripts/start_actor_motion.sh supermimic check --steps 100
 
 # 已配置的 S100：请求运动，使用实时反馈播放一遍，然后正常退出
 bash scripts/start_actor_motion.sh supermimic --record-observations
-# 同一个 NPZ 也可选择 sonic / morphmimic
+# 同一个 NPZ 也可选择 sonic / morphmimic / mimiclite / supermimic_op3
 ```
 
 文件通过导入脚本放入固定路径，原始 NPZ 不改写。加载器兼容重复根部字段，并逐项记录配置允许的微小边界修正。
