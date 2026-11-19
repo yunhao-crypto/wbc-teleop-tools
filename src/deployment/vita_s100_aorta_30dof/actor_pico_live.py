@@ -1224,6 +1224,7 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
                         q=q, dq=dq, root=root, gyro=gyro, yaw_offset=tracking_yaw)
                 else:
                     stand_motion=lead
+                    stand_inputs=()
                     if modes is not None and modes.upper_follow is not None:
                         try:
                             upper,diag=references.acquire(snapshot,clock.monotonic())
@@ -1235,8 +1236,11 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
                         indices=np.minimum(start+np.arange(runtime.reference.steps),len(lead.q)-1)
                         stand_motion=runtime.math.Motion(lead.q[indices],lead.base[indices],lead.quat[indices])
                         stand_motion=modes.follow_upper(stand_motion,upper_q)
+                        if trace is not None and upper_q is not None:
+                            stand_inputs=((2,runtime.trace_input_id),)
                     command, obs, row = references.infer(stand_motion, q=q, dq=dq,
-                        root=root, gyro=gyro, ref_time=0. if stand_motion is not lead else reference_time, yaw_offset=offset)
+                        root=root, gyro=gyro, ref_time=0. if stand_motion is not lead else reference_time,
+                        yaw_offset=offset, **({'trace_inputs':stand_inputs} if stand_inputs else {}))
             except (ValueError, TimeoutError) as error:
                 if not handle_pico_loss(error, q, root):
                     raise

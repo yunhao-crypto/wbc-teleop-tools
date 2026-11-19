@@ -1,4 +1,4 @@
-locomotion-aorta[trace]==1.0.1rc2
+locomotion-aorta[trace]==1.0.1rc3
 lz4==4.4.5
 aorta-sdk==0.0.0+g7649a87ebb03
 aorta-msgs==0.0.0+g7649a87ebb03

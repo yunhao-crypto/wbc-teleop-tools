@@ -18,15 +18,20 @@ launchers, SDK installation and protocol guards are not replaced.
 Reference-consumption links share the actual Actor inference ID. Their
 `planner_consume` integer column `source_role` is `1` for an accepted Planner
 result and `2` for a Pico reference. Mixed Planner/Pico-arm inference records
-both inputs. Loading/stand or stale upper input adds no unused-source link;
+both inputs. R3 stand with a persistent upper follower also records the fresh
+Pico snapshot it actually consumes. Loading/stand without adopted upper input,
+or stale upper input, adds no unused-source link;
 a held Pico reference keeps the snapshot ID from which the hold was created.
 
 Trace uses the installed SDK's recorder and automatic SDK call instrumentation.
-The three Actor profiles pin SDK #27 at `6d4fa5920296a3b5c599cfad7a762b5b7bbee7f6`,
-whose tree matches SDK main at `3a7475136c48db299e6997b65790243e46bce1ca`.
-Use the matching wheel from SDK CI run 44306830611. The published `1.0.1rc2`
-also has Trace and has an earlier `body_types.py` hash. S100 packaging verifies
-the pinned ARM64 wheel and the source/native hashes in its wheel guard.
+The three Actor profiles pin the published SDK `1.0.1rc3` at
+`1e2bbfb7da0da4fb437fc5b81037aa598f522ccf` (tree
+`d42b65913e4b7cb12283c22a69f4b0cdaeaa9508`). Use the wheels from
+[the formal RC3 release](https://github.com/VitaDynamics/humanoid-sdk/releases/tag/v1.0.1-rc.3).
+S100 packages include its ARM64 wheel and `trace` extras; their guard checks
+source and native hashes. Host validation uses the separately identified x86_64
+wheel from the same release. This replaces the earlier SDK #27 CI candidate;
+the same version label alone never replaces the wheel hash check.
 
 ```bash
 python scripts/actor_pico.py check --steps 10 --trace=on --trace-output=new-run.ftrace

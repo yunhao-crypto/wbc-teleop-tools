@@ -13,12 +13,12 @@ class CheckpointTests(unittest.TestCase):
         self.assertEqual(smpl['physical_contract'],teleop['physical_contract'])
         self.assertEqual(smpl['checkpoint_iteration'],35000)
         self.assertEqual(teleop['checkpoint_iteration'],35000)
-    def test_original_default_policy_and_sdk_are_retained(self):
+    def test_original_policy_is_retained_with_formal_rc3_sdk(self):
         settings=json.loads((ROOT/'config/actor_pico.json').read_text())
         self.assertEqual(settings['artifacts']['model']['source_name'],'model_step_009700_longrun_closed_loop_g1.onnx')
         self.assertEqual(settings['artifacts']['model']['sha256'],'2bc0ca6f0bddef1ba040a19a771181da68f5b7d2138d1e87913072def089135d')
-        self.assertEqual(settings['sdk_version'],'0.3.0')
-        self.assertEqual(settings['sdk_commit'],'a0b50cef329181b138239f5576238fcb9e0c02ca')
+        self.assertEqual(settings['sdk_version'],'1.0.1rc3')
+        self.assertEqual(settings['sdk_commit'],'1e2bbfb7da0da4fb437fc5b81037aa598f522ccf')
     def test_default_build_has_only_the_original_policy_models(self):
         from build_actor_delivery import runtime_inputs
         for variant in ('base','planner'):

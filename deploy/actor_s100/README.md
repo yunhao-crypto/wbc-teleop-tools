@@ -28,7 +28,7 @@ disables video. Offline validation modes do not start it.
 
 ## Included dependencies
 
-`wheelhouse/` contains 24 pinned base wheels: locomotion-aorta 1.0.1rc2 with
+`wheelhouse/` contains 24 pinned base wheels: locomotion-aorta 1.0.1rc3 with
 its Trace extras (MCAP 1.3.1, Zstandard 0.25.0 and LZ4 4.4.5),
 aorta-sdk/aorta-msgs 0.0.0+g7649a87ebb03, vbot-humanoid-msgs 0.0.0+g35ce9eb82d5b,
 FlatBuffers 25.12.19, NumPy 1.26.4, PyYAML 6.0.3 and pybind11 2.13.6, plus the complete pinned GMR dependency closure
@@ -75,13 +75,16 @@ Retain the original license/notices associated with each dependency.
 - A Pico headset client with full-body tracking, calibrated trackers and Send
   enabled. The headset client and robot firmware are separate installed products.
 
-The SDK wheel comes from [SDK #27 final CI](https://github.com/VitaDynamics/humanoid-sdk/actions/runs/44306830611).
-The reviewed source `6d4fa592`, CI merge `0ae0ae26` and SDK main `3a747513`
-have tree `997dbc53a81cf3025b991292f0c6c6ce58ca800c`. The ARM64 wheel SHA256 is
-`082a17fa1a8c0a2a7414ee69bfa13514e4360949de63a9ba97b2d566e5cfe555`.
-The packaging guard seals that build. The published RC2 has the same package
-version and predates SDK #27. Recreate the deployment venv from the packaged
-wheelhouse when changing SDK inputs.
+The SDK wheels come from [the formal SDK RC3 release](https://github.com/VitaDynamics/humanoid-sdk/releases/tag/v1.0.1-rc.3),
+version `1.0.1rc3`, source `1e2bbfb7da0da4fb437fc5b81037aa598f522ccf`,
+tree `d42b65913e4b7cb12283c22a69f4b0cdaeaa9508`.
+The packaged ARM64 wheel SHA256 is
+`db9743311f59bcb6bd0dc33a4c43d607ca2271d27fb563e4b4f956ec579a2ec3`;
+the separate x86_64 host wheel SHA256 is
+`c4b1469f4c64bb085ede3d898732b45cd834fb7a7396549454a50259ed7b1f2f`.
+The packaging guard seals the ARM64 release wheel's source/native hashes.
+Recreate the deployment venv from the packaged wheelhouse when changing SDK
+inputs. The isolated Pico 27000 delivery retains its own separate SDK guard.
 
 The actor uses control protocol 4 with numeric client/control IDs, BodyState v3
 and RobotInfo v2. Native motor A/B EXTERNAL commands use BodyCmd v4, while virtual

@@ -1,11 +1,11 @@
 {
   "status": "SEALED_FROM_REVIEWED_WHEEL",
-  "sdk_commit": "6d4fa5920296a3b5c599cfad7a762b5b7bbee7f6",
-  "sdk_version": "1.0.1rc2",
+  "sdk_commit": "1e2bbfb7da0da4fb437fc5b81037aa598f522ccf",
+  "sdk_version": "1.0.1rc3",
   "wheel": {
-    "filename": "locomotion_aorta-1.0.1rc2-cp310-cp310-manylinux_2_35_aarch64.whl",
-    "sha256": "082a17fa1a8c0a2a7414ee69bfa13514e4360949de63a9ba97b2d566e5cfe555",
-    "bytes": 10557625
+    "filename": "locomotion_aorta-1.0.1rc3-cp310-cp310-manylinux_2_35_aarch64.whl",
+    "sha256": "db9743311f59bcb6bd0dc33a4c43d607ca2271d27fb563e4b4f956ec579a2ec3",
+    "bytes": 10557642
   },
   "source_sha256": {
     "__init__.py": "c58f8895c660381015c5848ecd5409a1b9c1aba986437779e0ae0119f39b9493",
