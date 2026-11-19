@@ -31,6 +31,16 @@ tools remain in [vita-robot's native deployment guide](https://github.com/VitaDy
 The WTT entry is included in both base and planner delivery packages; native
 binaries, models and device configuration are separate prerequisites.
 
+CPU layout on the six-core S100: the entry runs the package under
+`taskset -c 0,2,3`, the Pico worker moves only its GMR thread to CPU 1, and
+`scripts/pin_native_inference.py` runs alongside. Once locomotion runs the
+policy, the helper samples its SCHED_OTHER threads with `perf`, takes the one
+executing libonnxruntime (the policy uses one intra-op thread) and pins it to
+`MIMICLITE_INFERENCE_CPUS` (default `4`; `off` skips; `0-5` restores the
+unpinned mask). Real-time threads on CPU 5 are never touched. The mask lasts
+until locomotion restarts. Decisions go to
+`outputs/native_inference_pin_*.log`; a helper failure does not stop the session.
+
 `student2000` (the default here) means the **1224-input hist10 v2** native model,
 not this branch's pinned original 814-input WTT model. `student2000` and
 `knee-reg1000` use `/userdata/mimiclite_native_20261117`; `knee-reg2000` uses

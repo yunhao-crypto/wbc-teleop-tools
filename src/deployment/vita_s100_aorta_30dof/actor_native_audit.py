@@ -15,7 +15,7 @@ PRESENCE = {
     16: ('steady_ns',), 17: ('worker',), 18: ('dispatch',),
     19: ('robot_runtime_id',), 20: ('state_timing',), 21: ('inference_timing',),
     22: ('history_epoch', 'inference_step', 'history_sensor_committed', 'history_action_committed'),
-    23: ('activation_id',), 24: ('timeline_sampling',),
+    23: ('activation_id',), 24: ('timeline_sampling',), 25: ('reference_transport',),
 }
 LIMITATIONS = [
     'No independent observation/history reconstruction; pre-capture history is unknown.',
@@ -83,7 +83,7 @@ def validate(r):
             raise ValueError('zero record_sequence')
     integer(r.get('present'), 'present')
     p = r['present']
-    if p >> 25:
+    if p >> 26:
         raise ValueError('unknown presence bits')
     if type(r.get('kind')) is not int or not 1 <= r['kind'] <= 6:
         raise ValueError('unknown record kind')
@@ -105,6 +105,20 @@ def validate(r):
                     raise ValueError('presence mismatch: ' + name)
             elif (name in r) != bool(p & (1 << bit)):
                 raise ValueError('presence mismatch: ' + name)
+    if 'reference_transport' in r:
+        transport = r['reference_transport']
+        if not isinstance(transport, dict):
+            raise ValueError('invalid reference_transport')
+        for field in ('sequence', 'ingest_monotonic_ns', 'check_monotonic_ns'):
+            integer(transport.get(field), field)
+        if transport['ingest_monotonic_ns'] > transport['check_monotonic_ns']:
+            raise ValueError('reference checked before ingest')
+        for field in ('packet_age_ms', 'source_age_ms', 'source_limit_ms'):
+            value = transport.get(field)
+            if type(value) not in (int, float) or not math.isfinite(value) or value < 0:
+                raise ValueError('invalid transport ' + field)
+        if transport['source_limit_ms'] == 0:
+            raise ValueError('invalid transport source age limit')
     for bit, name in ((11, 'sequence'), (12, 'capture_system_us'), (13, 'source_capture_us')):
         if (name in r.get('reference', {})) != bool(p & (1 << bit)) or (p & (1 << bit) and not p & 2):
             raise ValueError('reference presence mismatch: ' + name)

@@ -19,9 +19,14 @@ Default package on robot67:
   student2000 / knee-reg1000: /userdata/mimiclite_native_20261117
   knee-reg2000:              /userdata/mimiclite_knee_reg2000_20261117
 
-Normal startup delegates to that package's start.sh. Its operator lock, firmware
-checks, posture/ownership/freshness guards, Pico toggle and PASSIVE cleanup remain
-in force. This entry does not install/restart locomotion or run a WTT actor.
+Normal startup delegates to that package's start.sh under taskset -c 0,2,3, so the
+launcher, bridge, Pico worker and vendor service stay off CPU 1 (GMR only),
+CPU 4 (native inference) and CPU 5 (locomotion real time). In parallel,
+scripts/pin_native_inference.py finds the locomotion ONNX inference thread once
+it runs and pins it to MIMICLITE_INFERENCE_CPUS (default 4; "off" skips it). Its
+operator lock, firmware checks, posture/ownership/freshness guards, Pico toggle
+and PASSIVE cleanup remain in force. This entry does not install/restart
+locomotion or run a WTT actor.
 HELP
 }
 
@@ -68,9 +73,15 @@ esac
 [[ $ROOT_SET == 1 ]] || NATIVE_ROOT=$DEFAULT_ROOT
 [[ "$NATIVE_ROOT" == /* ]] || fail '--native-root must be absolute'
 ENTRY="$NATIVE_ROOT/start.sh"
+HOST_CPUS=0,2,3
+PIN_CPUS=${MIMICLITE_INFERENCE_CPUS-4}
+[[ $PIN_CPUS == off || $PIN_CPUS =~ ^[0-9]+(-[0-9]+)?(,[0-9]+(-[0-9]+)?)*$ ]] || fail 'MIMICLITE_INFERENCE_CPUS must be a CPU list such as 4, or off'
+WTT_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 if [[ $PLAN == 1 ]]; then
+  printf 'taskset -c %s ' "$HOST_CPUS"
   printf '%q ' bash "$ENTRY" --model "$MODEL" "${ARGS[@]}"
   printf '\n'
+  echo "# native inference thread CPUs: $PIN_CPUS"
   exit 0
 fi
 for file in "$ENTRY" "$NATIVE_ROOT/contract_$MODEL.json" "$NATIVE_ROOT/$MODEL.onnx"; do
@@ -81,5 +92,12 @@ if [[ $AUDIT == 1 ]]; then
   [[ -f "$MARKER" && -r "$MARKER" && $(stat -c %s "$MARKER") -le 128 ]] || fail 'package lacks audit protocol marker; operator installation required'
   [[ $(<"$MARKER") == mimiclite-native-audit-package-v1 ]] || fail 'unsupported audit package protocol'
 fi
-echo "MIMICLITE_NATIVE_ENTRY: model=$MODEL package=$NATIVE_ROOT"
-exec bash "$ENTRY" --model "$MODEL" "${ARGS[@]}"
+command -v taskset >/dev/null || fail 'taskset is required to keep the session off CPU 1, 4 and 5'
+echo "MIMICLITE_NATIVE_ENTRY: model=$MODEL package=$NATIVE_ROOT cpus=$HOST_CPUS inference_cpus=$PIN_CPUS"
+if [[ $PIN_CPUS != off ]]; then
+  mkdir -p "$WTT_ROOT/outputs"
+  # Background helper: it exits after pinning or timing out and never gates the session.
+  taskset -c "$HOST_CPUS" python3 "$WTT_ROOT/scripts/pin_native_inference.py" --cpus "$PIN_CPUS" \
+    --log "$WTT_ROOT/outputs/native_inference_pin_$(date +%Y%m%d_%H%M%S)_$$.log" </dev/null &
+fi
+exec taskset -c "$HOST_CPUS" bash "$ENTRY" --model "$MODEL" "${ARGS[@]}"

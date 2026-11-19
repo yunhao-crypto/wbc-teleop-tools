@@ -57,6 +57,17 @@ class NativeAuditTest(unittest.TestCase):
             with self.assertRaises(ValueError):
                 validate(r)
 
+    def test_reference_transport_at_watchdog(self):
+        timing = dict(sequence=439, ingest_monotonic_ns=10, check_monotonic_ns=20,
+                      packet_age_ms=102., source_age_ms=130., source_limit_ms=250.)
+        row = record(present=1 << 25, reference_transport=timing, reason='timeline_watchdog_expired')
+        validate(row)
+        for change in ({'check_monotonic_ns': 9}, {'packet_age_ms': -1}, {'source_limit_ms': 0}):
+            with self.subTest(change=change), self.assertRaises(ValueError):
+                validate(dict(row, reference_transport=dict(timing, **change)))
+        with self.assertRaises(ValueError):
+            validate(dict(row, present=0))
+
     def test_timeline_sampling_clock_and_complete_coverage(self):
         timing = dict(clock='linux_clock_monotonic', tick_ns=2**53+17,
                       coverage_first_ns=2**53+17-160_000_000,

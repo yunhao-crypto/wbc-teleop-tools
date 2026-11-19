@@ -26,7 +26,7 @@ def control_affinity(cpus):
     """Pin every existing control-process thread; later threads inherit the mask.
 
     Call only after the Pico worker has been spawned: a child starts with its
-    parent's mask, and the worker accepts only worker/GMR CPUs inside it.
+    parent's mask, and the worker sets its own worker/GMR masks from there.
     Native inference and transport threads that already exist are moved too.
     Unavailable CPUs are a startup error. An empty list leaves the mask as is.
     """

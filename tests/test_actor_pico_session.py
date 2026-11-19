@@ -53,7 +53,7 @@ class StreamSettingsTests(unittest.TestCase):
                          stream.WorkerSettings(3, .0001, (0, 1, 2), (1,), (2,)))
         for change in (dict(ik_max_iter=11), dict(ik_max_iter=True), dict(worker_cpus=[1, 1]), dict(unknown=1),
                        dict(gmr_cpus=[True]), dict(gmr_cpus=[1, 1]), dict(gmr_cpus=[-1]),
-                       dict(worker_cpus=[0], gmr_cpus=[1], control_cpus=[]), dict(reader_poll_interval_s=0),
+                       dict(reader_poll_interval_s=0),
                        dict(reader_poll_interval_s=float('nan')), dict(reader_poll_interval_s=float('inf')),
                        dict(control_cpus=2), dict(control_cpus=[True]), dict(control_cpus=[2, 2]),
                        dict(control_cpus=[-1]), dict(control_cpus=[1, 2])):
@@ -61,6 +61,9 @@ class StreamSettingsTests(unittest.TestCase):
                 stream.worker_settings(dict(pico_worker=dict(good, **change)))
         with self.assertRaises(ValueError):
             stream.worker_settings(dict(pico_worker=[]))
+        # A GMR CPU outside worker_cpus keeps the launcher and receivers off it.
+        self.assertEqual(stream.worker_settings(dict(pico_worker=dict(good, worker_cpus=[0, 2], gmr_cpus=[1]))).gmr_cpus,
+                         (1,))
 
     def test_both_policies_ship_the_same_worker_with_control_off_the_gmr_cpu(self):
         sonic, supermimic = (ActorPicoRuntime(ROOT, backend='auto', policy=p) for p in ('sonic', 'supermimic'))
@@ -71,6 +74,10 @@ class StreamSettingsTests(unittest.TestCase):
         self.assertTrue(set(settings.gmr_cpus) <= set(settings.worker_cpus))
         self.assertFalse(set(settings.control_cpus) & set(settings.gmr_cpus))
         self.assertEqual(sonic.stream.playback_margin_s, supermimic.stream.playback_margin_s)
+        mimiclite = stream.worker_settings(json.loads((ROOT/'config/actor_pico_mimiclite.json').read_text()))
+        # Native MimicLite keeps CPU 4 for inference and CPU 5 for locomotion RT.
+        self.assertEqual((mimiclite.worker_cpus, mimiclite.gmr_cpus, mimiclite.control_cpus),
+                         ((0, 2, 3), (1,), (2, 3)))
         self.assertEqual((sonic.stream.joint_filter, sonic.stream.root_filter),
                          (supermimic.stream.joint_filter, supermimic.stream.root_filter))
         self.assertIsNone(sonic.stream.root_max_tilt_rad)

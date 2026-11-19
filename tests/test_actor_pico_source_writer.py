@@ -1,6 +1,7 @@
 """Offline fault injection: no Pico SDK, hardware, or services."""
 import io
 import json
+import os
 import queue
 import tempfile
 from pathlib import Path
@@ -147,6 +148,55 @@ class SourceWriterTests(unittest.TestCase):
         self.assertFalse(writers[0].stats()['complete'])
         self.assertEqual(writers[0].stats()['errors'], 1)
         self.assertFalse(any(row.get('state') == 'failed' for row in output.queue))
+
+    def test_thread_affinity_may_leave_the_inherited_mask_but_not_the_machine(self):
+        original = os.sched_getaffinity(0)
+        if len(original) < 2:
+            self.skipTest('Needs two allowed CPUs')
+        low, high = sorted(original)[0], sorted(original)[-1]
+        seen = {}
+        def run():
+            os.sched_setaffinity(0, {low})
+            seen['wide'] = worker.thread_affinity((high,))
+            try:
+                worker.thread_affinity((max(original)+64,))
+            except ValueError as error:
+                seen['error'] = str(error)
+        thread = threading.Thread(target=run)
+        thread.start()
+        thread.join(5)
+        self.assertEqual(seen['wide'], [high])
+        self.assertIn('unavailable', seen['error'])
+        self.assertEqual(os.sched_getaffinity(0), original)
+
+    def test_vendor_service_is_forked_after_worker_affinity(self):
+        from deployment.vita_s100_aorta_30dof import pico_input
+        stop = threading.Event()
+        commands, output = queue.Queue(), queue.Queue()
+        commands.put((1., 0., 0., 0.))
+        source, service = Mock(), Mock()
+        service.poll.return_value = None
+        source.step.side_effect = lambda: stop.set()
+        order = []
+        def affinity(cpus):
+            order.append(('affinity', tuple(cpus)))
+            return list(cpus)
+        def popen(*args, **kwargs):
+            order.append(('service',))
+            return service
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp)/'outputs').mkdir()
+            config = dict(pico_max_age_s=.6, retargeting={}, artifacts={'model': {}},
+                          pico_worker=dict(worker_cpus=[0, 2, 3], gmr_cpus=[1]))
+            with (patch.object(worker.os, 'setsid'),
+                  patch.object(worker, 'thread_affinity', side_effect=affinity),
+                  patch.object(worker, 'sdk_math', return_value=None),
+                  patch.object(worker, 'ReferenceStream', return_value=NS()),
+                  patch.object(worker.subprocess, 'Popen', side_effect=popen),
+                  patch.object(pico_input, 'create_pico_source', return_value=source)):
+                worker._capture(tmp, config, None, None, None, commands, output, stop)
+        self.assertEqual(order, [('affinity', (0, 2, 3)), ('service',), ('affinity', (1,))])
+        service.terminate.assert_called_once()
 
     def test_stream_continues_while_sink_blocked_and_reader_gaps_are_not_network(self):
         class Reference:

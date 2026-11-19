@@ -1143,18 +1143,26 @@ same GMR chain with the same parameters:
 - `reader_poll_interval_s` waits between duplicate body snapshots (2 ms);
   new frames are processed immediately when observed. Shadow mode uses the
   same interval for its in-process reader.
-- `worker_cpus` is inherited by SDK/body/trigger threads. Only after those
-  threads start does `gmr_cpus` narrow the calling GMR thread. The reviewed
-  six-core S100 profile uses CPU 0–4 for receivers and CPU 1 for GMR, avoiding
-  CPU 5's measured contention. These indices must be reviewed on other CPU
-  layouts; unavailable CPUs fail startup. The vendor service keeps its
-  inherited mask. No CPU frequency or vendor-service affinity is changed.
+- `worker_cpus` is applied before the vendor service is forked, so the vendor
+  service and SDK/body/trigger threads inherit it. Only after those threads
+  start does `gmr_cpus` set the calling GMR thread's mask; it may lie inside
+  `worker_cpus` or outside it (including outside the launcher's mask). The
+  reviewed six-core S100 profile for sonic/supermimic uses CPU 0–4 for
+  receivers and CPU 1 for GMR, avoiding CPU 5's measured contention. Native
+  MimicLite uses CPU 0, 2, 3 for receivers and CPU 1 for GMR alone: CPU 4
+  carries the pinned native inference thread and CPU 5 the locomotion
+  real-time threads, and `scripts/start_mimiclite_native.sh` starts the whole
+  session (launcher, bridge, worker, vendor service) under
+  `taskset -c 0,2,3` (see README_MIMICLITE.md). These indices must be
+  reviewed on other CPU layouts; unavailable CPUs fail startup. No CPU
+  frequency is changed.
 - `control_cpus` pins every thread of the live control process (SCHED_RR
   policy loop, native inference, transport) after the Pico worker has been
-  spawned, so the worker and vendor service keep the unrestricted mask. It
+  spawned, so the worker and vendor service keep the `worker_cpus` mask. It
   must not overlap `gmr_cpus`: a real-time control thread on the GMR CPU
   preempts the pinned GMR thread, which cannot migrate. The S100 profile uses
-  CPU 2–4 (layout B in the full-load replay below). The live log records the
+  CPU 2–4 (layout B in the full-load replay below); native MimicLite uses
+  CPU 2–3. The live log records the
   applied mask as `control_affinity`. Stand-only runs apply it too.
 
 Without the block the worker is unchanged: 10 iterations, 0.1 ms polling and

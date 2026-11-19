@@ -38,12 +38,19 @@ def _latest(output, item):
 
 
 def thread_affinity(cpus):
-    """Restrict only the calling thread; children inherit its mask at creation."""
-    available = os.sched_getaffinity(0)
+    """Set only the calling thread's mask; children inherit it at creation.
+
+    The mask may leave the inherited one (a GMR CPU kept free of the launcher),
+    but every requested CPU must be usable.
+    """
     if cpus:
-        if not set(cpus) <= available:
-            raise ValueError(f'Requested Pico CPUs {list(cpus)} outside available CPUs {sorted(available)}')
-        os.sched_setaffinity(0, cpus)
+        try:
+            os.sched_setaffinity(0, cpus)
+        except OSError as error:
+            raise ValueError(f'Requested Pico CPUs {list(cpus)} are unavailable: {error}') from error
+        applied = os.sched_getaffinity(0)
+        if applied != set(cpus):
+            raise ValueError(f'Requested Pico CPUs {list(cpus)} but the thread runs on {sorted(applied)}')
     return sorted(os.sched_getaffinity(0))
 
 
@@ -180,14 +187,15 @@ def _capture(root, config, contract, lower, upper, commands, output, stop, contr
         source_path = Path(root)/'outputs'/f'actor_pico_gmr_input_{time.time_ns()}.jsonl'
         sdk = Path(root)/'vendor_packages/xrobotoolkit-arm64/opt/apps/roboticsservice'
         log = (Path(root)/'outputs/pico_service_actor.log').open('a')
-        service = subprocess.Popen([str(sdk/'RoboticsServiceProcess')], cwd=sdk,
-                                   stdout=log, stderr=subprocess.STDOUT)
-        # The vendor process keeps the inherited mask. SDK and reader threads
-        # inherit worker_cpus; narrow only the GMR thread after they start.
+        # Narrow before the fork so the vendor service, SDK and reader threads
+        # all inherit worker_cpus; only the GMR thread narrows further later.
         settings = worker_settings(config)
         worker_affinity = thread_affinity(settings.worker_cpus)
+        service = subprocess.Popen([str(sdk/'RoboticsServiceProcess')], cwd=sdk,
+                                   stdout=log, stderr=subprocess.STDOUT)
         poll = settings.reader_poll_interval_s
         pico = create_pico_source(logger=logging.getLogger('actor-manual-pico'),
+            timeline_sampling=config.get('policy_kind') == 'mimiclite_vita02a_tracking',
             maximum_age=config['pico_max_age_s'], duplicate_poll_interval_s=poll,
             on_frame=None if head_pose is None else head_pose.publish)
         pico.start()

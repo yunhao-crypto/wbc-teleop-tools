@@ -1,5 +1,6 @@
 """Native entry routing through an inert shell stub; no SDK or robot access."""
 import json
+import os
 from pathlib import Path
 import shlex
 import subprocess
@@ -23,9 +24,10 @@ class NativeEntryTests(unittest.TestCase):
         (self.package/'start.sh').write_text(
             f'''#!/bin/bash
 exec {shlex.quote(sys.executable)} - "$@" <<'PY'
-import json, sys
+import json, os, sys
 from pathlib import Path
 Path({str(self.calls)!r}).write_text(json.dumps(sys.argv[1:]))
+Path({str(self.package/'cpus.json')!r}).write_text(json.dumps(sorted(os.sched_getaffinity(0))))
 raise SystemExit(37)
 PY
 ''')
@@ -33,8 +35,9 @@ PY
             (self.package/('contract_'+model+'.json')).write_text('{}')
             (self.package/(model+'.onnx')).write_text('inert test placeholder')
 
-    def run_entry(self, *args):
-        return subprocess.run(['bash', str(ENTRY), *args], capture_output=True, text=True)
+    def run_entry(self, *args, inference_cpus='off'):
+        env = dict(os.environ, MIMICLITE_INFERENCE_CPUS=inference_cpus)
+        return subprocess.run(['bash', str(ENTRY), *args], capture_output=True, text=True, env=env)
 
     def test_all_models_reach_selected_package_and_preserve_exit_status(self):
         for model in ('student2000', 'knee-reg1000', 'knee-reg2000'):
@@ -42,6 +45,23 @@ PY
                 result = self.run_entry('--model', model, '--native-root', str(self.package), '--seconds', '0')
                 self.assertEqual(result.returncode, 37, result.stderr)
                 self.assertEqual(json.loads(self.calls.read_text()), ['--model', model, '--seconds', '0'])
+
+    @unittest.skipUnless({0, 2, 3} <= os.sched_getaffinity(0), 'needs CPUs 0, 2 and 3')
+    def test_package_runs_off_gmr_inference_and_realtime_cpus(self):
+        result = self.run_entry('--native-root', str(self.package))
+        self.assertEqual(result.returncode, 37, result.stderr)
+        self.assertEqual(json.loads((self.package/'cpus.json').read_text()), [0, 2, 3])
+        self.assertIn('inference_cpus=off', result.stdout)
+        plan = self.run_entry('--native-root', str(self.package), '--plan', inference_cpus='4')
+        self.assertTrue(plan.stdout.startswith('taskset -c 0,2,3 bash '), plan.stdout)
+        self.assertIn('inference thread CPUs: 4', plan.stdout)
+
+    def test_invalid_inference_cpu_list_refuses_delegation(self):
+        for value in ('', 'four', '4;true', '4-'):
+            with self.subTest(value=value):
+                result = self.run_entry('--native-root', str(self.package), inference_cpus=value)
+                self.assertEqual(result.returncode, 2, result.stderr)
+                self.assertFalse(self.calls.exists())
 
     def test_stand_and_motion_arguments_are_not_shell_expanded(self):
         result = self.run_entry('--native-root', str(self.package), '--stand-only', '--seconds', '1.5')

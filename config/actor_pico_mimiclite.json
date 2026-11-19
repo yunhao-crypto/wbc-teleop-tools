@@ -6,9 +6,9 @@
   "artifacts": {
     "model": {
       "path": "artifacts/mimiclite/policy.onnx",
-      "sha256": "07beb97df39637029522e3800666a744080313fd3892c66bc4391ab5246da876",
-      "bytes": 8157569,
-      "source_name": "student_final.onnx"
+      "sha256": "f11c94c39df59f583c01de3e98028db9b82221e3185dca3afd4ecab7779e5e6b",
+      "bytes": 9381822,
+      "source_name": "student_2000.onnx"
     },
     "urdf": {
       "path": "artifacts/output_envelopes.motion.urdf",
@@ -39,12 +39,12 @@
       "sha256": "53e87f274a726e64fe36403be7b24aacb283fb954a4b7c71d877b08f3124769b"
     }
   },
-  "sdk_version": "0.3.0",
-  "sdk_commit": "a0b50cef329181b138239f5576238fcb9e0c02ca",
+  "sdk_version": "1.0.0rc1+bodycmdv4.6863ad7",
+  "sdk_commit": "6863ad7bbde07aefd7e369ca7ee27c0eabe2d1f8",
   "sdk_sources": {
     "wbc_tracking_policy.py": "8bf9ecbcce9d06fde34eaaa817fe7966354958be012f74af159cfd711ce53b9e",
     "_policy_state.py": "d28cacb350f3c838848ba6978745cb943a2406585a26d35e06b1b1d4828f1c67",
-    "body_types.py": "bf8cefde2dee078109da498938f3511da0aa1906fa8af410c5dd9d6740c1a452"
+    "body_types.py": "a6c591cf2d9e74a0ba78fb32b76c1cba3ff86b10b273d2aae26c908daee3829e"
   },
   "body_profile": {
     "joint_limits": {
@@ -224,17 +224,14 @@
   "pico_hold_age_s": 0.25,
   "pico_loss_action": "stand",
   "provenance": {
-    "importer": "scripts/import_mimiclite_policy.py",
-    "source_onnx_sha256": "e4b9b8d1a47b11b1cd5e884f36c74d2256f655d5d199e37d47a91c0292f7124f",
-    "source_yaml_sha256": "20d0b0ae733b91515d3b41d0c314c7a610f0d667271c27a40ffe95f8cd003ab7",
+    "importer": "Verified wrapped ONNX deployment overlay",
+    "source_onnx_sha256": "b4241b4aff0e4e5f7c7c8f73dfb6f7da68f75f046b00bd9233a7d30616fba8d7",
+    "source_yaml_sha256": "74784eae824bd3640fef48d9b0a4a5c23d9bdde182b2201865fd98ab8f980df2",
     "model_sha256": "2f015a57135ea0fd76e2f76f60633a3d55e835c6978432fb3c43b2de4fa78a75",
     "actuator_schema": "mimiclite.vita02a.achilles_friction.v2",
-    "wrapper_parity": {
-      "samples": 9,
-      "max_abs_error": 0.0,
-      "input": "synthetic finite inputs; not robot validation"
-    },
-    "robot_validation": "not_measured"
+    "checkpoint": "obs_hist10_knee_reg_7x8192/finetune checkpoint_2000.pt",
+    "robot_validation": "not_measured_for_WTT_python_control",
+    "wrapped_policy_sha256": "f11c94c39df59f583c01de3e98028db9b82221e3185dca3afd4ecab7779e5e6b"
   },
   "retargeting": {
     "implementation": "motion_stream_bridge_gmr_vita02a",
@@ -277,20 +274,17 @@
     "reader_poll_interval_s": 0.002,
     "worker_cpus": [
       0,
-      1,
       2,
-      3,
-      4
+      3
     ],
     "gmr_cpus": [
       1
     ],
     "control_cpus": [
       2,
-      3,
-      4
+      3
     ],
-    "note": "Same GMR/receiver/control layout for every policy. ik_max_iter caps GMR refinement passes per frame (pinned default 10). S100 robot42 calibration: SDK/readers inherit worker_cpus; only the GMR calling thread narrows to gmr_cpus after receivers start. Live control threads move to control_cpus after the worker is spawned, keeping the real-time loop off the GMR CPU (full-load layout B). These CPU indices require the reviewed six-core S100 layout. Frequency is unchanged."
+    "note": "ik_max_iter caps GMR refinement passes per frame (pinned default 10). Native MimicLite layout: locomotion RT threads own CPU 5 and the native inference thread is pinned to CPU 4, so the vendor service, SDK/readers and launcher stay on worker_cpus 0,2,3 (start_mimiclite_native.sh enters with taskset -c 0,2,3); only the GMR calling thread moves to gmr_cpus (CPU 1, otherwise unused by the session) after receivers start. Python control threads use control_cpus, off the GMR CPU. These CPU indices require the reviewed six-core S100 layout. Frequency is unchanged."
   },
   "head_control": {
     "enabled": true,

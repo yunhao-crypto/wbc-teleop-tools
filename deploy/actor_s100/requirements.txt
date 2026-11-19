@@ -1,4 +1,4 @@
-locomotion-aorta==0.3.0
+locomotion-aorta==1.0.0rc1+bodycmdv4.6863ad7
 aorta-sdk==0.0.0+g7649a87ebb03
 aorta-msgs==0.0.0+g7649a87ebb03
 vbot-humanoid-msgs==0.0.0+g35ce9eb82d5b
