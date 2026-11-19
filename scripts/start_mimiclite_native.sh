@@ -10,6 +10,7 @@ Usage: start_mimiclite_native.sh --model NAME [options]
   --seconds SECONDS             Duration; default 0 runs until Ctrl-C.
   --stand-only                  Stand without Pico following.
   --motion NPZ_PATH             Replay an existing NPZ instead of Pico.
+  --camera                      Relay front-camera video during Pico following.
   --check                       Verify the native bundle without robot access.
   --plan                        Print the command only; do not check/start the package.
   --help, -h                    Show this help without accessing robot services.
@@ -35,6 +36,7 @@ PLAN=0
 CHECK=0
 STAND=0
 MOTION=0
+CAMERA_OPTIONS=(--no-camera)
 ARGS=()
 while (($#)); do
   case "$1" in
@@ -53,6 +55,7 @@ while (($#)); do
       ARGS+=("$1" "$2"); shift 2 ;;
     --stand-only) STAND=1; shift ;;
     --motion) value "$@"; MOTION=1; ARGS+=("$1" "$2"); shift 2 ;;
+    --camera) CAMERA_OPTIONS=(); shift ;;
     --check) CHECK=1; shift ;;
     --plan) PLAN=1; shift ;;
     *) fail "unknown option: $1 (see --help)" ;;
@@ -79,8 +82,10 @@ LOG="$WTT_ROOT/outputs/mimiclite_native_$(date +%Y%m%d_%H%M%S)_$$.jsonl"
 COMMAND=("$PYTHON" "$LAUNCHER" --wtt-root "$WTT_ROOT" --bridge "$BRIDGE"
          --model-path "$MODEL_FILE" --contract "$CONTRACT" --log "$LOG" "${ARGS[@]}")
 if [[ $STAND == 0 && $MOTION == 0 ]]; then
-  COMMAND=("$PYTHON" "$WTT_ROOT/scripts/pico_session_services.py" --no-camera --
+  COMMAND=("$PYTHON" "$WTT_ROOT/scripts/pico_session_services.py" "${CAMERA_OPTIONS[@]}" --
            "${COMMAND[@]}" --pico)
+elif ((${#CAMERA_OPTIONS[@]} == 0)); then
+  fail '--camera requires Pico mode'
 fi
 if [[ $PLAN == 1 ]]; then
   printf '%q ' taskset -c "$HOST_CPUS" "${COMMAND[@]}"

@@ -54,6 +54,12 @@ stand or `--motion /absolute/clip.npz` for fixed playback. NPZ input requires
 named virtual joints and a velocity channel. With Pico, release then squeeze
 both triggers to toggle following. Ctrl-C requests and confirms PASSIVE.
 
+Add `--camera` to a Pico session to enable the front-camera relay on TCP 13579.
+In the [PICO camera viewer](deploy/pico_viewer/README.md), use the same robot
+IP and press A+B+X+Y together to switch views. Wait for `PICO_VIDEO: ready`.
+The relay exits with the Pico session. Its startup or stream errors are
+reported separately from tracking.
+
 The launcher uses the same WTT operator lock as the existing entries and checks
 the selected ONNX against the daemon's working directory before activation.
 It uses the device-local Zenoh peer config. Set
