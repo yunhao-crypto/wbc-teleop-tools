@@ -58,11 +58,17 @@ class SmplWindow:
         self.yaw_quat = np.array([1., 0., 0., 0.])
 
     def frame(self, body):
-        from .onboard_preprocessing import CPUPicoToSmplConverter
-        from .actor_smpl import root_from_pose_aa
         front.anatomical_sites(body)
-        pose, _ = CPUPicoToSmplConverter().to_device(body)
-        root = root_from_pose_aa(self.math, pose, convention='z_up_smpl_base')[0]
+        # Only the root rotation is used; joint XYZ comes directly from Pico.
+        # The original converter's root is
+        # qx(pi/2) * q_pico * qy(pi) * conjugate([.5,.5,.5,.5]).
+        # This is its closed-form quaternion product, avoiding full 24-joint
+        # local rotations and the root quaternion -> axis-angle -> quaternion
+        # round trip for every frame in the initial two-second window.
+        w,x,y,z=np.asarray(body[0,[6,3,4,5]],dtype=float)
+        root=np.array([w-y,x-z,-x-z,w+y])
+        root/=np.linalg.norm(root)
+        if z<y:root=-root  # Same hemisphere as the converter before base removal.
         joints = (np.asarray(body[:, :3], dtype=float)-body[0, :3])@front.AXES.T
         return joints@self.yaw_rotation.T, self.math.multiply(self.yaw_quat, root)
 
@@ -193,15 +199,24 @@ class PicoFlow:
                 wrists = np.array([self.contract.default[self.contract.names.index(n)] for n in WRIST_NAMES])
                 self.window = SmplWindow(self.math, wrists)
                 self.window.align(bodies[0], feedback.root)
-                frames = [self.window.frame(x) for x in bodies[times <= 2.]]
-                neutral_joints = np.median(np.array([x[0] for x in frames]), axis=0)
-                average = sum(front.qmatrix(x[1]) for x in frames)
+                # Convert every received frame once, including the packet that
+                # first crosses 2s. Only the <=2s subset defines the neutral
+                # pose; the complete converted sequence seeds causal playback.
+                frames = [self.window.frame(x) for x in bodies]
+                neutral = [frame for frame,seconds in zip(frames,times) if seconds<=2.]
+                neutral_joints = np.median(np.array([x[0] for x in neutral]), axis=0)
+                average = sum(front.qmatrix(x[1]) for x in neutral)
                 u, _, v = np.linalg.svd(average)
                 if np.linalg.det(u@v) < 0: u[:, -1] *= -1
                 neutral_q = front.matrixq(u@v)
                 self.standing = SmplReference(self.math, np.repeat(neutral_joints[None], 10, axis=0),
                     np.repeat(np.asarray(neutral_q)[None], 10, axis=0), np.repeat(wrists[None], 10, axis=0))
-                for b, t, r in self.raw: self.window.append(b, t, r)
+                # TimingGate already validated each raw packet's strict device
+                # and receive clocks. Retain those timestamps and first offset,
+                # without repeating frame conversion through append().
+                self.window.offset_ns = int(self.raw[0][2])-int(self.raw[0][1])
+                self.window.samples.extend((int(t),frame[0],frame[1])
+                    for (_,t,_),frame in zip(self.raw,frames))
             self.mode = 'stand'
             self.event('neutral_calibrated', received_ns, standing_reference='Pico neutral human pose' if self.route == 'pico_smpl' else 'pinned robot site poses',
                 wrist_mode='explicit_contract_stand' if self.route == 'pico_smpl' else 'site_orientation')

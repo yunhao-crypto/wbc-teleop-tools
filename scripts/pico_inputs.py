@@ -123,6 +123,7 @@ def main(route=None):
     obs, actions, modes, ticks = (deque(maxlen=args.trace_capacity) for _ in range(4))
     event_index = 0
     peak_ms = 0.; infer_ms = deque(maxlen=3000); error = None; close_report = {}; input_meta = None
+    ingress_peak_ms = 0.; ingress_overruns = ingress_samples = 0
     source = validator = receiver = service = None
     receiver_state = None
     now_ns = time.monotonic_ns(); start_ns = now_ns
@@ -131,13 +132,16 @@ def main(route=None):
             log = resources.enter_context((args.out/'inference.jsonl').open('x', encoding='utf-8'))
             def write(value):
                 log.write(json.dumps(value, ensure_ascii=False, allow_nan=False)+'\n'); log.flush()
-            def infer(now, feedback):
-                nonlocal event_index, peak_ms
-                begin = time.perf_counter()
-                result = flow.step(now, feedback)
-                elapsed = (time.perf_counter()-begin)*1000; peak_ms = max(peak_ms, elapsed)
+            def flush_flow_events():
+                nonlocal event_index
                 for event in flow.events[event_index:]: write(event)
                 event_index = len(flow.events)
+            def infer(now, feedback):
+                nonlocal peak_ms
+                begin = time.perf_counter()
+                try: result = flow.step(now, feedback)
+                finally: flush_flow_events()
+                elapsed = (time.perf_counter()-begin)*1000; peak_ms = max(peak_ms, elapsed)
                 row = dict(record_type='inference_tick', time_ns=int(now), mode=result['mode'],
                     inferred=result['inferred'], total_tick_ms=elapsed, feedback_source=args.feedback,
                     actions_sent=0, control_handles_created=0)
@@ -230,17 +234,26 @@ def main(route=None):
                         from deployment.vita_s100_aorta_30dof.pico_realtime import Feedback
                         feedback = Feedback(*validator.validate_state(state))
                     poll_ns = time.monotonic_ns()
-                    pose, buttons, receiver_state = receiver.poll(poll_ns)
-                    now_ns = time.monotonic_ns()
-                    if receiver_state.get('state') == 'failed':
-                        raise RuntimeError('Pico receiver failed: '+receiver_state.get('error', 'unknown'))
-                    if pose is not None:
-                        if not 0 <= now_ns-pose[2] <= 100_000_000:
-                            flow.lose(now_ns, 'Receiver sample is stale/future before ingestion')
-                        else: flow.push(*pose, feedback)
-                    # Calibration/ingestion can take time. Check age again at
-                    # the actual inference boundary, rather than reusing an old
-                    # pre-calibration timestamp as proof of freshness.
+                    try:
+                        pose, buttons, receiver_state = receiver.poll(poll_ns)
+                        now_ns = time.monotonic_ns()
+                        if receiver_state.get('state') == 'failed':
+                            raise RuntimeError('Pico receiver failed: '+receiver_state.get('error', 'unknown'))
+                        if pose is not None:
+                            if not 0 <= now_ns-pose[2] <= 100_000_000:
+                                flow.lose(now_ns, 'Receiver sample is stale/future before ingestion')
+                            else: flow.push(*pose, feedback)
+                    finally:
+                        ingress_ms=(time.monotonic_ns()-poll_ns)*1e-6
+                        ingress_peak_ms=max(ingress_peak_ms,ingress_ms)
+                        ingress_overruns+=ingress_ms>PERIOD_NS*1e-6;ingress_samples+=1
+                        flush_flow_events()
+                    # Ingestion can include a one-time neutral calibration.
+                    # Infer from a newly acquired, normally validated Body31
+                    # frame, never from its pre-ingestion feedback or stamps.
+                    if source is not None:
+                        state=source.wait_state(timeout=.02)
+                        feedback=Feedback(*validator.validate_state(state))
                     now_ns = time.monotonic_ns()
                     buttons = (buttons[0], buttons[1], buttons[2]+(now_ns-poll_ns)*1e-9, buttons[3], buttons[4])
                     if source is not None: validator.validate_state(state)
@@ -257,7 +270,7 @@ def main(route=None):
             if flow.calibration is None: raise RuntimeError('No complete valid neutral calibration; inference alone is not a pass')
             if args.require_tracking and flow.track_ticks == 0: raise RuntimeError('No following inference completed')
             flow.stop(now_ns)
-            for event in flow.events[event_index:]: write(event)
+            flush_flow_events()
     except Exception as exc:
         error = f'{type(exc).__name__}: {exc}'
     finally:
@@ -279,6 +292,9 @@ def main(route=None):
             inference_tick_median_ms=float(np.median(infer_ms)) if infer_ms else None, inference_tick_peak_ms=peak_ms,
             timing_sample_steps=len(infer_ms),
             timing_scope='PicoFlow.step only; excludes SDK read, pose ingestion, calibration and transport',
+            input_ingress_peak_ms=ingress_peak_ms,input_ingress_overrun_ticks=ingress_overruns,
+            input_ingress_samples=ingress_samples,
+            input_ingress_scope='receiver.poll + pose ingestion/calibration; excludes robot feedback reads and inference',
             model_artifacts=flow.runtime.config['artifacts'],
             input_path=str(args.input.resolve()) if args.input else None, input_sha256=args.sha256, input_metadata=input_meta,
             synthetic_triggers=args.trigger_script is not None,

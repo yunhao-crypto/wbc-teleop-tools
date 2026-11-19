@@ -229,12 +229,15 @@ class PublicCheckThreadTests(unittest.TestCase):
                 check.assert_not_called()
 
     def test_check_uses_selected_threads_in_split_and_full_networks(self):
+        import importlib
         import numpy as np
         from contextlib import nullcontext
         import check_pico_aligned as checker
-        from deployment.vita_s100_aorta_30dof import pico_aligned_runtime as runtime_module
-        from deployment.vita_s100_aorta_30dof import actor_human_encoder as encoder_module
-        from deployment.vita_s100_aorta_30dof import pico_shadow_math as shadow
+        # The host-only SDK boundary can unload modules between cases. Resolve
+        # the live sys.modules instance, not a stale parent-package attribute.
+        runtime_module=importlib.import_module('deployment.vita_s100_aorta_30dof.pico_aligned_runtime')
+        encoder_module=importlib.import_module('deployment.vita_s100_aorta_30dof.actor_human_encoder')
+        shadow=importlib.import_module('deployment.vita_s100_aorta_30dof.pico_shadow_math')
         runtime=SimpleNamespace(model=SimpleNamespace(contract=SimpleNamespace(default=np.zeros(28))),math=object(),
             runtime=SimpleNamespace(config={'artifacts':{'model':{'path':'model.onnx'}}}))
         for backend in ('ort','sdk'):
