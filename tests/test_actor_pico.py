@@ -55,24 +55,28 @@ class ActorPicoTests(unittest.TestCase):
                                       tick['yaw_offset_rad'])
             np.testing.assert_allclose(obs, tick['obs'], rtol=0, atol=1e-7)
 
-    def test_body31_mapping_preserves_ankle_compensation(self):
+    def test_body31_mapping_preserves_native_affine_targets(self):
         action = np.linspace(-30, 30, 28)
-        command, decoded = self.policy.decode(action)
-        clipped = np.clip(action, -20, 20).astype(np.float32)
-        raw = self.c.default+self.c.scale*clipped.astype(np.float64)
-        safe = np.clip(raw, self.policy.lower, self.policy.upper)
+        policy = self.runtime.policy
+        policy.reset()
+        self.addCleanup(policy.reset)
+        command, decoded = policy.decode(action)
+        clipped = np.clip(action, -self.c.action_clip, self.c.action_clip).astype(np.float32)
+        raw = self.c.policy_default+self.c.scale*clipped.astype(np.float64)
+        self.assertEqual(command.protocol_version, 4)
         self.assertEqual(len(command.joints), 31)
         for i, name in enumerate(self.c.names):
-            j = command.joints[self.policy.order.index(name)]
-            self.assertEqual(j.q, float(np.float32(safe[i])))
+            j = command.joints[policy.order.index(name)]
+            self.assertEqual(j.q, float(np.float32(raw[i])))
             self.assertEqual(j.kp, float(np.float32(self.c.kp[i])))
-            tau = self.c.kp[i]*(raw[i]-safe[i]) if 'ankle_' in name else 0.
-            self.assertEqual(j.tau, float(np.float32(tau)))
-        self.assertTrue(any(decoded['tau_ff']))
+            self.assertEqual(j.kd, float(np.float32(self.c.kd[i])))
+            self.assertEqual(j.tau, 0.)
+        self.assertFalse(any(decoded['clamped']))
+        self.assertFalse(any(decoded['tau_ff']))
         for name in ['neck_pitch_joint', 'neck_yaw_joint']:
-            j = command.joints[self.policy.order.index(name)]
+            j = command.joints[policy.order.index(name)]
             self.assertEqual((j.q, j.kp, j.kd), (0., 20., 1.))
-        hole = command.joints[self.policy.order.index('waist_roll_joint')]
+        hole = command.joints[policy.order.index('waist_roll_joint')]
         self.assertEqual((hole.q, hole.kp, hole.kd, hole.tau), (0., 0., 0., 0.))
 
     def test_causal_window_has_real_future_and_forward_velocities(self):
@@ -168,8 +172,9 @@ class ActorPicoTests(unittest.TestCase):
                 self.retarget()
             # The pinned engine is available only when requested explicitly.
             rt = create_retargeter(ROOT, self.config, self.c, self.math, accelerated=False)
+        from motion_stream_bridge.gmr_lite import GeneralMotionRetargeting
         self.assertFalse(rt.accelerated)
-        self.assertEqual(type(rt.engine).__mro__[1].__name__, 'GeneralMotionRetargeting')
+        self.assertIsInstance(rt.engine, GeneralMotionRetargeting)
         rt.solve(self.body(), stamp_ns=1_000_000_000)
         self.assertTrue(np.isfinite(rt.last_qpos).all())
 
