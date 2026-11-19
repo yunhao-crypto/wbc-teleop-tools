@@ -1,5 +1,10 @@
 # Vita02A / S100 actor + Pico
 
+本分支将三份原 Actor 配置适配到正式 SDK `1.0.1rc3`（固定源码 `1e2bbfb7`），
+使用 `v1.0.1-rc.3` 的 ARM64 wheel 与可选 Trace 依赖。EXTERNAL 电机 A/B 命令使用
+BodyCmd v4；虚拟踝路径继续使用 BodyCmd v3。下列旧交付记录保留供查阅。
+使用方式与剩余边界见 [FBS Trace 说明](README_ACTOR_PICO.md#fbs-trace-development-integration)。
+
 35000 raw-body SMPL and stationary three-point routes: [shared actor environment](README_PICO_27000.md).
 Build with `--pico-assets` for a separate Pico-only R4 delivery; the original policies retain their SDK environment.
 
@@ -10,7 +15,7 @@ Native SONIC action14 reference-only Pico/GMR design, explicit fixed-neck mode a
 `763f560`，已移除自写姿态 IK；它与 HoloMotion 的 SMPL 输入双策略是不同的链路。
 
 **当前交付已合入 `main`，见已合并的 [PR #1](https://github.com/yunhao-crypto/wbc-teleop-tools/pull/1)。**
-代码、21 个 ARM wheel、Pico 服务/绑定、GMR 模型与配置、测试资源均在 Git 中。
+代码、24 个 base / 31 个 planner ARM wheel、Pico 服务/绑定、GMR 模型与配置、测试资源均在 Git 中。
 **策略权重不公开提交**：拉取后还需提供下列模型，以及目标 S100 已有的匹配固件、
 私有 Zenoh peer 配置和有效硬件 YAML；无需原开发目录或另一个源码仓库。
 本交付覆盖 `scripts/start_actor_pico.sh`；保留的历史 HoloMotion/P1/P2/P3 入口未随包提供权重。
@@ -18,17 +23,18 @@ Native SONIC action14 reference-only Pico/GMR design, explicit fixed-neck mode a
 ## 适用环境和验证范围
 
 - S100 本机：Linux aarch64、Python **3.10**、glibc ≥2.35、venv/ensurepip、Bash、`ip`、`flock`、`ldd`。
-- SDK `0.3.0`（humanoid-sdk 官方 main `a0b50cef`，已合入 PR #23），Aorta/messages `0.0.0+g7649a87ebb03`，
+- 正式 SDK `1.0.1rc3`（`v1.0.1-rc.3`，源码 `1e2bbfb7`），Aorta/messages `0.0.0+g7649a87ebb03`，
   控制协议 4、Body31 协议 3、RobotInfo 协议 2、roster 1，28 策略关节加 2 颈关节。
-  需要支持这些协议的机器人固件（vita-robot master `896385d5b` 或更新）；此前验证的
-  `1.6.0-200` / `c9b4e80c` 只支持 SDK 0.2.1 协议，不能运行本交付。SDK 0.3.0 尚无真机运行记录。
+  需要支持这些协议及所选 BodyCmd v3/v4 命令空间的机器人固件。历史
+  `1.6.0-200` / `c9b4e80c` 只支持 SDK 0.2.1 协议，不能运行本交付。
+  本 PR 的 RC3 适配验证属于离线软件范围，没有据此新增真机运行验收。
   其他机器人发行版须先核对接口和有效配置；不能仅凭包日期选择 wheel。
 - **越界 PD 目标约定**：SONIC/SuperMimic/MorphMimic 发送未裁剪的 PD 目标（主要是踝），会超出 RobotInfo q 范围。
   官方 SDK 将 BodyCmd 的 q/dq/tau/kp/kd 设备范围处理交给固件，不需要逐次豁免参数；仍校验有限 float32、
   声明字段、MOCK、能力和控制身份。WTT 保留策略命令包络与实测姿态检查，并要求机器人显式开启
   `allow_position_targets_outside_mechanical_range: true` 及有限的 `position_target_margin_rad`，
-  否则固件仍会裁剪 q（vita-robot PR #13164）。SDK #22 已由 #23 替代；固件 #13164 尚未合入，没有 HIL 验收。
-  随包 wheel 为基于官方源码的本地开发重打包：native 输入未变、native 库逐字节保留，尚非官方 SDK 发行包。
+  否则固件仍会裁剪 q（相关合同见 vita-robot PR #13164）。随包 wheel 使用正式 RC3 发行资产，
+  源码/native 哈希由随包 guard 核验；配置、安装和机器人运动验收仍须分别确认。
 - 目标机提供 `/app/script/env.sh`、部署自有 `/app_param/zenoh/s100_session_peer.json5`
   和完整 A-sample 有效 YAML。当前无夹爪配置应与真实硬件一致，不自动修改末端选择或将执行器设为 MOCK。
 - 通过的交付/只读检查不等于运动验收。**真实 Pico 跟随质量、无支撑站立稳定性仍未完成验收。**

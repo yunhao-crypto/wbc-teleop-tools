@@ -417,6 +417,103 @@ class LiveTests(unittest.TestCase):
             return None
         return worker, command
 
+    def trace_r3_stand(self, trace, upper_state='fresh'):
+        from deployment.vita_s100_aorta_30dof.actor_teleop_modes import TeleopModes
+        from locomotion_aorta.pull import PullController
+        runtime = self.runtime
+        runtime.reset_inputs()
+        clock, stop, rows = Clock(), threading.Event(), []
+        transport = Loopback(runtime, clock)
+        controller = PullController(group='default', client_id=0x5eed, _transport=transport)
+        worker = ManualPico(runtime, clock)
+        args = copy.copy(self.args)
+        args.manual_pico, args.seconds = True, 4.
+        def request():
+            return {50: 'connect', 155: 'track'}.get(len(transport.commands))
+        modes = TeleopModes(runtime)
+        original_snapshot, original_infer = worker.snapshot, runtime.infer_motion_command
+        latest, observed, consumed = {}, [], []
+        def snapshot():
+            value = original_snapshot()
+            count, now = len(transport.commands), clock.monotonic()
+            if value['state'] == 'ready':
+                value['q'][:, runtime.model.contract.names.index('left_elbow_joint')] += .02*(1+count%3)
+                value.update(mode_event_seq=int(count >= 170), mode_event_monotonic=now,
+                    mode_received_monotonic=now, planner_sticks=(now, count+1, 0., 0.))
+                value['trace_input_id'] = trace.mark('pico_input', kind=11) if trace is not None else 0
+                if count >= 175:
+                    if upper_state == 'stale':
+                        value['received_monotonic'] = now-runtime.config['pico_hold_age_s']-.01
+                    elif upper_state == 'invalid':
+                        value['state'] = 'waiting_pico'
+                    elif upper_state == 'unused':
+                        modes.upper_follow = None
+            latest.clear(); latest.update(value)
+            return value
+        follow = modes.follow_upper
+        def follow_upper(motion, upper):
+            consumed.append(upper is not None)
+            return follow(motion, upper)
+        def infer(*args, **kwargs):
+            result = original_infer(*args, **kwargs)
+            if len(transport.commands) >= 175:
+                self.assertFalse(any(row.get('record_type') == 'teleop_mode_selected' for row in rows))
+                observed.append((runtime.last_trace_inference_id, latest.get('trace_input_id'),
+                                 bool(consumed and consumed[-1]) and upper_state != 'unused'))
+            return result
+        try:
+            with (patch.object(runtime, 'trace', trace, create=True),
+                  patch.object(runtime, 'teleop_modes', modes, create=True),
+                  patch.object(runtime, 'infer_motion_command', side_effect=infer),
+                  patch.object(worker, 'snapshot', side_effect=snapshot),
+                  patch.object(modes, 'follow_upper', side_effect=follow_upper),
+                  redirect_stdout(io.StringIO())):
+                report = run_live(runtime, args, lambda row, obs=None: rows.append(row),
+                    controller, None, stop, service_alive=lambda: True, clock=clock,
+                    manual_pico=worker, poll_command=request)
+        finally:
+            controller.close()
+        self.assertTrue(report['exit_confirmed'])
+        self.assertTrue(any(row.get('record_type') == 'teleop_mode_requested' for row in rows))
+        self.assertTrue(any(row.get('record_type') == 'tracking_paused' for row in rows))
+        self.assertGreater(len(observed), 5)
+        commands = np.array([[(j.q,j.dq,j.tau,j.kp,j.kd) for j in command.joints]
+                             for command in transport.commands])
+        return observed, commands
+
+    def test_trace_records_actual_r3_stand_upper_consumption_and_off_keeps_commands(self):
+        from locomotion_aorta.trace import Trace, Kind
+        from locomotion_aorta.trace.reader import Reader
+        from deployment.vita_s100_aorta_30dof.actor_trace import STAGES
+        path = Path(self.tmp.name)/'r3.ftrace'
+        with Trace(path, stages=STAGES) as trace:
+            observed, commands = self.trace_r3_stand(trace)
+        reader = Reader(path); records = list(reader)
+        self.assertTrue(reader.integrity.complete, reader.integrity.issues)
+        edges = {row['inference_id']:row for row in records
+                 if row['kind'] == Kind.TRACE_LINK and row['stage'] == 12+STAGES.index('planner_consume')}
+        self.assertGreater(len({source for _, source, _ in observed}), 5)
+        for inference, source, used in observed:
+            self.assertTrue(used)
+            self.assertEqual((edges[inference]['integers'],edges[inference]['reference_id']),([2],source))
+        _, without_trace = self.trace_r3_stand(None)
+        np.testing.assert_array_equal(commands, without_trace)
+
+    def test_trace_r3_stand_does_not_link_stale_invalid_or_unused_upper(self):
+        from locomotion_aorta.trace import Trace, Kind
+        from locomotion_aorta.trace.reader import Reader
+        from deployment.vita_s100_aorta_30dof.actor_trace import STAGES
+        for upper_state in ('stale','invalid','unused'):
+            with self.subTest(upper_state=upper_state):
+                path = Path(self.tmp.name)/f'r3-{upper_state}.ftrace'
+                with Trace(path, stages=STAGES) as trace:
+                    observed, _ = self.trace_r3_stand(trace, upper_state)
+                reader = Reader(path); records = list(reader)
+                self.assertTrue(reader.integrity.complete, reader.integrity.issues)
+                linked = {row['inference_id'] for row in records if row['kind'] == Kind.TRACE_LINK
+                          and row['stage'] == 12+STAGES.index('planner_consume')}
+                self.assertTrue(all(not used and inference not in linked for inference, _, used in observed))
+
     def gripper_trial(self, fail_after=None):
         import multiprocessing
         from deployment.vita_s100_aorta_30dof import actor_pico_gripper

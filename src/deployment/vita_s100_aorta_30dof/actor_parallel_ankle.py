@@ -238,7 +238,8 @@ def decode_motor_theta(policy, math_api, raw_action, **timing):
     # PD setpoints may exceed travel; physical limits belong to the plant.
     motor_q = raw_q.copy()
     slots = c.ankle.slots
-    native = command_space(policy) == 'motor_theta'
+    space = command_space(policy)
+    native = space == 'motor_theta'
     tau = np.zeros(28)
     residual = None
     if native:
@@ -257,8 +258,11 @@ def decode_motor_theta(policy, math_api, raw_action, **timing):
                                              float(np.float32(c.kp[p])), float(np.float32(c.kd[p])))
     for name, fixed in policy.profile['fixed_joints'].items():
         motors[policy.order.index(name)] = math_api.BodyJointCmd(fixed['q'], 0., 0., fixed['kp'], fixed['kd'])
-    return math_api.BodyCmd(joints=tuple(motors), **timing), {
-        'ankle_command_space': command_space(policy),
+    from locomotion_aorta import body_types
+    version = (body_types.BODY_CMD_MOTOR_THETA_PROTOCOL_VERSION if native
+               else body_types.BODY_CMD_PROTOCOL_VERSION)
+    return math_api.BodyCmd(joints=tuple(motors), protocol_version=version, **timing), {
+        'ankle_command_space': space,
         'action': policy.last_action.tolist(), 'raw_target': raw_q.tolist(),
         'motor_target': motor_q[slots].tolist(), 'ankle_fk_residual': residual,
         'target': target.tolist(), 'tau_ff': tau.tolist(), 'clamped': clamped.tolist(),

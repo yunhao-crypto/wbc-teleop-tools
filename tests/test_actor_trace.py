@@ -1,0 +1,438 @@
+"""Actual FBS records around WTT's model entry points; no device/model assets."""
+from concurrent.futures import ThreadPoolExecutor
+from contextlib import redirect_stdout
+import importlib.util
+import io
+import json
+from pathlib import Path
+import sys
+import tempfile
+import time
+from types import SimpleNamespace as NS
+import unittest
+from unittest.mock import patch
+
+import numpy as np
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT/'src'))
+from deployment.vita_s100_aorta_30dof.actor_pico_runtime import ActorPicoRuntime
+from deployment.vita_s100_aorta_30dof.actor_sonic_planner import PlannerPipeline, Command, G1_INDEX
+from deployment.vita_s100_aorta_30dof.actor_trace import STAGES
+from locomotion_aorta.trace import Trace, Kind, Outcome
+from locomotion_aorta.trace.reader import Reader
+
+
+class TraceTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.path = Path(self.temp.name)/'run.ftrace'
+
+    def records(self):
+        reader = Reader(self.path)
+        records = list(reader)
+        self.assertTrue(reader.integrity.complete, reader.integrity.issues)
+        return [row for row in records if row['kind'] == Kind.USER_SPAN]
+
+    def pipeline(self, trace):
+        p = PlannerPipeline.__new__(PlannerPipeline)
+        p.runtime = NS(trace=trace)
+        p.seed = 1234
+        p.rng = np.random.default_rng(p.seed)
+        p.allowed_counts = (48, 52, 56, 60, 64)
+        p.g1 = G1_INDEX
+        p.order = list(range(28))
+        p.moving_lookahead = 22
+        p.idle_lookahead = 2
+        p.observed_intervals = []
+        def infer(outputs, inputs):
+            began = time.monotonic_ns() // 1000
+            result = np.zeros((1, 64, 36), np.float32)
+            result[:, :, 3] = 1
+            output = result, np.array([64], np.int32)
+            p.observed_intervals.append((began, time.monotonic_ns() // 1000))
+            return output
+        p.planner = NS(run=infer)
+        def bridge(outputs, inputs):
+            began = time.monotonic_ns() // 1000
+            output = [np.zeros((len(inputs['window_features']), 28), np.float32)]
+            p.observed_intervals.append((began, time.monotonic_ns() // 1000))
+            return output
+        p.bridge = NS(run=bridge)
+        return p
+
+    def test_initial_background_map_and_control_thread_replan_map_are_separate(self):
+        with Trace(self.path, stages=STAGES) as trace:
+            p = self.pipeline(trace)
+            with ThreadPoolExecutor(max_workers=1) as pool:
+                pool.submit(p.start, np.zeros(28)).result(timeout=2)
+                prediction = pool.submit(p.predict, 10, Command()).result(timeout=2)
+                p.accept(prediction, 10)
+        rows = sorted((r for r in self.records() if r['stage'] in (12+STAGES.index('planner_infer'), 12+STAGES.index('planner_map'))), key=lambda row: row['timestamp_us'])
+        self.assertEqual(len(rows), len(p.observed_intervals))
+        for row, (begin, end) in zip(rows, p.observed_intervals):
+            self.assertLessEqual(row['timestamp_us'], begin)
+            self.assertGreaterEqual(row['timestamp_us'] + row['duration_us'], end)
+            self.assertGreaterEqual(row['duration_us'], 1)
+        self.assertEqual([r['stage'] for r in rows], [12+STAGES.index('planner_infer'), 12+STAGES.index('planner_map')]*2)
+        self.assertEqual(len({r['producer'] for r in rows[:3]}), 1)
+        self.assertNotEqual(rows[2]['producer'], rows[3]['producer'])
+        self.assertEqual(len({r['inference_id'] for r in rows}), 4)
+        self.assertTrue(all(r['outcome'] == Outcome.OK for r in rows))
+
+    def test_planner_failure_keeps_original_exception_and_failed_span(self):
+        failure = RuntimeError('model failed')
+        with Trace(self.path, stages=STAGES) as trace:
+            p = self.pipeline(trace)
+            with patch.object(p.planner, 'run', side_effect=failure):
+                with self.assertRaises(RuntimeError) as raised:
+                    p.start(np.zeros(28))
+                self.assertIs(raised.exception, failure)
+        rows = [r for r in self.records() if r['stage'] == 12+STAGES.index('planner_infer')]
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]['outcome'], Outcome.FAILED)
+
+    def test_actor_observe_infer_decode_measure_actual_calls_separately(self):
+        with Trace(self.path, stages=STAGES) as trace:
+            runtime = ActorPicoRuntime.__new__(ActorPicoRuntime)
+            runtime.trace = trace
+            runtime.policy_name = 'synthetic-test'
+            intervals = []
+            def measured(function):
+                def call(*args):
+                    began = time.monotonic_ns() // 1000
+                    result = function(*args)
+                    intervals.append((began, time.monotonic_ns() // 1000))
+                    return result
+                return call
+            runtime.policy = NS(order=(), observe=measured(lambda *args: np.zeros(3)),
+                                decode=measured(lambda action: (NS(joints=()), {})))
+            runtime.model = NS(backend='synthetic-test', infer=measured(lambda observation: np.ones(2)))
+            command, observation, row = runtime.infer_motion_command(None, q=(), dq=(), root=(), gyro=())
+            self.assertEqual(observation.shape, (3,))
+            self.assertIsNone(row['raw_action'])
+            identity = runtime.last_trace_inference_id
+        rows = sorted(self.records(), key=lambda r: r['timestamp_us'])
+        self.assertEqual(len(rows), len(intervals))
+        for span, (begin, end) in zip(rows, intervals):
+            self.assertLessEqual(span['timestamp_us'], begin)
+            self.assertGreaterEqual(span['timestamp_us'] + span['duration_us'], end)
+        self.assertEqual(rows[1]['inference_id'], identity)
+        raw = list(Reader(self.path))
+        action = [r for r in raw if r['kind'] == Kind.USER_MARK and r['stage'] == 12+STAGES.index('actor_action')]
+        self.assertEqual(action[0]['values'], [1., 1.])
+
+    def test_offline_cli_uses_one_run_recorder_and_off_has_no_trace_resource(self):
+        spec = importlib.util.spec_from_file_location('actor_trace_cli', ROOT/'scripts/actor_pico.py')
+        cli = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(cli)
+        for mode, explicit_output in ((None, False), ('off', False), ('on', True), ('on', False)):
+            enabled = mode == 'on'
+            with self.subTest(mode=mode, explicit_output=explicit_output):
+                policy_log = Path(self.temp.name)/f'policy-{mode}.jsonl'
+                runtime = NS(config={'artifacts': {'model': {}}, 'body_profile': {}, 'retargeting': {}},
+                    reference=NS(delay=.2), retarget=None, reference_source='pico', head=None,
+                    model=NS(contract=NS(input_dim=1520)))
+                runtime.policy = NS(contract=runtime.model.contract, profile={'ankle_command_space':'policy'})
+                seen = []
+                def check(runtime, args, write):
+                    seen.append(runtime.trace)
+                    if enabled:
+                        self.path = args.trace_output
+                        if not explicit_output:
+                            self.assertEqual(self.path.parent, Path('/tmp'))
+                            self.addCleanup(self.path.unlink, missing_ok=True)
+                        self.assertIs(cli.trace_options(args)['trace_recorder'], runtime.trace)
+                        with runtime.trace.span('actor_infer'):
+                            pass
+                    else:
+                        self.assertEqual(cli.trace_options(args), {})
+                    write({'record_type': 'control_test_event', 'state_id': 7})
+                    return {'actions_sent': 0}
+                options = [] if mode is None else ['--trace', mode]
+                if not enabled:
+                    options += ['--log', str(policy_log)]
+                if explicit_output:
+                    options += ['--trace-output', str(self.path)]
+                with (redirect_stdout(io.StringIO()), patch.object(cli, 'ActorPicoRuntime', return_value=runtime),
+                      patch.object(cli, 'check', side_effect=check),
+                      patch.object(sys, 'argv', ['actor_pico.py', 'check', '--root', self.temp.name, *options])):
+                    cli.main()
+                if enabled:
+                    self.assertTrue(seen[0].session._closed)
+                    self.assertEqual(len(self.records()), 1)
+                else:
+                    self.assertEqual(seen, [None])
+                    self.assertFalse(self.path.exists())
+                    rows = [json.loads(line) for line in policy_log.read_text().splitlines()]
+                    self.assertEqual([row['record_type'] for row in rows],
+                                     ['header', 'control_test_event', 'summary'])
+                self.assertFalse(list(Path(self.temp.name).rglob('*.body.jsonl')))
+                self.assertFalse(list(Path(self.temp.name).rglob('*.ee.jsonl')))
+
+    def test_removed_profiling_options_explain_migration_before_runtime_or_trace(self):
+        spec = importlib.util.spec_from_file_location('actor_removed_profiling_cli', ROOT/'scripts/actor_pico.py')
+        cli = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(cli)
+        for flags in (['--profiling'], ['--no-profiling'], ['--profiling-log', 'old-prefix']):
+            for trace_mode in ('off', 'on'):
+                with self.subTest(flags=flags, trace=trace_mode), \
+                     patch.object(cli, 'ActorPicoRuntime') as runtime, \
+                     patch('locomotion_aorta.trace.Trace') as recorder, \
+                     patch.object(sys, 'argv', ['actor_pico.py', 'live', '--trace', trace_mode, *flags]), \
+                     patch('sys.stderr', new_callable=io.StringIO) as error:
+                    with self.assertRaises(SystemExit) as stopped:
+                        cli.main()
+                    self.assertEqual(stopped.exception.code, 2)
+                    self.assertIn('JSONL performance profiling was removed', error.getvalue())
+                    self.assertIn('--trace on', error.getvalue())
+                    self.assertIn('--trace off', error.getvalue())
+                    runtime.assert_not_called()
+                    recorder.assert_not_called()
+
+    def test_cli_rejects_invalid_trace_and_legacy_writer_before_runtime(self):
+        spec = importlib.util.spec_from_file_location('actor_trace_invalid_cli', ROOT/'scripts/actor_pico.py')
+        cli = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(cli)
+        cases = (['--trace=fbs'],
+                 ['--trace=off', '--trace-output', str(self.path)],
+                 ['--trace=on', '--trace-output', 'bad.txt'],
+                 ['--trace=on', '--profiling'],
+                 ['--trace=on', '--log', 'legacy.jsonl'],
+                 ['--trace=on', '--record-observations'])
+        for flags in cases:
+            with self.subTest(flags=flags), patch.object(cli, 'ActorPicoRuntime') as runtime, \
+                 patch.object(sys, 'argv', ['actor_pico.py', 'check', *flags]), \
+                 patch('sys.stderr', new_callable=io.StringIO):
+                with self.assertRaises(SystemExit) as stopped:
+                    cli.main()
+                self.assertEqual(stopped.exception.code, 2)
+                runtime.assert_not_called()
+
+    def test_actual_future_ready_accept_and_fusion_keep_old_and_new_result_ids(self):
+        from test_actor_sonic_planner import Tests
+        with Trace(self.path, stages=STAGES) as trace:
+            reference = Tests().pending_reference(10)
+            reference.runtime.trace = trace
+            reference.pipeline = self.pipeline(trace)
+            reference.pipeline.start(np.zeros(28))
+            reference.trace_result_id = old = trace.new_id()
+            with ThreadPoolExecutor(max_workers=1) as pool:
+                reference.pool = pool
+                reference._submit(reference.pipeline.predict, 10, Command())
+                reference.future.result(timeout=2)
+                incoming = reference.pending_trace['result_id']
+                reference.tick(None, None, 1., [1, 0, 0, 0], robot_q=np.zeros(28))
+                accepted = reference.trace_result_id
+        reader = Reader(self.path)
+        rows = list(reader)
+        self.assertTrue(reader.integrity.complete, reader.integrity.issues)
+        stage = lambda name: 12 + STAGES.index(name)
+        ready, = [r for r in rows if r['stage'] == stage('planner_ready')]
+        admit, = [r for r in rows if r['stage'] == stage('planner_accept')]
+        fusion, = [r for r in rows if r['stage'] == stage('planner_fusion')]
+        self.assertEqual(ready['reference_id'], incoming)
+        self.assertEqual(admit['reference_id'], accepted)
+        self.assertEqual(admit['integers'][0], incoming)
+        self.assertEqual(fusion['reference_id'], accepted)
+        self.assertEqual(fusion['integers'][:2], [old, incoming])
+        self.assertNotEqual(ready['producer'], admit['producer'])
+        self.assertEqual(reference.runtime.trace_planner_result_id, accepted)
+
+    def reference_runtime(self, trace):
+        runtime = ActorPicoRuntime.__new__(ActorPicoRuntime)
+        runtime.trace, runtime.policy_name = trace, 'synthetic-reference-test'
+        runtime.config = {'pico_max_age_s': .3, 'pico_hold_age_s': .1}
+        runtime.reference = NS(steps=11, current_index=0, delay=.2, ref_time=0.)
+        runtime.held_motion = None
+        runtime.math = NS(Motion=lambda q, base, quat: NS(q=q, base=base, quat=quat), yaw=lambda _: 0.)
+        runtime.model = NS(backend='synthetic-test', infer=lambda observation: np.ones(2))
+        runtime.policy = NS(order=(), observe=lambda *args: np.zeros(3),
+                            decode=lambda action: (NS(joints=()), {}))
+        motion = runtime.math.Motion(np.zeros((11,28)), np.zeros((11,3)), np.tile([1.,0,0,0],(11,1)))
+        runtime.hold_motion = lambda: motion
+        return runtime, motion
+
+    def snapshot(self, identity, motion, age=0.):
+        return dict(state='ready', received_monotonic=1.-age, trace_input_id=identity,
+                    q=motion.q, base=motion.base, quat=motion.quat,
+                    retarget_ms=0., gmr_task_error=0.)
+
+    def consumption(self):
+        reader = Reader(self.path)
+        rows = list(reader)
+        self.assertTrue(reader.integrity.complete, reader.integrity.issues)
+        return [r for r in rows if r['kind'] == Kind.TRACE_LINK
+                and r['stage'] == 12+STAGES.index('planner_consume')]
+
+    def test_planner_and_pico_both_link_to_the_same_actual_actor_inference(self):
+        from test_actor_sonic_planner import Tests
+        from deployment.vita_s100_aorta_30dof.actor_pico_live import pico_reference_command
+        with Trace(self.path, stages=STAGES) as trace:
+            runtime, motion = self.reference_runtime(trace)
+            planner = Tests().pending_reference(10)
+            planner.runtime = runtime
+            runtime.planner = planner
+            pico = trace.new_id()
+            pico_reference_command(runtime, self.snapshot(pico,motion), 1., q=np.zeros(28), dq=(), root=(), gyro=())
+            accepted, inference = planner.trace_result_id, runtime.last_trace_inference_id
+        links = self.consumption()
+        self.assertEqual([(r['integers'],r['reference_id']) for r in links], [([1],accepted),([2],pico)])
+        self.assertEqual({r['inference_id'] for r in links}, {inference})
+
+    def test_stale_or_invalid_pico_upper_never_creates_a_false_consumption_edge(self):
+        from test_actor_sonic_planner import Tests
+        from deployment.vita_s100_aorta_30dof.actor_pico_live import pico_reference_command
+        with Trace(self.path, stages=STAGES) as trace:
+            runtime, motion = self.reference_runtime(trace)
+            planner = Tests().pending_reference(10)
+            planner.runtime, runtime.planner = runtime, planner
+            for snap in (self.snapshot(trace.new_id(),motion,age=.2), {'state':'waiting_pico'}):
+                runtime.trace_input_id = trace.new_id()  # Provenance left by an older good snapshot.
+                pico_reference_command(runtime, snap, 1., q=np.zeros(28), dq=(), root=(), gyro=())
+        links = self.consumption()
+        self.assertEqual(len(links),2)
+        self.assertTrue(all(r['integers'] == [1] for r in links))
+
+    def test_loading_ignores_upper_unless_the_live_arm_follower_actually_uses_it(self):
+        from concurrent.futures import Future
+        from test_actor_sonic_planner import Tests
+        from deployment.vita_s100_aorta_30dof.actor_pico_live import pico_reference_command
+        from deployment.vita_s100_aorta_30dof.actor_sonic_planner import ArmFusion,VITA_NAMES
+        with Trace(self.path, stages=STAGES) as trace:
+            runtime, motion = self.reference_runtime(trace)
+            planner = Tests().pending_reference(10)
+            planner.runtime, runtime.planner = runtime, planner
+            planner.clip, planner.future = None, Future()
+            planner.stick.armed = False
+            pico = trace.new_id()
+            snap = self.snapshot(pico,motion)
+            pico_reference_command(runtime,snap,1.,q=np.zeros(28),dq=(),root=(),gyro=())
+            self.assertFalse(runtime.trace_pico_upper_used)
+            fusion = ArmFusion(VITA_NAMES,np.zeros(28))
+            runtime.teleop_modes = NS(mode='joystick',stage='ready',needs_center=False,entry=None,
+                upper_follow=fusion, stick_sample=lambda *args: None,
+                filter=lambda motion,heading:(motion,heading),
+                follow_upper=lambda motion,upper: runtime.math.Motion(*fusion.apply((motion.q,motion.base,motion.quat),upper)))
+            pico_reference_command(runtime,snap,1.,q=np.zeros(28),dq=(),root=(),gyro=())
+        links = self.consumption()
+        self.assertEqual([(r['integers'],r['reference_id']) for r in links],[([2],pico)])
+
+    def test_stand_does_not_consume_residual_reference_ids(self):
+        with Trace(self.path, stages=STAGES) as trace:
+            runtime,_ = self.reference_runtime(trace)
+            runtime.trace_input_id,runtime.trace_planner_result_id = trace.new_id(),trace.new_id()
+            runtime.infer_motion_command(None,q=(),dq=(),root=(),gyro=())
+        self.assertEqual(self.consumption(),[])
+
+    def test_offline_infer_links_fresh_and_held_pico_but_not_zero_or_expired_input(self):
+        with Trace(self.path, stages=STAGES) as trace:
+            runtime, motion = self.reference_runtime(trace)
+            runtime.reference.motion = lambda: motion
+            runtime.reference.last_receive_monotonic = 1.
+            runtime.reference_yaw_offset = 0.
+            runtime.head = runtime.latest_pico = None
+            runtime.last_residual = runtime.last_retarget_ms = None
+            first, held, fresh = (trace.new_id() for _ in range(3))
+            runtime.trace_input_id = first
+            runtime.infer_command(q=(), dq=(), root=(), gyro=(), now_monotonic=1.)
+            runtime.trace_input_id = held
+            runtime.infer_command(q=(), dq=(), root=(), gyro=(), now_monotonic=1.2)
+            runtime.trace_input_id = trace.new_id()
+            runtime.infer_command(q=(), dq=(), root=(), gyro=(), now_monotonic=1.21)
+            runtime.reference.last_receive_monotonic = 1.3
+            runtime.trace_input_id = fresh
+            runtime.infer_command(q=(), dq=(), root=(), gyro=(), now_monotonic=1.3)
+            runtime.trace_input_id = 0
+            runtime.infer_command(q=(), dq=(), root=(), gyro=(), now_monotonic=1.3)
+            with self.assertRaisesRegex(TimeoutError, 'stale'):
+                runtime.infer_command(q=(), dq=(), root=(), gyro=(), now_monotonic=2.)
+        self.assertEqual([(r['integers'], r['reference_id']) for r in self.consumption()],
+                         [([2], first), ([2], held), ([2], held), ([2], fresh)])
+
+    def test_held_pico_reference_links_to_its_original_snapshot(self):
+        from deployment.vita_s100_aorta_30dof.actor_pico_live import pico_reference_command
+        with Trace(self.path, stages=STAGES) as trace:
+            runtime,motion = self.reference_runtime(trace)
+            first = trace.new_id()
+            for identity in (first,trace.new_id()):
+                pico_reference_command(runtime,self.snapshot(identity,motion,age=.2),1.,q=(),dq=(),root=(),gyro=())
+        self.assertEqual([(r['integers'],r['reference_id']) for r in self.consumption()],[([2],first),([2],first)])
+
+    def test_grip_trace_preserves_invalid_input_open_and_records_real_decision(self):
+        import test_actor_pico_gripper as fixture
+        fixture.FakeClient.infos, fixture.FakeClient.created = {}, []
+        clock = fixture.Clock()
+        shared = fixture.shared(left=float('nan'), right=.7, received=clock(), stamp=1)
+        sdk = NS(**vars(fixture.SDK), EndEffectorClient=fixture.FakeClient)
+        with Trace(self.path, stages=STAGES) as trace:
+            runner = fixture.GripperRunner(fixture.load_config(fixture.EXAMPLE), shared,
+                connection='synthetic-controller', sdk=sdk, clock=clock, trace_recorder=trace)
+            try:
+                for client in runner.clients.values(): client.received=clock()
+                runner.tick()
+                self.assertEqual(runner.clients['left'].published[0][0].pos, (.112,))
+                self.assertFalse(runner.gates['left'].valid)
+            finally:
+                runner.close()
+        reader = Reader(self.path)
+        rows = list(reader)
+        self.assertTrue(reader.integrity.complete, reader.integrity.issues)
+        inputs, = [r for r in rows if r['kind'] == Kind.INPUT_EVENT]
+        decision = next(r for r in rows if r['kind'] == Kind.GRIP_DECISION and r['stream'] == 2)
+        self.assertEqual(inputs['validity'][:2], [0, 1])
+        self.assertEqual(decision['reference_id'], inputs['attempt_id'])
+        self.assertEqual(decision['integers'], [0, 0, 0, 3])
+
+    def test_gmr_ipc_cache_reuses_source_identity_and_original_endpoints(self):
+        import queue
+        from deployment.vita_s100_aorta_30dof.actor_pico_worker import PicoReferenceProcess
+        with Trace(self.path, stages=STAGES) as trace:
+            worker = PicoReferenceProcess.__new__(PicoReferenceProcess)
+            worker.trace, worker.trace_previous, worker.trace_input_id = trace, None, 0
+            worker.output = queue.Queue(maxsize=2)
+            worker.process = NS(is_alive=lambda: True)
+            worker.head_pose = NS(snapshot=lambda: None)
+            worker.controls = None
+            worker.previous = dict(state='ready', trace_process='synthetic-worker',
+                trace_sequence=1,
+                pico_timestamp_ns=1794885630000123000, received_monotonic=1.,
+                trace_points_us=(100, 150, 151, 170, 171, 90, 1794885630000123))
+            first = worker.snapshot()
+            second = worker.snapshot()
+            self.assertEqual(first['trace_input_id'], second['trace_input_id'])
+            self.assertEqual(first['received_monotonic'], second['received_monotonic'])
+        reader = Reader(self.path)
+        rows = list(reader)
+        self.assertTrue(reader.integrity.complete, reader.integrity.issues)
+        input_events = [r for r in rows if r['kind'] == Kind.INPUT_EVENT]
+        self.assertEqual(len(input_events), 1)
+        measured = [r for r in rows if r['kind'] == Kind.USER_SPAN]
+        self.assertEqual([(r['timestamp_us'], r['duration_us']) for r in measured], [(100, 51), (151, 20)])
+        self.assertTrue(all(r['reference_id'] == first['trace_input_id'] for r in measured))
+
+    def test_gmr_latest_ipc_loss_marks_recording_incomplete_without_stopping_reader(self):
+        import queue
+        from deployment.vita_s100_aorta_30dof.actor_pico_worker import PicoReferenceProcess
+        with Trace(self.path, stages=STAGES) as trace:
+            worker = PicoReferenceProcess.__new__(PicoReferenceProcess)
+            worker.trace, worker.trace_previous, worker.trace_input_id = trace, None, 0
+            worker.output = queue.Queue(maxsize=2)
+            worker.process, worker.head_pose, worker.controls = NS(is_alive=lambda:True), NS(snapshot=lambda:None), None
+            worker.previous = dict(state='ready', trace_process='synthetic-worker', trace_sequence=1,
+                pico_timestamp_ns=100000, received_monotonic=1., trace_points_us=(100,150,151,170,171,90,100))
+            worker.snapshot()
+            worker.output.put(dict(worker.previous, trace_sequence=4, pico_timestamp_ns=400000))
+            result = worker.snapshot()
+            self.assertEqual(result['state'], 'ready')
+        reader = Reader(self.path)
+        rows = list(reader)
+        self.assertFalse(reader.integrity.complete)
+        losses = [r for r in rows if r['kind'] == Kind.ERROR]
+        self.assertEqual(len(losses), 1)
+        self.assertEqual(losses[0]['integers'], [2])
+
+
+if __name__ == '__main__':
+    unittest.main()
