@@ -3,6 +3,7 @@ from concurrent.futures import ThreadPoolExecutor
 from contextlib import redirect_stdout
 import importlib.util
 import io
+import json
 from pathlib import Path
 import sys
 import tempfile
@@ -129,6 +130,7 @@ class TraceTests(unittest.TestCase):
         for mode, explicit_output in ((None, False), ('off', False), ('on', True), ('on', False)):
             enabled = mode == 'on'
             with self.subTest(mode=mode, explicit_output=explicit_output):
+                policy_log = Path(self.temp.name)/f'policy-{mode}.jsonl'
                 runtime = NS(config={'artifacts': {'model': {}}, 'body_profile': {}, 'retargeting': {}},
                     reference=NS(delay=.2), retarget=None, reference_source='pico', head=None,
                     model=NS(contract=NS(input_dim=1520)))
@@ -146,8 +148,11 @@ class TraceTests(unittest.TestCase):
                             pass
                     else:
                         self.assertEqual(cli.trace_options(args), {})
+                    write({'record_type': 'control_test_event', 'state_id': 7})
                     return {'actions_sent': 0}
                 options = [] if mode is None else ['--trace', mode]
+                if not enabled:
+                    options += ['--log', str(policy_log)]
                 if explicit_output:
                     options += ['--trace-output', str(self.path)]
                 with (redirect_stdout(io.StringIO()), patch.object(cli, 'ActorPicoRuntime', return_value=runtime),
@@ -160,6 +165,31 @@ class TraceTests(unittest.TestCase):
                 else:
                     self.assertEqual(seen, [None])
                     self.assertFalse(self.path.exists())
+                    rows = [json.loads(line) for line in policy_log.read_text().splitlines()]
+                    self.assertEqual([row['record_type'] for row in rows],
+                                     ['header', 'control_test_event', 'summary'])
+                self.assertFalse(list(Path(self.temp.name).rglob('*.body.jsonl')))
+                self.assertFalse(list(Path(self.temp.name).rglob('*.ee.jsonl')))
+
+    def test_removed_profiling_options_explain_migration_before_runtime_or_trace(self):
+        spec = importlib.util.spec_from_file_location('actor_removed_profiling_cli', ROOT/'scripts/actor_pico.py')
+        cli = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(cli)
+        for flags in (['--profiling'], ['--no-profiling'], ['--profiling-log', 'old-prefix']):
+            for trace_mode in ('off', 'on'):
+                with self.subTest(flags=flags, trace=trace_mode), \
+                     patch.object(cli, 'ActorPicoRuntime') as runtime, \
+                     patch('locomotion_aorta.trace.Trace') as recorder, \
+                     patch.object(sys, 'argv', ['actor_pico.py', 'live', '--trace', trace_mode, *flags]), \
+                     patch('sys.stderr', new_callable=io.StringIO) as error:
+                    with self.assertRaises(SystemExit) as stopped:
+                        cli.main()
+                    self.assertEqual(stopped.exception.code, 2)
+                    self.assertIn('JSONL performance profiling was removed', error.getvalue())
+                    self.assertIn('--trace on', error.getvalue())
+                    self.assertIn('--trace off', error.getvalue())
+                    runtime.assert_not_called()
+                    recorder.assert_not_called()
 
     def test_cli_rejects_invalid_trace_and_legacy_writer_before_runtime(self):
         spec = importlib.util.spec_from_file_location('actor_trace_invalid_cli', ROOT/'scripts/actor_pico.py')
