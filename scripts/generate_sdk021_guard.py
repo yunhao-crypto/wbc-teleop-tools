@@ -36,41 +36,39 @@ def generate(args):
     sdk_version = compat['sdk_version']
     names = ORIGINAL + RUNTIME
     sources = {n: blob('python/locomotion_aorta/' + n) for n in names}
-    wheel_record = None
     native_sha256 = {}
-    if args.sdk_wheel:
-        actual = hashlib.sha256(args.sdk_wheel.read_bytes()).hexdigest()
-        if actual != args.wheel_sha256:
-            raise ValueError('Reviewed wheel SHA mismatch')
-        with zipfile.ZipFile(args.sdk_wheel) as wheel:
-            metadata_names = [n for n in wheel.namelist() if n.endswith('.dist-info/METADATA')]
-            if len(metadata_names) != 1:
-                raise ValueError('Ambiguous wheel metadata')
-            metadata = Parser().parsestr(wheel.read(metadata_names[0]).decode())
-            if metadata['Version'] != sdk_version or metadata['Name'].replace('_', '-') != 'locomotion-aorta':
-                raise ValueError('Expected the reviewed SDK ' + sdk_version + ' wheel')
-            for name, source in sources.items():
-                if wheel.read('locomotion_aorta/' + name) != source:
-                    raise ValueError('Wheel differs from reviewed Git source: ' + name)
-            for name in wheel.namelist():
-                path = PurePosixPath(name)
-                if name.startswith('locomotion_aorta/') and '.so' in path.name:
-                    if path.is_absolute() or '..' in path.parts or name.endswith('/'):
-                        raise ValueError('Unsafe native wheel member: ' + name)
-                    relative = str(path.relative_to('locomotion_aorta'))
-                    native_sha256[relative] = hashlib.sha256(wheel.read(name)).hexdigest()
-            if not any(Path(n).name.startswith('_body_cmd_native.') for n in native_sha256):
-                raise ValueError('Reviewed wheel must contain the native BodyCmd/BodyState extension')
-            required = {
-                'aorta-sdk==' + compat['aorta_version'],
-                'aorta-msgs==' + compat['aorta_version'],
-                'vbot-humanoid-msgs==' + compat['humanoid_msgs_version'],
-                'flatbuffers==' + compat['flatbuffers_version'],
-            }
-            if not required <= set(metadata.get_all('Requires-Dist', [])):
-                raise ValueError('Wheel dependency pins differ from the reviewed compatibility manifest')
-        wheel_record = {'filename': args.sdk_wheel.name, 'sha256': actual,
-                        'bytes': args.sdk_wheel.stat().st_size}
+    actual = hashlib.sha256(args.sdk_wheel.read_bytes()).hexdigest()
+    if actual != args.wheel_sha256:
+        raise ValueError('Reviewed wheel SHA mismatch')
+    with zipfile.ZipFile(args.sdk_wheel) as wheel:
+        metadata_names = [n for n in wheel.namelist() if n.endswith('.dist-info/METADATA')]
+        if len(metadata_names) != 1:
+            raise ValueError('Ambiguous wheel metadata')
+        metadata = Parser().parsestr(wheel.read(metadata_names[0]).decode())
+        if metadata['Version'] != sdk_version or metadata['Name'].replace('_', '-') != 'locomotion-aorta':
+            raise ValueError('Expected the reviewed SDK ' + sdk_version + ' wheel')
+        for name, source in sources.items():
+            if wheel.read('locomotion_aorta/' + name) != source:
+                raise ValueError('Wheel differs from reviewed Git source: ' + name)
+        for name in wheel.namelist():
+            path = PurePosixPath(name)
+            if name.startswith('locomotion_aorta/') and '.so' in path.name:
+                if path.is_absolute() or '..' in path.parts or name.endswith('/'):
+                    raise ValueError('Unsafe native wheel member: ' + name)
+                relative = str(path.relative_to('locomotion_aorta'))
+                native_sha256[relative] = hashlib.sha256(wheel.read(name)).hexdigest()
+        if not any(Path(n).name.startswith('_body_cmd_native.') for n in native_sha256):
+            raise ValueError('Reviewed wheel must contain the native BodyCmd/BodyState extension')
+        required = {
+            'aorta-sdk==' + compat['aorta_version'],
+            'aorta-msgs==' + compat['aorta_version'],
+            'vbot-humanoid-msgs==' + compat['humanoid_msgs_version'],
+            'flatbuffers==' + compat['flatbuffers_version'],
+        }
+        if not required <= set(metadata.get_all('Requires-Dist', [])):
+            raise ValueError('Wheel dependency pins differ from the reviewed compatibility manifest')
+    wheel_record = {'filename': args.sdk_wheel.name, 'sha256': actual,
+                    'bytes': args.sdk_wheel.stat().st_size}
     result = {
         'status': 'SEALED_FROM_REVIEWED_WHEEL',
         'sdk_commit': args.sdk_commit, 'sdk_version': sdk_version, 'wheel': wheel_record,

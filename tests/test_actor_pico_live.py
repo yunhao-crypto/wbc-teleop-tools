@@ -419,15 +419,23 @@ class LiveTests(unittest.TestCase):
 
     def trace_r3_stand(self, trace, upper_state='fresh'):
         from deployment.vita_s100_aorta_30dof.actor_teleop_modes import TeleopModes
+        from locomotion_aorta.pull import PullController
         runtime = self.runtime
-        worker, request = self.manual_trial()
-        self.args.seconds = 4.
+        runtime.reset_inputs()
+        clock, stop, rows = Clock(), threading.Event(), []
+        transport = Loopback(runtime, clock)
+        controller = PullController(group='default', client_id=0x5eed, _transport=transport)
+        worker = ManualPico(runtime, clock)
+        args = copy.copy(self.args)
+        args.manual_pico, args.seconds = True, 4.
+        def request():
+            return {50: 'connect', 155: 'track'}.get(len(transport.commands))
         modes = TeleopModes(runtime)
         original_snapshot, original_infer = worker.snapshot, runtime.infer_motion_command
         latest, observed, consumed = {}, [], []
         def snapshot():
             value = original_snapshot()
-            count, now = len(self.transport.commands), self.clock.monotonic()
+            count, now = len(transport.commands), clock.monotonic()
             if value['state'] == 'ready':
                 value['q'][:, runtime.model.contract.names.index('left_elbow_joint')] += .02*(1+count%3)
                 value.update(mode_event_seq=int(count >= 170), mode_event_monotonic=now,
@@ -448,23 +456,29 @@ class LiveTests(unittest.TestCase):
             return follow(motion, upper)
         def infer(*args, **kwargs):
             result = original_infer(*args, **kwargs)
-            if len(self.transport.commands) >= 175:
-                self.assertFalse(any(row.get('record_type') == 'teleop_mode_selected' for row in self.rows))
+            if len(transport.commands) >= 175:
+                self.assertFalse(any(row.get('record_type') == 'teleop_mode_selected' for row in rows))
                 observed.append((runtime.last_trace_inference_id, latest.get('trace_input_id'),
                                  bool(consumed and consumed[-1]) and upper_state != 'unused'))
             return result
-        with (patch.object(runtime, 'trace', trace, create=True),
-              patch.object(runtime, 'teleop_modes', modes, create=True),
-              patch.object(runtime, 'infer_motion_command', side_effect=infer),
-              patch.object(worker, 'snapshot', side_effect=snapshot),
-              patch.object(modes, 'follow_upper', side_effect=follow_upper)):
-            report = self.run_trial(manual_pico=worker, poll_command=request)
+        try:
+            with (patch.object(runtime, 'trace', trace, create=True),
+                  patch.object(runtime, 'teleop_modes', modes, create=True),
+                  patch.object(runtime, 'infer_motion_command', side_effect=infer),
+                  patch.object(worker, 'snapshot', side_effect=snapshot),
+                  patch.object(modes, 'follow_upper', side_effect=follow_upper),
+                  redirect_stdout(io.StringIO())):
+                report = run_live(runtime, args, lambda row, obs=None: rows.append(row),
+                    controller, None, stop, service_alive=lambda: True, clock=clock,
+                    manual_pico=worker, poll_command=request)
+        finally:
+            controller.close()
         self.assertTrue(report['exit_confirmed'])
-        self.assertTrue(any(row.get('record_type') == 'teleop_mode_requested' for row in self.rows))
-        self.assertTrue(any(row.get('record_type') == 'tracking_paused' for row in self.rows))
+        self.assertTrue(any(row.get('record_type') == 'teleop_mode_requested' for row in rows))
+        self.assertTrue(any(row.get('record_type') == 'tracking_paused' for row in rows))
         self.assertGreater(len(observed), 5)
         commands = np.array([[(j.q,j.dq,j.tau,j.kp,j.kd) for j in command.joints]
-                             for command in self.transport.commands])
+                             for command in transport.commands])
         return observed, commands
 
     def test_trace_records_actual_r3_stand_upper_consumption_and_off_keeps_commands(self):
@@ -482,7 +496,6 @@ class LiveTests(unittest.TestCase):
         for inference, source, used in observed:
             self.assertTrue(used)
             self.assertEqual((edges[inference]['integers'],edges[inference]['reference_id']),([2],source))
-        self.setUp()
         _, without_trace = self.trace_r3_stand(None)
         np.testing.assert_array_equal(commands, without_trace)
 
@@ -492,8 +505,7 @@ class LiveTests(unittest.TestCase):
         from deployment.vita_s100_aorta_30dof.actor_trace import STAGES
         for upper_state in ('stale','invalid','unused'):
             with self.subTest(upper_state=upper_state):
-                self.setUp()
-                path = Path(self.tmp.name)/'r3.ftrace'
+                path = Path(self.tmp.name)/f'r3-{upper_state}.ftrace'
                 with Trace(path, stages=STAGES) as trace:
                     observed, _ = self.trace_r3_stand(trace, upper_state)
                 reader = Reader(path); records = list(reader)
