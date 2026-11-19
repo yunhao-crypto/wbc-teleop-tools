@@ -1,10 +1,13 @@
 # Vita02A policy + Pico on S100
 
-This entry runs the reviewed joint-reference policy through the installed SDK
-0.3.0 WBC observation/decoder math. The model is supplied separately and excluded
+This entry runs the reviewed joint-reference policy through the original SDK
+WBC observation/decoder math. The model is supplied separately and excluded
 from Git. Its identity, installation path and SHA256 are pinned in
 `config/actor_pico.json` and the delivery manifest. Supply the model matching
 that contract; the example filename `policy.onnx` is only a local pathname.
+The shared Pico-feature bundle includes the pinned 35000 G1 model and uses the
+shared BodyCmd4-compatible SDK described in [the Pico deployment guide](README_PICO_27000.md).
+The base build without Pico assets retains SDK 0.3.0 and separate model provisioning.
 
 The entry supports model checks, offline Pico replay, live-input shadow
 inference, and a separately armed supported EXTERNAL trial. Shadow subscribes to Body31 feedback and reads Pico through its owned vendor
@@ -29,7 +32,7 @@ and startup/live guards are unchanged.
 
 | | `sonic` | `supermimic` |
 |---|---|---|
-| Model | `artifacts/actor_g1/model_step_009700_longrun_closed_loop_g1.onnx` | `artifacts/supermimic/F_ckpt_038000_supermimic_vita02a.onnx` |
+| Model | `artifacts/actor_g1/model_step_035000_g1.onnx` | `artifacts/supermimic/F_ckpt_038000_supermimic_vita02a.onnx` |
 | Input values | 1520 | 1670 (10x96 observation history + 10x71 goal frames) |
 | Reference delay | 200 ms | 220 ms (10 future goal frames + 1 velocity tail frame) |
 | Root input | quaternion only | quaternion plus GMR base position |
@@ -98,8 +101,8 @@ hardware validation.
 
 ## SONIC has two ankle types: know which one you run
 
-The default deployment is now **closed-loop SONIC iteration 9700**, pinned by
-SHA256 `2bc0ca6f0bddef1ba040a19a771181da68f5b7d2138d1e87913072def089135d`.
+The default deployment is now **closed-loop SONIC iteration 35000**, pinned by
+SHA256 `94b8022ef666d607d2d7a649226e8621a69f7cdf2a3d81036e1eee59db5224ae`.
 Its ONNX contract selects `motor_theta`; `ankle_command_space: policy` therefore
 publishes native A/B targets, with `action_clip: 20`. Robot EXTERNAL must use
 `ankle_command_space: motor_theta` and `ankle_virtual_pd_intent: false`.

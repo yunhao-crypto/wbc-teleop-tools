@@ -7,7 +7,7 @@
   "action_dim": 28,
   "model": {
     "bytes": 59373305,
-    "sha256": "7f2ec1130039b49c993bdb7e611ca852d63e17f9ed4efd5f1f8ce6df76cf6ed4"
+    "sha256": "5092e1a46eed65634bf175b81aee2ada829b1d5bc5f6d8efcc81476d69f48edf"
   },
   "physical_contract": {
     "action_clip": 20.0,
@@ -428,5 +428,6 @@
     "g1_physical_parser_envelope_sha256": "a611affcc9a96f793c4124b04d26a1cb3255aa76c0592910fa618a262e6aa543",
     "source_root_convention": "z_up_smpl_base",
     "wrist_source": "six named joints from paired robot_motion.npz; not an inferred SMPL wrist conversion"
-  }
+  },
+  "checkpoint_iteration": 35000
 }

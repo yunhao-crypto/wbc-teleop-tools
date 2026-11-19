@@ -59,7 +59,7 @@
           "sha256": "8b72f6b5c9347cb1dee39e6fef4ae19c0a25fd857f974653c33f6dc8ccf94e6b"
         }
       },
-      "delivery_version": "27000-git-aligned-source-build",
+      "delivery_version": "35000-shared-actor",
       "physical_workflow": true,
       "physical_backend": "sdk",
       "physical_entry": "scripts/start_actor_pico_smpl_live.sh",
@@ -70,7 +70,8 @@
         "pico_smpl",
         "pico_teleop"
       ],
-      "upstream_commit": "ca0aa6ec8496d0c65932350b38eba5103f570140"
+      "upstream_commit": "ca0aa6ec8496d0c65932350b38eba5103f570140",
+      "checkpoint_iteration": 35000
     }
   },
   "source_files": [
@@ -717,44 +718,14 @@
   ],
   "external_files": [
     {
-      "path": "artifacts/actor_smpl/human_encoder_step027000.onnx",
-      "bytes": 18743993,
-      "sha256": "fad7a6fbf98f9199857c2a3e5777a1a9a6af37976393cf74491fa8f7630fe348"
-    },
-    {
-      "path": "artifacts/actor_smpl/model_step_027000_decoder.onnx",
-      "bytes": 40630956,
-      "sha256": "b00a482aa9d4c0c3edf31b40ffdca43ad4f376b5169e789a0d752a4e3e9e4b6b"
-    },
-    {
-      "path": "artifacts/actor_smpl/model_step_027000_smpl.onnx",
-      "bytes": 59373305,
-      "sha256": "7f2ec1130039b49c993bdb7e611ca852d63e17f9ed4efd5f1f8ce6df76cf6ed4"
-    },
-    {
       "path": "artifacts/actor_smpl/standing_human_reference.npz",
       "bytes": 2364,
       "sha256": "ce860e034fed9486c922ee4475775d5c5b9808fbaa21f258ef2ae1b69d2b33dc"
     },
     {
-      "path": "artifacts/actor_threepoint/model_step_027000_decoder.onnx",
-      "bytes": 40630956,
-      "sha256": "b00a482aa9d4c0c3edf31b40ffdca43ad4f376b5169e789a0d752a4e3e9e4b6b"
-    },
-    {
-      "path": "artifacts/actor_threepoint/model_step_027000_teleop.onnx",
-      "bytes": 54688166,
-      "sha256": "eaca18b86cb86285a22b512629514e6e163eb74e427c893f95c44fcff2be9e21"
-    },
-    {
       "path": "artifacts/actor_threepoint/standing_reference.npz",
       "bytes": 2055,
       "sha256": "81d55f6b0abf7460c3abb5ad5aa8e56f897a5c85dfd42574b436b196943f1a01"
-    },
-    {
-      "path": "artifacts/actor_threepoint/teleop_encoder_step027000.onnx",
-      "bytes": 14059084,
-      "sha256": "5c7592d25904c3ed6febc58ba71599941bd9fc8317410ed93ec2d752e598010d"
     },
     {
       "path": "checks/pico_historical_75frames.npz",
@@ -790,6 +761,41 @@
       "path": "deploy/actor_s100/wheelhouse/locomotion_aorta-1.0.0rc1+bodycmdv4.6863ad7-cp310-cp310-linux_aarch64.whl",
       "bytes": 6926499,
       "sha256": "b55110e32165cab68d5bca7f97459b7facf741d66ee9ed83c215d3b8fc364813"
+    },
+    {
+      "path": "artifacts/actor_g1/model_step_035000_g1.onnx",
+      "bytes": 57562620,
+      "sha256": "94b8022ef666d607d2d7a649226e8621a69f7cdf2a3d81036e1eee59db5224ae"
+    },
+    {
+      "path": "artifacts/actor_smpl/human_encoder_step035000.onnx",
+      "bytes": 18743719,
+      "sha256": "d44250476b963b2c28bef94bbedf0f6e4f30a350e2cbba3ef4b54f70dee7be0d"
+    },
+    {
+      "path": "artifacts/actor_smpl/model_step_035000_decoder.onnx",
+      "bytes": 40630956,
+      "sha256": "40767b22124b54d66d45309c89ea565b510a3c05cacc4f58f66e3ba30f43061a"
+    },
+    {
+      "path": "artifacts/actor_smpl/model_step_035000_smpl.onnx",
+      "bytes": 59373305,
+      "sha256": "5092e1a46eed65634bf175b81aee2ada829b1d5bc5f6d8efcc81476d69f48edf"
+    },
+    {
+      "path": "artifacts/actor_threepoint/model_step_035000_decoder.onnx",
+      "bytes": 40630956,
+      "sha256": "40767b22124b54d66d45309c89ea565b510a3c05cacc4f58f66e3ba30f43061a"
+    },
+    {
+      "path": "artifacts/actor_threepoint/model_step_035000_teleop.onnx",
+      "bytes": 54688166,
+      "sha256": "6fda1b2e2a0a2d28894b8f888c3ffce6c4197f510f42e47388e66d1dc405eddb"
+    },
+    {
+      "path": "artifacts/actor_threepoint/teleop_encoder_step035000.onnx",
+      "bytes": 14058780,
+      "sha256": "156ef94a5133abd8cb7d3626f4eff32495f7f884782a8d6f3f37a9cccb04668f"
     }
   ]
 }

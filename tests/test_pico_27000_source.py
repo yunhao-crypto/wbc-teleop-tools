@@ -39,6 +39,11 @@ class SourceTests(unittest.TestCase):
             settings=json.loads((ROOT/f'config/{route}_live.json').read_text())
             self.assertEqual(settings['body_cmd_protocol_version'],4)
             self.assertEqual(settings['stand_preparation_seconds'],3.)
+            self.assertEqual(settings['policy_step'],35000)
+        for name in ('actor_smpl','actor_threepoint','actor_pico'):
+            settings=json.loads((ROOT/f'config/{name}.json').read_text())
+            self.assertEqual(settings['checkpoint_iteration'],35000)
+            self.assertIn('035000',settings['artifacts']['model']['path'])
     def test_host_live_rejected_before_transport(self):
         if sys.platform=='linux':self.skipTest('host rejection test is for a non-Linux build host')
         for route in ('pico_smpl','pico_teleop'):

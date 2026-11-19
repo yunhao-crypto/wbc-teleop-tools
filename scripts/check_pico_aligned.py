@@ -35,6 +35,8 @@ def check(root,route,backend,steps=240):
         clock.sleep(.02)
     if peak>1e-6 or not tracking:raise ValueError('Original modality model parity/tracking failed')
     return dict(status='PASS_ALIGNED_OFFLINE_CHECK',route=route,backend=backend,inference_steps=steps,
+        checkpoint_iteration=runtime.runtime.config['checkpoint_iteration'],
+        model_sha256=runtime.runtime.config['artifacts']['model']['sha256'],
         tracking_steps=tracking,full_onnx_parity_abs_max=peak,actions_sent=0,control_handles_created=0,
         input='historical neutral body / simulated clocks',feedback='synthetic neutral',
         hardware_startup_exit_validated=False)

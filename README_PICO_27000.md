@@ -1,18 +1,23 @@
-# 27000 SMPL and stationary three-point Pico deployment
+# 35000 SMPL and stationary three-point Pico deployment
 
-`pico_smpl` and `pico_teleop` retain their original 27000 encoders, FSQ and shared
+`pico_smpl` and `pico_teleop` retain their 35000 encoders, FSQ and shared
 decoder. Both use the Git actor's `run_live` function body through explicit typed
 reference hooks. All five policies use the same actor directory, `venv`,
 build/bootstrap/launch entry points and installation receipt.
 
-Enable 27000 support in the original base build to select the shared pinned
+Enable 35000 support in the original base build to select the shared pinned
 `1.0.0rc1+bodycmdv4.6863ad7` wheel: native motor A/B commands, virtual PR feedback.
 It retains the original ankle IK/Jacobian, affine PD targets, model gains, command
 envelope, SDK ownership and cancellation protections. Existing policies retain
-their original BodyCmd3 default; 27000 explicitly selects BodyCmd4. One environment
-supports both protocols. Builds without the 27000 option retain SDK 0.3.0.
+their original BodyCmd3 default; SMPL/Teleop explicitly selects BodyCmd4. One environment
+supports both protocols. Builds without the Pico model option retain SDK 0.3.0.
 This codec build is not an
 official SDK release and has no new hardware acceptance claim.
+
+The current SMPL, Teleop and G1 models all use checkpoint **35000**. The G1 model
+selects the existing `sonic` route. Filenames and the `--pico27000-assets` alias
+are retained for script compatibility; checkpoint identity comes from the pinned
+model hashes and `checkpoint_iteration`, not those legacy filenames.
 
 ## Build and installation
 
@@ -20,17 +25,17 @@ Weights, neutral-reference NPZ files, historical input fixtures, hardware-snapsh
 fixtures and the separately supplied BodyCmd4 wheel are not published here.
 `deploy/pico_27000/delivery_inputs.json` lists their required relative paths,
 sizes and hashes. Provide that asset tree separately (an extracted previously
-verified 27000 package can serve as the asset root). Only explicitly listed files
+verified compatible asset tree can serve as the asset root). Only explicitly listed files
 are read; the builder never copies its venv, logs, credentials or install receipts.
 
 ```bash
-python scripts/build_actor_delivery.py --variant base --pico27000-assets /absolute/27000-assets
+python scripts/build_actor_delivery.py --variant base --pico-assets /absolute/35000-assets
 ```
 
 The builder resolves the ARM64 wheel closure offline, verifies all external
 assets and seals code bindings and source revision. It builds one standard
 `actor-s100-base-*` archive containing both modalities and all original actor
-entry points. Original actor weights remain separately supplied as before. Commit the
+entry points. The supplied 35000 G1 model is included; SuperMimic/MorphMimic weights remain separate. Commit the
 source before a release; `--allow-dirty` marks development builds explicitly.
 Extract an archive in a new `/userdata` directory and execute each step only
 after its predecessor passes:
@@ -50,7 +55,8 @@ The live entry requires the current payload's successful installation receipt.
 Use `pico_teleop` in place of `pico_smpl` for the other modality.
 Both choices initialize the same `venv/.actor_bootstrap_owned` environment and
 write `build/actor_s100_install.json`; the original policies use that same
-environment with their usual `--policy sonic|supermimic|morphmimic --model ...`.
+environment. The bundled G1 model uses `--policy sonic` without `--model`;
+SuperMimic/MorphMimic still require `--policy <name> --model ...`.
 No second venv or SDK is installed for a policy switch. The old 27000-specific
 builder/bootstrap scripts remain compatibility helpers, not a separate runtime.
 
@@ -92,8 +98,9 @@ Robot EXTERNAL must already match native `motor_theta`,
 finite position-target margin, with command interpolation disabled. This code
 does not write robot YAML, firmware or system services.
 
-Offline validation used original model inference with simulated I/O: 36 lifecycle
-and model cases, four receive-process cases and ten delivery/entry checks passed.
+Offline validation reran 36 lifecycle/model cases against the 35000 weights,
+plus 17 checkpoint/delivery/entry checks. All passed. G1 also completed 100
+no-action runtime steps and matched its complete ONNX output exactly.
 Each route completed 524 simulated publications, 224 tracking steps and three
 engagements; full-model versus split-model absolute error was 0.0. These are local
 regressions, not current Pico reception, target ABI/performance or physical

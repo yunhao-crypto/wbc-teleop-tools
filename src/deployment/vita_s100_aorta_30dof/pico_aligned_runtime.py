@@ -241,7 +241,7 @@ def run_aligned(runtime,args,write,controller,receiver,stop,*,service_alive=lamb
     manual=ManualInput(runtime,receiver,clock=clock,service_check=service_alive,write=record)
     result=run_live(runtime,options,record,controller,None,stop,service_alive,clock=clock,
         manual_pico=manual,poll_command=poll_command,request_action=request_action)
-    result.update(counts,route=runtime.route,policy_step=27000,pico_frames=runtime.flow.frames,
+    result.update(counts,route=runtime.route,policy_step=runtime.runtime.config['checkpoint_iteration'],pico_frames=runtime.flow.frames,
         original_git_commit='ca0aa6ec8496d0c65932350b38eba5103f570140',
         robot_configuration_modified=False,protection_relaxed=False,physical_stability_verified=False,
         firmware_v4_acceptance_verified=False)

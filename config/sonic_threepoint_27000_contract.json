@@ -4,7 +4,7 @@
   "input_dim": 1167,
   "encoder_input_dim": 267,
   "action_dim": 28,
-  "model_sha256": "eaca18b86cb86285a22b512629514e6e163eb74e427c893f95c44fcff2be9e21",
+  "model_sha256": "6fda1b2e2a0a2d28894b8f888c3ffce6c4197f510f42e47388e66d1dc405eddb",
   "point_names": [
     "left_op3_mount",
     "right_op3_mount",
@@ -403,5 +403,6 @@
         ]
       }
     ]
-  }
+  },
+  "checkpoint_iteration": 35000
 }

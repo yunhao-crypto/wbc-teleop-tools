@@ -420,5 +420,5 @@
     "right_wrist_pitch_joint"
   ],
   "note": "All28 normalized actions are retained. Stationary leg reference does not overwrite leg actions.",
-  "checkpoint_step": 27000
+  "checkpoint_step": 35000
 }

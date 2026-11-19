@@ -64,7 +64,7 @@ def verify_inputs(root):
     if manifest.get('external_resources'):
         from bootstrap_actor_s100 import POLICY_CONFIGS
         expected=[dict(json.loads((root/name).read_text())['artifacts']['model'],role=policy+'_actor')
-            for policy,name in POLICY_CONFIGS.items()]
+            for policy,name in POLICY_CONFIGS.items() if json.loads((root/name).read_text())['artifacts']['model']['path'] not in seen]
         if not release.get('unified_environment') or manifest['external_resources']!=expected:
             raise ValueError('Unreviewed external model declarations')
     names = seen

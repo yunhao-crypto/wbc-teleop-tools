@@ -31,7 +31,8 @@ class TeleopLiveRuntime:
         self.root=Path(root).resolve()
         self.settings=json.loads((self.root/'config/pico_teleop_live.json').read_text())
         if (self.settings.get('schema')!='vita_pico_teleop_physical_workflow_v1'
-                or self.settings.get('route')!='pico_teleop' or self.settings.get('policy_step')!=27000
+                or self.settings.get('route')!='pico_teleop'
+                or self.settings.get('policy_step')!=json.loads((self.root/'config/actor_threepoint.json').read_text())['checkpoint_iteration']
                 or self.settings.get('entry_policy')!='policy-online'
                 or self.settings.get('body_cmd_protocol_version')!=4
                 or self.settings.get('body_cmd_coordinate_contract')!='native_motor_ab_ankles_virtual_pr_feedback'
@@ -89,7 +90,7 @@ def run_live_teleop(runtime,args,write,controller,receiver,stop,*,service_alive=
     inputs=Inputs(runtime,controller,None,clock)
     guard=StatusGuard(clock,initial_actions=('PASSIVE','QUIET_PASSIVE','FIXED_STAND',''))
     entered=None;attempted=False;fixed_ready=False;startup_generation=None;sent_count=0;event_index=0
-    report=dict(actions_sent=0,control_handles_created=1,policy_step=27000,route='pico_teleop',
+    report=dict(actions_sent=0,control_handles_created=1,policy_step=runtime.settings['policy_step'],route='pico_teleop',
         robot_configuration_modified=False,protection_relaxed=False,exit_confirmed=False,
         startup_fixed_stand_confirmed=False,onnx_control_enabled=False,tracking_steps=0,
         physical_backend='original_sdk_pull_controller',feedback_source='actual_body31',

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Explicit 27000 Pico modalities physical Pico operator. auto requests real motion."""
+"""Selected-checkpoint Pico modalities operator. auto requests real motion."""
 import argparse
 from collections import deque
 from contextlib import ExitStack

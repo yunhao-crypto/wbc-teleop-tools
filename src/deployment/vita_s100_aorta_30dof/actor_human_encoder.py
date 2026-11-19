@@ -55,7 +55,8 @@ class HumanEncoderDecoder:
         self.contract=parse_contract(math_api,sidecar,{})
         self.encoder=Network(encoder,math_api,backend,threads,input_name='human_features',input_dim=840,output_name='encoded_tokens',output_dim=64)
         self.decoder=Network(decoder,math_api,backend,threads,input_name='obs_dict',input_dim=964,output_name='action',output_dim=28)
-        if (self.encoder.metadata.get('checkpoint_iteration')!='27000'
+        if (type(sidecar.get('checkpoint_iteration')) is not int or sidecar['checkpoint_iteration']<=0
+                or self.encoder.metadata.get('checkpoint_iteration')!=str(sidecar['checkpoint_iteration'])
                 or self.encoder.metadata.get('source_onnx_sha256')!=sidecar['model']['sha256']):
             raise ValueError('Human encoder and source SMPL actor provenance differ')
         self.last_tokens=None;self.last_timing=None

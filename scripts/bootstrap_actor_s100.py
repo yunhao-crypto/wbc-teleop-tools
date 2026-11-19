@@ -135,6 +135,15 @@ def configured_model(root, policy='sonic'):
 
 def provision_external(root, manifest, configured, source=None, *, label='model', config_name='actor configuration'):
     """Validate an explicit external asset before atomically placing it locally."""
+    included=[item for item in manifest['files'] if item['path']==configured['path']]
+    if included:
+        item,=included
+        if item['sha256']!=configured['sha256'] or item['bytes']!=configured['bytes']:
+            raise RuntimeError('Bundled model disagrees with '+config_name)
+        if source is not None and (Path(source).stat().st_size!=item['bytes'] or sha(Path(source))!=item['sha256']):
+            raise RuntimeError('External override disagrees with bundled model')
+        if sha(inside(root,item['path']))!=item['sha256']:raise RuntimeError('Bundled model changed')
+        return
     matches = [item for item in manifest['external_resources'] if item['path'] == configured['path']]
     if (len(matches) != 1 or matches[0]['sha256'] != configured['sha256']
             or matches[0]['bytes'] != configured['bytes']):

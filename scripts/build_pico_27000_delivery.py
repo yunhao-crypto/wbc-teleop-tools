@@ -94,7 +94,7 @@ def stage_delivery(root,assets,destination,*,allow_dirty=False):
         settings['bindings']={name:sha(inside(destination,name)) for name in settings['bindings']}
         path.write_text(json.dumps(settings,indent=2)+'\n',encoding='utf-8')
     manifest=inputs['template'];manifest['source']=source
-    manifest['external_resources']=external_models
+    manifest['external_resources']=[item for item in external_models if not (destination/item['path']).is_file()]
     manifest['pico_inputs_release']['unified_environment']=True
     if sys.platform=='win32':validate_target_closure(destination)
     else:

@@ -53,7 +53,8 @@ class UnifiedPackageTests(unittest.TestCase):
         cls.manifest=stage_delivery(ROOT,Path(os.environ['PICO_27000_ASSETS']),cls.root,allow_dirty=True)
     def test_both_verifiers_accept_same_manifest(self):
         self.assertEqual(actor.verify(self.root)['payload_sha256'],pico.verify_inputs(self.root)['payload_sha256'])
-        self.assertEqual(len(self.manifest['external_resources']),3)
+        self.assertEqual(len(self.manifest['external_resources']),2)
+        self.assertTrue((self.root/'artifacts/actor_g1/model_step_035000_g1.onnx').is_file())
     def test_one_sdk_and_matching_config_pins_for_all_routes(self):
         wheels=list((self.root/'deploy/actor_s100/wheelhouse').glob('locomotion_aorta-*.whl'))
         self.assertEqual(len(wheels),1);self.assertIn('bodycmdv4',wheels[0].name)

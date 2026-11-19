@@ -1,7 +1,7 @@
 # Vita02A / S100 actor + Pico
 
-27000 raw-body SMPL and stationary three-point routes: [shared actor environment](README_PICO_27000.md).
-Build with `--pico27000-assets` to include both routes in the original actor directory and venv.
+35000 raw-body SMPL and stationary three-point routes: [shared actor environment](README_PICO_27000.md).
+Build with `--pico-assets` to include both routes in the original actor directory and venv.
 
 Native SONIC action14 reference-only Pico/GMR design, explicit fixed-neck mode and current deployment safety limitations: [README_SONIC_ACTION14.md](README_SONIC_ACTION14.md). Existing EXTERNAL actor path remains unchanged.
 

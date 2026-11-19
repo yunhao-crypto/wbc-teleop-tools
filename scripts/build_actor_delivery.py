@@ -207,7 +207,8 @@ def main():
     parser.add_argument('--output-dir', type=Path, default=ROOT/'outputs/actor_delivery')
     parser.add_argument('--variant', choices=('base', 'planner'), default='base')
     parser.add_argument('--allow-dirty', action='store_true', help='Mark an uncommitted development package explicitly')
-    parser.add_argument('--pico27000-assets',type=Path,help='Include both 27000 routes in the shared base environment')
+    parser.add_argument('--pico-assets','--pico27000-assets',dest='pico27000_assets',type=Path,
+                        help='Include the pinned SMPL/Teleop/G1 checkpoint assets in the shared base environment')
     args = parser.parse_args()
     print(json.dumps(build(args.root, args.output_dir, args.variant, allow_dirty=args.allow_dirty,pico27000_assets=args.pico27000_assets), indent=2))
 

@@ -12,11 +12,11 @@
   "assets": {
     "smpl_config": {
       "path": "config/actor_smpl.json",
-      "sha256": "b6843dd5048b1948222f62890606ed74b6e54a151b409da13fefaa4e9d1dff77"
+      "sha256": "076688b179b0a2dab2dde6698826d841fefb9f714b5f41ec336f57eafe88fcb4"
     },
     "teleop_config": {
       "path": "config/actor_threepoint.json",
-      "sha256": "b2dfa7160b7cdb691e099f88a9dc5beb6a7ef655ae8bb573b3b34302eca6ec2f"
+      "sha256": "8e156ad476361082c1ab1dbef1ca9e64b4fb68a628aacdaf3e8e5cd86c3e800c"
     },
     "standing_reference": {
       "path": "artifacts/actor_threepoint/standing_reference.npz",
@@ -24,7 +24,7 @@
     },
     "site_interface": {
       "path": "artifacts/actor_threepoint/teleop_site_interface.json",
-      "sha256": "f7f64de86d9836d0e6c94db30508df60512d651bd2f74d7c776e0fc41efd8b85"
+      "sha256": "bb4f910efa6b9826a63036e356c625e71947648717d72f72d299a660def72563"
     }
   }
 }

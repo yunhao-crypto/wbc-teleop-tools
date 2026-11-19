@@ -170,7 +170,8 @@ class ThreePointActorRuntime:
             input_name='teleop_features', input_dim=267, output_name='encoded_tokens', output_dim=64)
         self.decoder = Network(paths['decoder'], self.math, backend, threads,
             input_name='obs_dict', input_dim=964, output_name='action', output_dim=28)
-        if (self.encoder.metadata.get('checkpoint_iteration') != '27000'
+        if (type(self.config.get('checkpoint_iteration')) is not int or self.config['checkpoint_iteration']<=0
+                or self.encoder.metadata.get('checkpoint_iteration') != str(self.config['checkpoint_iteration'])
                 or self.encoder.metadata.get('source_onnx_sha256') != self.sidecar['model_sha256']):
             raise ValueError('Three-point encoder source checkpoint differs')
         with np.load(paths['standing_reference'], allow_pickle=False) as z:
