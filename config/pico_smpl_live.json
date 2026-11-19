@@ -6,7 +6,7 @@
   "stand_preparation_seconds": 3.0,
   "bindings": {
     "config/actor_smpl.json": "076688b179b0a2dab2dde6698826d841fefb9f714b5f41ec336f57eafe88fcb4",
-    "src/deployment/vita_s100_aorta_30dof/pico_realtime.py": "ec66d1c6128d48d9cbbd2f2df29b4467ffa1b9215aaccf8bf7c5b180f60cfb47",
+    "src/deployment/vita_s100_aorta_30dof/pico_realtime.py": "56ff8b5827305b3b1157641ea57fa84edc49486bea43689470598ce0244e9bd8",
     "src/deployment/vita_s100_aorta_30dof/pico_input_process.py": "77ebb5e05174b99aba484c63b7432b32c684549c543b7ba3b248c1b2e979e2c9",
     "src/deployment/vita_s100_aorta_30dof/actor_pico_live.py": "483ef26c467d0d84e9dcb6df9ccd9d84303db57c07d9cd3fb6dd48196ea77a01",
     "src/deployment/vita_s100_aorta_30dof/pico_aligned_runtime.py": "3444a8e676b9c4d551dfaaad3aa85f9838c0b13130b7cc0644d701f715bc909a",

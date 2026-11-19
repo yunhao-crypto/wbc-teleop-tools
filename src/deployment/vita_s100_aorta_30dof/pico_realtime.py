@@ -74,6 +74,9 @@ class SmplWindow:
 
     def align(self, body, robot_root):
         _, root = self.frame(body)
+        self.align_root(root,robot_root)
+
+    def align_root(self, root, robot_root):
         yaw = self.math.yaw(robot_root)-self.math.yaw(root)
         self.yaw_quat = self.math.yaw_quaternion(yaw)
         self.yaw_rotation = self.math.rotation(self.yaw_quat)
@@ -159,6 +162,9 @@ class PicoFlow:
         self.source_fault = str(reason); self.losses += 1
         self.toggle = DualTriggerToggle(.6); self.button_not_before_ns = max(self.button_not_before_ns,int(now_ns))
         self.raw.clear(); self.gate = front.TimingGate()
+        for name in ('_neutral_frames','_neutral_sites'):
+            cached=getattr(self,name,None)
+            if cached is not None:cached.clear()
         if self.window is not None: self.window.clear()
         self.latest = None; self.last_frame_ns = None
         if self.mode == 'tracking': self.return_to_stand(now_ns)
@@ -183,26 +189,37 @@ class PicoFlow:
             self.event('pico_recovered_wait_trigger', received_ns, automatic_reengagement=False)
         self.raw.append((np.array(body, copy=True), int(stamp_ns), int(received_ns)))
         if self.calibration is None:
+            if self.route=='pico_smpl':
+                if len(self.raw)==1:
+                    from .actor_smpl import WRIST_NAMES
+                    wrists=np.array([self.contract.default[self.contract.names.index(n)] for n in WRIST_NAMES])
+                    self._neutral_window=SmplWindow(self.math,wrists)
+                    self._neutral_frames=deque(maxlen=self.raw.maxlen)
+                    self._neutral_sites=deque(maxlen=self.raw.maxlen)
+                # Spread conversion over arriving packets. These frames are
+                # still unaligned; heading uses the measured root at the same
+                # calibration boundary as before, not the first packet's root.
+                self._neutral_frames.append(self._neutral_window.frame(body))
+                self._neutral_sites.append(self.gate.last_sites)
             duration = (self.raw[-1][1]-self.raw[0][1])*1e-9
             if duration < 2.: return True
             bodies = np.asarray([x[0] for x in self.raw])
             times = (np.array([x[1] for x in self.raw], np.int64)-self.raw[0][1])*1e-9
             try:
-                calibration = front.fit_calibration(bodies, times, self.standing_path, self.sites_path)
+                cached=dict(site_frames=list(self._neutral_sites)) if self.route=='pico_smpl' else {}
+                calibration = front.fit_calibration(bodies, times, self.standing_path, self.sites_path,**cached)
             except ValueError as exc:
                 self.lose(received_ns, 'Neutral calibration rejected: '+str(exc)); return False
             self.calibration = calibration
             if self.route == 'pico_teleop':
                 self.mapper = front.CalibratedPicoThreePoint(calibration)
             else:
-                from .actor_smpl import WRIST_NAMES, SmplReference
-                wrists = np.array([self.contract.default[self.contract.names.index(n)] for n in WRIST_NAMES])
-                self.window = SmplWindow(self.math, wrists)
-                self.window.align(bodies[0], feedback.root)
-                # Convert every received frame once, including the packet that
-                # first crosses 2s. Only the <=2s subset defines the neutral
-                # pose; the complete converted sequence seeds causal playback.
-                frames = [self.window.frame(x) for x in bodies]
+                from .actor_smpl import SmplReference
+                self.window=self._neutral_window;wrists=self.window.wrists
+                self.window.align_root(self._neutral_frames[0][1],feedback.root)
+                frames=[(joints@self.window.yaw_rotation.T,
+                         self.math.multiply(self.window.yaw_quat,root))
+                        for joints,root in self._neutral_frames]
                 neutral = [frame for frame,seconds in zip(frames,times) if seconds<=2.]
                 neutral_joints = np.median(np.array([x[0] for x in neutral]), axis=0)
                 average = sum(front.qmatrix(x[1]) for x in neutral)
@@ -217,6 +234,7 @@ class PicoFlow:
                 self.window.offset_ns = int(self.raw[0][2])-int(self.raw[0][1])
                 self.window.samples.extend((int(t),frame[0],frame[1])
                     for (_,t,_),frame in zip(self.raw,frames))
+                self._neutral_frames.clear();self._neutral_sites.clear()
             self.mode = 'stand'
             self.event('neutral_calibrated', received_ns, standing_reference='Pico neutral human pose' if self.route == 'pico_smpl' else 'pinned robot site poses',
                 wrist_mode='explicit_contract_stand' if self.route == 'pico_smpl' else 'site_orientation')

@@ -93,7 +93,7 @@ class TimingGate:
         if not 0 < self.max_gap_s <= self.stale_s or self.clock_error_s <= 0:
             raise ValueError('Invalid Pico timing budgets')
         self.last_stamp = self.last_rx = self.origin_stamp = self.origin_rx = None
-        self.last_body = None; self.duplicates = 0
+        self.last_body = None; self.last_sites = None; self.duplicates = 0
 
     def accept(self, stamp_ns, body, receive_ns):
         if (isinstance(stamp_ns, (bool, np.bool_)) or not isinstance(stamp_ns, (int, np.integer))
@@ -114,10 +114,11 @@ class TimingGate:
                 raise ValueError('Pico frame gap exceeds100ms; do not interpolate or compress the gap')
             drift = (stamp_ns-self.origin_stamp)*1e-9-(receive_ns-self.origin_rx)*1e-9
             if abs(drift) > self.clock_error_s: raise ValueError('Device/receive clock progression disagrees')
-        anatomical_sites(body)
+        sites = anatomical_sites(body)
         if self.origin_stamp is None: self.origin_stamp, self.origin_rx = stamp_ns, receive_ns
         self.last_stamp, self.last_rx = stamp_ns, receive_ns
         self.last_body = np.array(body, copy=True)
+        self.last_sites = sites
         return True
 
     def check_age(self, now_ns, maximum_s=None):
@@ -152,14 +153,24 @@ def load_raw(path, expected_sha256):
     return b, seconds, meta
 
 
-def fit_calibration(body, times, standing_path, sites_path, *, neutral_seconds=2., scale=None):
+def fit_calibration(body, times, standing_path, sites_path, *, neutral_seconds=2., scale=None, site_frames=None):
     times = np.asarray(times, dtype=float)
     if neutral_seconds < .5 or len(times) != len(body) or times[-1] < neutral_seconds:
         raise ValueError('Need at least0.5s of explicit neutral recording')
     chosen = np.flatnonzero(times <= neutral_seconds)
     if len(chosen) < 15: raise ValueError('Too few neutral frames')
-    values = [anatomical_sites(body[i]) for i in chosen]
+    # Live SMPL has already validated each packet in TimingGate. Reuse those
+    # exact features instead of processing the whole two-second recording on
+    # the control thread when the last neutral frame arrives.
+    if site_frames is None:
+        values = [anatomical_sites(body[i]) for i in chosen]
+    else:
+        if len(site_frames)!=len(body):raise ValueError('Cached anatomical frames must match the recording')
+        values = [site_frames[i] for i in chosen]
     positions = np.array([v[0] for v in values]); rotations = np.array([v[1] for v in values])
+    if (positions.shape!=(len(chosen),3,3) or rotations.shape!=(len(chosen),3,3,3)
+            or not np.isfinite(positions).all() or not np.isfinite(rotations).all()):
+        raise ValueError('Invalid neutral anatomical feature dimensions or values')
     center = np.median(positions, axis=0)
     mean_rotations = []
     for point in range(3):

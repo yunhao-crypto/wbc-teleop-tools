@@ -120,9 +120,11 @@ class RootConversionTests(unittest.TestCase):
         original_frame=SmplWindow.frame
         with patch.object(front,'fit_calibration',return_value={}), \
              patch.object(SmplWindow,'frame',autospec=True,side_effect=original_frame) as converted:
-            for body,stamp,receipt in zip(bodies,stamps,received):
+            for i,(body,stamp,receipt) in enumerate(zip(bodies,stamps,received)):
+                feedback.root=self.math.yaw_quaternion(.63*i/(count-1))
                 self.assertTrue(flow.push(body,int(stamp),int(receipt),feedback))
-        self.assertEqual(converted.call_count,count+1,'one conversion per packet plus heading alignment')
+                self.assertEqual(converted.call_count,i+1,'conversion must be spread over arriving packets')
+        self.assertEqual(converted.call_count,count,'cached root also provides heading alignment')
         self.assertEqual(flow.window.samples.maxlen,512)
         self.assertEqual(flow.window.offset_ns,123_456_789)
         self.assertEqual([row[0] for row in flow.window.samples],stamps.tolist())
@@ -141,6 +143,49 @@ class RootConversionTests(unittest.TestCase):
         np.testing.assert_allclose(actual.joints,expected.joints,atol=2e-6,rtol=0)
         for a,b in zip(actual.quat,expected.quat):
             np.testing.assert_allclose(self.math.rotation(a),self.math.rotation(b),atol=2e-6,rtol=0)
+
+    def test_cached_anatomical_fit_is_identical_and_never_recomputes_packets(self):
+        import tempfile,json
+        with tempfile.TemporaryDirectory() as temp:
+            root=Path(temp);standing=root/'stand.npz';sites=root/'sites.json'
+            np.savez(standing,positions_base_m=np.array([[.2,.3,.4],[-.2,-.3,.4],[0.,0.,.7]]),
+                quaternions_base_wxyz=np.tile([1.,0.,0.,0.],(3,1)),
+                reference_root_quat_world_wxyz=np.array([1.,0.,0.,0.]))
+            sites.write_text(json.dumps({'sites':[{},{}]}))
+            bodies=np.repeat(body_with_root([1.,0.,0.,0.])[None],107,axis=0)
+            times=np.arange(len(bodies))*.019
+            expected=front.fit_calibration(bodies,times,standing,sites)
+            gate=front.TimingGate();features=[]
+            for i,body in enumerate(bodies):
+                stamp=10_000_000_000+i*19_000_000
+                self.assertTrue(gate.accept(stamp,body,stamp))
+                features.append(gate.last_sites)
+            with patch.object(front,'anatomical_sites',side_effect=AssertionError('already validated')):
+                actual=front.fit_calibration(bodies,times,standing,sites,site_frames=features)
+            self.assertEqual(actual,expected)
+            with self.assertRaisesRegex(ValueError,'must match'):
+                front.fit_calibration(bodies,times,standing,sites,site_frames=features[:-1])
+
+    def test_loss_clears_incremental_calibration_features(self):
+        flow=PicoFlow.__new__(PicoFlow)
+        flow.route='pico_smpl';flow.math=self.math
+        flow.contract=SimpleNamespace(names=list(WRIST_NAMES),default=np.zeros(6))
+        flow.gate=front.TimingGate();flow.toggle=DualTriggerToggle(.6)
+        flow.raw=deque(maxlen=512);flow.window=None;flow.calibration=None
+        flow.mode='calibrating';flow.frames=flow.losses=0;flow.events=[]
+        flow.last_frame_ns=None;flow.button_not_before_ns=0;flow.source_fault=None
+        feedback=Feedback(np.zeros(28),np.zeros(28),np.array([1.,0.,0.,0.]),np.zeros(3))
+        body=body_with_root([1.,0.,0.,0.]);origin=10_000_000_000
+        for i in range(10):self.assertTrue(flow.push(body,origin+i*20_000_000,origin+i*20_000_000,feedback))
+        self.assertEqual(len(flow._neutral_frames),10)
+        boundary=origin+500_000_000
+        flow.lose(boundary,'stream disconnected')
+        self.assertEqual(len(flow.raw),0);self.assertEqual(len(flow._neutral_frames),0)
+        self.assertEqual(len(flow._neutral_sites),0)
+        self.assertFalse(flow.push(body,boundary-20_000_000,boundary-20_000_000,feedback))
+        self.assertEqual(len(flow._neutral_frames),0)
+        self.assertTrue(flow.push(body,boundary+20_000_000,boundary+20_000_000,feedback))
+        self.assertEqual(len(flow._neutral_frames),1);self.assertEqual(len(flow._neutral_sites),1)
 
     @unittest.skipUnless(os.environ.get('PICO_27000_ASSETS'),'Supply the pinned historical 75-frame asset')
     def test_historical_75_frames_and_heading_alignment(self):
