@@ -69,6 +69,8 @@ class PackageTests(unittest.TestCase):
             self.assertFalse(any(p.startswith(('tests/', 'outputs/', 'venv/', 'reference/')) for p in files))
             self.assertFalse(any(p.endswith(('.md', '.onnx', '.pyc')) for p in files))
             self.assertIn('scripts/start_actor_pico.sh', files)
+            self.assertIn('scripts/start_mimiclite_native.sh', files)
+            self.assertIn('scripts/pin_native_inference.py', files)
             self.assertIn('scripts/configure_actor_s100.py', files)
 
     def test_documentation_and_tests_do_not_change_payload_or_archive(self):
