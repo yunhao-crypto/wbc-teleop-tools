@@ -10,8 +10,7 @@ EXPLICIT=0
 for arg in "$@"; do
   case "$arg" in
     --plan|--help|-h) SAFE=1 ;;
-    --confirm-motion|--bridge|--fixed-neck|--follow-head|--gripper-config) EXPLICIT=1 ;;
-    --bridge=*|--gripper-config=*) EXPLICIT=1 ;;
+    --confirm-motion|--bridge|--fixed-neck|--follow-head|--bridge=*) EXPLICIT=1 ;;
   esac
 done
 if [[ "$SAFE" == 1 ]]; then

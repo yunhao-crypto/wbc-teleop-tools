@@ -54,6 +54,17 @@ stand or `--motion /absolute/clip.npz` for fixed playback. NPZ input requires
 named virtual joints and a velocity channel. With Pico, release then squeeze
 both triggers to toggle following. Ctrl-C requests and confirms PASSIVE.
 
+Pico following includes head yaw and pitch by default. Look straight ahead
+relative to your chest when engaging. Add `--fixed-neck` to hold neutral.
+To control AgiLink OP3 grippers with the Pico side grips, review the desired
+sides and limits in `config/pico_op3_gripper.example.json` and pass the
+resulting file with `--gripper-config /absolute/op3.json`. Each side arms
+after its first release during following. Squeezing closes it and releasing
+opens it to the device's reported maximum. Stale input, disengagement and
+exit stop publishing targets and leave the grippers to the native Hold path.
+The OP3 profile requires the matching locomotion build, an OP3 endpoint for
+each configured side, and the Pico binding with atomic side-grip snapshots.
+
 Add `--camera` to a Pico session to enable the front-camera relay on TCP 13579.
 In the [PICO camera viewer](deploy/pico_viewer/README.md), use the same robot
 IP and press A+B+X+Y together to switch views. Wait for `PICO_VIDEO: ready`.

@@ -11,6 +11,8 @@ Usage: start_mimiclite_native.sh --model NAME [options]
   --stand-only                  Stand without Pico following.
   --motion NPZ_PATH             Replay an existing NPZ instead of Pico.
   --camera                      Relay front-camera video during Pico following.
+  --fixed-neck                  Hold the neck at neutral during Pico following.
+  --gripper-config JSON_PATH     Enable Pico side-grip control of configured OP3 grippers.
   --log                         Save session diagnostics under outputs/ (off by default).
   --check                       Verify the native bundle without robot access.
   --plan                        Print the command only; do not check/start the package.
@@ -37,6 +39,7 @@ PLAN=0
 CHECK=0
 STAND=0
 MOTION=0
+ACCESSORIES=0
 SAVE_LOGS=0
 CAMERA_OPTIONS=(--no-camera)
 ARGS=()
@@ -58,6 +61,8 @@ while (($#)); do
     --stand-only) STAND=1; shift ;;
     --motion) value "$@"; MOTION=1; ARGS+=("$1" "$2"); shift 2 ;;
     --camera) CAMERA_OPTIONS=(); shift ;;
+    --fixed-neck) ACCESSORIES=1; ARGS+=("$1"); shift ;;
+    --gripper-config) value "$@"; ACCESSORIES=1; ARGS+=("$1" "$2"); shift 2 ;;
     --log) SAVE_LOGS=1; shift ;;
     --check) CHECK=1; shift ;;
     --plan) PLAN=1; shift ;;
@@ -103,6 +108,8 @@ if [[ $STAND == 0 && $MOTION == 0 ]]; then
            "${COMMAND[@]}" --pico)
 elif ((${#CAMERA_OPTIONS[@]} == 0)); then
   fail '--camera requires Pico mode'
+elif [[ $ACCESSORIES == 1 ]]; then
+  fail '--fixed-neck and --gripper-config require Pico mode'
 fi
 if [[ $PLAN == 1 ]]; then
   printf '%q ' taskset -c "$HOST_CPUS" "${COMMAND[@]}"

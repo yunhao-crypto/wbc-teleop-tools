@@ -3,6 +3,7 @@ import json
 import queue
 import subprocess
 import threading
+import time
 
 
 class JsonControlBridge:
@@ -47,9 +48,9 @@ class JsonControlBridge:
         finally:
             self._put(RuntimeError('bridge stdout closed'))
 
-    def _receive(self):
+    def _receive(self, timeout=None):
         try:
-            result = self.messages.get(timeout=self.timeout)
+            result = self.messages.get(timeout=self.timeout if timeout is None else timeout)
         except queue.Empty:
             raise TimeoutError('native bridge reply deadline exceeded') from None
         if isinstance(result, BaseException):
@@ -58,25 +59,36 @@ class JsonControlBridge:
             raise RuntimeError('invalid bridge reply shape')
         return result
 
-    def _call(self, op, **fields):
-        with self.lock:
+    def _call(self, op, *, timeout=None, **fields):
+        budget = self.timeout if timeout is None else timeout
+        deadline = time.monotonic() + budget
+        if not self.lock.acquire(timeout=budget):
+            raise TimeoutError('native bridge is busy')
+        try:
             if self.process.poll() is not None:
                 raise RuntimeError('action14 bridge exited')
             self.process.stdin.write(json.dumps(dict(op=op, **fields), allow_nan=False)+'\n')
             self.process.stdin.flush()
-            result = self._receive()
+            try:
+                result = self._receive(max(0., deadline - time.monotonic()))
+            except TimeoutError:
+                # A late reply could otherwise be consumed by the next RPC.
+                self.process.terminate()
+                raise
             if (result.get('type') != 'reply' or result.get('op') != op or
                     result.get('ok') is not True):
                 raise RuntimeError('action14 bridge rejected '+op+': '+repr(result))
             if 'req_id' in fields and result.get('req_id') != fields['req_id']:
                 raise RuntimeError('action14 bridge request correlation mismatch')
             return result
+        finally:
+            self.lock.release()
 
     def activate(self, request_id, profile):
         return self._call('activate', req_id=request_id, profile=profile)
 
-    def event(self, request_id, name, params):
-        return self._call('event', req_id=request_id, name=name, params=params)
+    def event(self, request_id, name, params, *, timeout=None):
+        return self._call('event', req_id=request_id, name=name, params=params, timeout=timeout)
 
     def status(self):
         return self._call('status')['status']

@@ -27,7 +27,7 @@ ARCHIVES = [
 SCRIPTS = ('actor_pico.py', 'bootstrap_actor_s100.py', 'configure_actor_s100.py',
            'start_actor_pico.sh', 'start_actor_motion.sh', 'prepare_zenoh_session.py',
            'pico_session_services.py', 'pico_camera_bridge.py', 'build_pico_arm64.sh',
-           'start_mimiclite_native.sh', 'pin_native_inference.py',
+           'start_mimiclite_native.sh', 'pin_native_inference.py', 'start_sonic_action14.sh',
            'prepare_external_ankle_config.py', 'import_actor_motion.py')
 MODULES = ('__init__.py', 'policy_contract.py', 'state_adapter.py', 'sdkmain_adapter.py',
            'sdk021_guard.py', 'pico_input.py', 'pico_camera_bridge.py')
@@ -81,6 +81,7 @@ def runtime_inputs(root, variant):
     names.update(str(p.relative_to(root)) for p in (root/module).glob('actor_*.py')
                  if p.name not in ('actor_pico_session_replay.py','actor_smpl.py',
                                    'actor_threepoint.py','actor_human_encoder.py'))
+    names.update(str(p.relative_to(root)) for p in (root/module).glob('sonic_action14*.py'))
     human = 'src/deployment/unitree_g1_ros2_29dof/src/humanoid_policy/'
     names.update(human+name for name in ('__init__.py', 'local_smpl_source.py', 'pico_body_pose_reader.py'))
     for directory in ('third_party/motion_stream_bridge', 'third_party/pico_binding',

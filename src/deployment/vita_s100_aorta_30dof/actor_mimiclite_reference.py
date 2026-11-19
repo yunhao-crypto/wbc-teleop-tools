@@ -213,7 +213,10 @@ def load_reference_config(root, model):
                 raise ValueError('Unreviewed Pico/GMR dependency: '+item['path'])
     config['sdk_sources'] = {name: shared['sdk_sources'][name]
                              for name in ('wbc_tracking_policy.py', '_policy_state.py')}
-    config['artifacts'] = {'model': {'source_name': model.name, 'sha256': digest(model)}}
+    config['artifacts'] = {name: item for name, item in shared['artifacts'].items()
+                           if name.startswith('gmr_source_')}
+    config['artifacts']['model'] = {'source_name': model.name, 'sha256': digest(model)}
+    config['head_control'] = shared['head_control']
     return config
 
 

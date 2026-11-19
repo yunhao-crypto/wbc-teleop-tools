@@ -52,3 +52,9 @@ def test_camera_reuses_pico_session_relay(tmp_path):
     assert '--no-camera-logs' not in capture and '--log' in capture
     run_entry(tmp_path, '--plan', '--camera', '--stand-only', expected=2)
     run_entry(tmp_path, '--plan', '--camera', '--motion', '/example.npz', expected=2)
+
+
+def test_plan_forwards_explicit_accessory_options(tmp_path):
+    plan = run_entry(tmp_path, "--plan", "--gripper-config", "/etc/op3.json", "--fixed-neck")
+    assert "--gripper-config /etc/op3.json" in plan and "--fixed-neck" in plan
+    run_entry(tmp_path, "--plan", "--stand-only", "--gripper-config", "/etc/op3.json", expected=2)
