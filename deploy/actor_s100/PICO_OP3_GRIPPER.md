@@ -10,10 +10,9 @@ been made with it.
 1. A rebuilt PICO binding that exports `get_controller_grip_snapshot`
    (`third_party/pico_binding`, same build as before). The archived prebuilt
    extension in this delivery predates it.
-2. The pinned SDK 0.3.0 (official main `a0b50cef`, merged PR #23) with
+2. The SDK wheel pinned by the [S100 delivery](README.md) with
    `locomotion_aorta.end_effector.EndEffectorClient` and its generated EE
-   bindings. The body path uses the same SDK (body protocol 3, control
-   protocol 4); Body and EE commands share one controller's session and
+   bindings. Body and EE commands share one controller's session and
    sequence. An older SDK stops with `requires a humanoid-sdk with EndEffectorClient`.
 3. Robot firmware that publishes OP3 Info/State and accepts EE commands
    (vita-robot #12162, merged as 896385d5b0; its docs state no hardware/HIL

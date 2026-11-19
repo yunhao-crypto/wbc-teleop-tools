@@ -1,7 +1,7 @@
 # Vita02A policy + Pico on S100
 
-This entry runs the reviewed joint-reference policy through the installed SDK
-0.3.0 WBC observation/decoder math. The model is supplied separately and excluded
+This entry runs the reviewed joint-reference policy through the SDK WBC
+observation/decoder math pinned by `sdk_sources`. The model is supplied separately and excluded
 from Git. Its identity, installation path and SHA256 are pinned in
 `config/actor_pico.json` and the delivery manifest. Supply the model matching
 that contract; the example filename `policy.onnx` is only a local pathname.
@@ -11,6 +11,85 @@ inference, and a separately armed supported EXTERNAL trial. Shadow subscribes to
 service. It writes computed targets to JSONL; it never creates a controller,
 requests EXTERNAL or publishes a robot command. Only `live` requests control and moves joints. The existing P1/P2/P3 runtime,
 launchers, SDK installation and protocol guards are not replaced.
+
+
+## FBS Trace development integration
+
+Reference-consumption links share the actual Actor inference ID. Their
+`planner_consume` integer column `source_role` is `1` for an accepted Planner
+result and `2` for a Pico reference. Mixed Planner/Pico-arm inference records
+both inputs. R3 stand with a persistent upper follower also records the fresh
+Pico snapshot it actually consumes. Loading/stand without adopted upper input,
+or stale upper input, adds no unused-source link;
+a held Pico reference keeps the snapshot ID from which the hold was created.
+
+Trace uses the installed SDK's recorder and automatic SDK call instrumentation.
+The three Actor profiles pin the published SDK `1.0.1rc3` at
+`1e2bbfb7da0da4fb437fc5b81037aa598f522ccf` (tree
+`d42b65913e4b7cb12283c22a69f4b0cdaeaa9508`). Use the wheels from
+[the formal RC3 release](https://github.com/VitaDynamics/humanoid-sdk/releases/tag/v1.0.1-rc.3).
+S100 packages include its ARM64 wheel and `trace` extras; their guard checks
+source and native hashes. Host validation uses the separately identified x86_64
+wheel from the same release. This replaces the earlier SDK #27 CI candidate;
+the same version label alone never replaces the wheel hash check.
+
+```bash
+python scripts/actor_pico.py check --steps 10 --trace=on --trace-output=new-run.ftrace
+python -m locomotion_aorta.trace.summary new-run.ftrace
+python -m locomotion_aorta.trace.report new-run.ftrace --output reports/new-run
+```
+
+The same `--trace=on --trace-output=...` options apply to an otherwise valid
+`state-check`, `shadow` or explicitly authorized `live` invocation. They confer
+no motion permission. `--trace` accepts only `on` or `off`; FBS is the single
+recording format. The boolean default is `false` (`--trace off`), with no FBS
+writer. `--trace on` without an output uses a timestamped unique `.ftrace`
+path in `/tmp` and prints it; an explicit `--trace-output` is still supported.
+The dedicated body/OP3 performance JSONL recorder is retired. Old `--profiling`,
+`--no-profiling` and `--profiling-log` options fail with a migration message
+before runtime creation; use `--trace on` or `--trace off`. Normal actor/business
+JSONL remains available with Trace off. FBS cannot be combined with `--log`
+or `--record-observations` in the same invocation.
+
+The run owns one recorder. Connections borrow it, so a connection closing does
+not close a file still used by the Planner. Existing worker shutdown completes
+before the outer recorder drains and closes. Body/EE SDK calls record internally.
+`actor_observe`, `actor_infer`, `actor_decode`, `planner_infer` and `planner_map`
+measure the actual calls independently, using monotonic microseconds and distinct
+inference IDs. Initial Map runs in the Planner worker; replan Map runs in the
+control thread. Thread-local handles feed separate bounded native queues; only
+the native writer compresses and writes. SDK-owned native ONNX calls additionally
+record `actor_infer/native_run` in the offline summary, linked by the exact span
+ID and timed before reacquiring the GIL. `actor_infer` still includes preparation,
+copies, scheduling and Python result conversion; subtracting the two does not
+isolate GIL wait. The external multi-input Planner/Map Python ORT backend keeps
+its outer spans only. No wrapper or extra model invocation is introduced.
+Native Body/EE encoding and Body/EE/Touch decoding supply their existing data to
+Trace; repeated SDK reads reference the captured sample instead of walking the
+Python DTO again. A decode record alone does not mean admission or device output.
+Python/GIL and target scheduling overhead still need measurement.
+
+The dedicated performance JSONL files are removed; normal actor/business JSONL
+and legacy diagnostics remain. This is **not complete JSONL retirement**.
+Native SDK-stage summaries and offline HTML/MCAP analysis are available through
+the paired SDK. Planner preprocess/model/postprocess, initial/replan Map,
+ready/accept/fusion links retain old and new result identities. Actor observation
+and action buffers go through one native call without tolist conversion. The
+existing bounded GMR snapshot IPC carries measured monotonic endpoints; only
+received snapshots are observed, never reconstructed dropped work. Cached
+snapshots retain their original input identity. Independent gripper input/gate/
+submission and firmware/cycle outcomes use the same run recorder.
+
+Full-policy fixed-model integration, legacy diagnostic parity and target
+ARM/performance acceptance remain open. Normal business JSONL is retained.
+The grip source stamp in the existing floating shared-memory interface has no
+verified units/precision here: it is not claimed as an exact source timestamp. In FBS mode the generic
+policy-row JSONL writer is disabled; the listed model spans and SDK records do
+not yet replace every old diagnostic field. GMR source JSONL is suppressed in
+FBS mode; VITA_PICO_CAPTURE_DIR cannot be combined with FBS recording. No runtime guard/pinned dependency
+is weakened to make this development build pass. The existing released/sealed
+SDK does not acquire Trace merely by checking out these WTT sources.
+
 
 ## Policy selection
 
@@ -52,11 +131,10 @@ motor passthrough adapter: no target FK/IK roundtrip, virtual-box clamp or
 virtual-torque compensation. Rate/torque/gain caps still apply; motor travel
 does not clip the policy's PD position setpoints.
 
-SDK 0.3.0 (BodyState/BodyCmd protocol 3, RobotInfo protocol 2) keeps
-`BodyState` and `RobotInfo` in virtual pitch/roll coordinates. The SDK checks
-every target q against the RobotInfo range before sending, so unclipped
-setpoints outside it stop the session; see the known blocker in
-[`deploy/actor_s100/README.md`](deploy/actor_s100/README.md). EXTERNAL's command space is immutable for
+BodyState v3 and RobotInfo v2 keep virtual pitch/roll feedback for both
+command spaces. WTT checks the policy command envelope before SDK submission;
+see the firmware requirements in [the S100 deployment guide](deploy/actor_s100/README.md).
+EXTERNAL's command space is immutable for
 the robot process; there is no remote SDK negotiation. The client checks the
 provided effective YAML against the model/profile, but that file is not proof
 of the running firmware configuration. Install the matching robot build and
@@ -125,8 +203,10 @@ name, the configuration or the robot:
 - `motor_theta`: the SDK layout is kept, but the ankle slots of the
   proprioception history and of the future joint references carry the two
   Achilles motor angles (IK of the pose, rates through the Jacobian, as in
-  training). With command space `policy`, these A/B
-  targets and model gains are transmitted directly (`actor_groot_ankle.py`).
+  training). When the command space resolves to `motor_theta`, EXTERNAL uses
+  BodyCmd v4 to send these A/B targets and motor gains directly. Virtual
+  pitch/roll commands use BodyCmd v3. BodyState v3 and BodyInfo v2 still carry
+  virtual pitch/roll feedback for either command space.
 
 GR00T/SONIC, SuperMimic and MorphMimic clip only the dimensionless action to
 their exported `action_clip` (20 for the current SONIC training run), then
@@ -654,8 +734,7 @@ is pinned in `config/actor_pico.json` and the delivery manifest.
 The bootstrap creates a fresh environment and verifies/extracts the resources;
 it does not borrow an existing development environment. See
 [`deploy/actor_s100/README.md`](deploy/actor_s100/README.md) for prerequisites and
-the optional `--build-pico` source build on S100. The launcher selects SDK
-0.3.0's bundled native CPU ONNX runner on aarch64; a separate pip ORT install
+the optional `--build-pico` source build on S100. The launcher selects the SDK's bundled native CPU ONNX runner on aarch64; a separate pip ORT install
 is not needed. Neither the existing HoloMotion MoE backend nor BPU acceleration
 is used by this actor. 50 Hz scheduling is configured, but S100 timing remains
 unmeasured until an actual run; overruns and skipped ticks are logged.
@@ -689,6 +768,37 @@ does not open the Pico service or check hardware inputs.
 `state-check` subscribes to Body31 only and validates finite joint/IMU values,
 protocol, roster and freshness. It creates no control handles or Pico service.
 No feedback/timeout is reported as a failed check; it never starts robot services.
+
+### Body and OP3 performance capture
+
+Use the existing SDK FBS recorder for performance capture. Trace remains **off
+by default**; add `--trace on` to an already reviewed live invocation. The body,
+OP3, Actor, Planner and Map use the same run recorder and their existing calls.
+
+```bash
+bash scripts/start_actor_pico.sh sonic --trace on --trace-output /tmp/trial.ftrace
+# The same launch with performance capture disabled:
+bash scripts/start_actor_pico.sh sonic --trace off
+
+python -m locomotion_aorta.trace.summary /tmp/trial.ftrace
+python -m locomotion_aorta.trace.report /tmp/trial.ftrace --output reports/trial
+```
+
+The old `--profiling`, `--no-profiling` and `--profiling-log` options now fail
+with migration guidance. No `.body.jsonl` / `.ee.jsonl` performance files,
+synchronous per-cycle flushes or in-memory percentile sample arrays are
+created by that removed recorder. Existing capture files are not changed.
+Normal actor/business JSONL, including startup, error and control events,
+`--log` and `--record-observations`, remains available with Trace off.
+FBS mode retains its existing exclusion of that JSONL writer; it does not
+claim complete replacement of every old diagnostic field.
+
+The offline SDK summary/report provides recorded model/SDK stage timings and
+integrity counters. Missing records or unmeasured stages are not zero latency.
+SDK software timestamps do not establish CAN transmission, physical execution
+or target arrival; native ONNX timing and cross-clock boundaries retain the
+limitations documented in the FBS Trace section above. Startup, feedback
+freshness, gripper faults and CANCEL/exit behavior are unchanged.
 
 The bootstrap creates the interpreter with the proper permissions and restores
 executable mode on the service from the sealed archive. The actor shadow entry

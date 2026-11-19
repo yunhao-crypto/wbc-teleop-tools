@@ -28,12 +28,14 @@ class PackageTests(unittest.TestCase):
             cls.packages[variant] = extract_bundle(Path(cls.built[variant]['archive']), cls.work/variant)
 
     def test_variants_resolve_independent_complete_wheel_closures(self):
-        for variant, expected in (('base', 21), ('planner', 28)):
+        for variant, expected in (('base', 24), ('planner', 31)):
             with self.subTest(variant=variant):
                 package = self.packages[variant]
                 manifest = verify(package)
                 wheels = list((package/DELIVERY/'wheelhouse').glob('*.whl'))
                 self.assertEqual(len(wheels), expected)
+                for name in ('locomotion_aorta-1.0.1rc3-', 'mcap-1.3.1-', 'zstandard-0.25.0-', 'lz4-4.4.5-'):
+                    self.assertTrue(any(p.name.startswith(name) for p in wheels), name)
                 self.assertEqual(any(p.name.startswith('onnxruntime-') for p in wheels), variant == 'planner')
                 self.assertEqual((package/'config/actor_sonic_planner.json').exists(), variant == 'planner')
                 self.assertEqual(manifest['source'], self.built[variant]['source'])

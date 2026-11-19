@@ -4,6 +4,7 @@ Importing this module creates no robot handles. Hardware setup belongs to the
 explicit CLI live entry. Injectable I/O lets offline tests exercise failures.
 """
 from collections import deque
+from array import array
 from dataclasses import replace
 import hashlib
 import json
@@ -17,6 +18,7 @@ import time
 import numpy as np
 
 from .actor_parallel_ankle import command_space
+from .actor_trace import span as trace_span
 
 STATE_AGE = .1
 STATUS_AGE = .5
@@ -516,6 +518,7 @@ def manual_reference(runtime, snapshot, now):
         motion = runtime.math.Motion(snapshot['q'], snapshot['base'], snapshot['quat'])
     if len(motion.q) != runtime.reference.steps:
         raise ValueError('Pico worker reference window length differs from model')
+    runtime.trace_input_id = snapshot.get('trace_input_id', 0)
     return motion, dict(pico_age_s=age, reference_delay_s=runtime.reference.delay,
         source_gap_s=float(snapshot.get('source_gap_s',0.)),
         retarget_ms=float(snapshot['retarget_ms']),
@@ -533,6 +536,9 @@ def pico_reference_command(runtime, snapshot, now, *, q, dq, root, gyro, yaw_off
     """Policy command on a worker snapshot; a late reference holds its current frame."""
     from .actor_teleop_modes import active_planner
     planner = active_planner(runtime)
+    runtime.trace_planner_result_id = 0
+    runtime.trace_input_id = 0
+    runtime.trace_pico_upper_used = False
     modes=getattr(runtime,'teleop_modes',None)
     if planner is not None:
         try:
@@ -547,12 +553,18 @@ def pico_reference_command(runtime, snapshot, now, *, q, dq, root, gyro, yaw_off
             if extra['planner_state'] not in ('loading','waiting_previous'):
                 motion,heading=modes.filter(motion,heading)
             motion=modes.follow_upper(motion,upper_q)
+            if getattr(modes, 'upper_follow', None) is not None and upper_q is not None:
+                runtime.trace_pico_upper_used = True
             extra.update(teleop_mode=modes.mode,teleop_mode_stage=modes.stage,
                 stick_armed=planner.stick.armed,stick_needs_center=modes.needs_center,
                 reference_limiter_active=modes.entry is not None)
         diagnostics.update(extra)
+        trace_inputs = ()
+        if getattr(runtime, 'trace', None) is not None:
+            trace_inputs = ((1, runtime.trace_planner_result_id),
+                            (2, runtime.trace_input_id if runtime.trace_pico_upper_used else 0))
         command, obs, row = runtime.infer_motion_command(motion,q=q,dq=dq,root=root,gyro=gyro,
-            diagnostics=diagnostics,yaw_offset=heading,ref_time=0.)
+            diagnostics=diagnostics,yaw_offset=heading,ref_time=0.,trace_inputs=trace_inputs)
         row['pico_reference'] = dict(q=motion.q.tolist(),root_wxyz=motion.quat.tolist(),
             base=motion.base.tolist(),ref_time=0.,yaw_offset=heading,source='planner_legs_pico_arms',
             timestamp_ns=snapshot.get('pico_timestamp_ns'),sticks=snapshot.get('planner_sticks'))
@@ -562,6 +574,8 @@ def pico_reference_command(runtime, snapshot, now, *, q, dq, root, gyro, yaw_off
         yaw_offset = reference_yaw(runtime, motion, root)
     motion, diagnostics['reference_hold'] = runtime.hold_stale_reference(
         motion, diagnostics['pico_age_s'])
+    reference_id = (runtime.trace_held_input_id if diagnostics['reference_hold']
+                    else runtime.trace_input_id)
     if modes is not None:
         upper_q=motion.q.copy()
         motion,yaw_offset=modes.filter(motion,yaw_offset)
@@ -569,7 +583,7 @@ def pico_reference_command(runtime, snapshot, now, *, q, dq, root, gyro, yaw_off
         diagnostics.update(teleop_mode=modes.mode,teleop_mode_stage=modes.stage)
     command, obs, row = runtime.infer_motion_command(motion, q=q, dq=dq,
         root=root, gyro=gyro, diagnostics=diagnostics, yaw_offset=yaw_offset,
-        ref_time=runtime.reference.ref_time)
+        ref_time=runtime.reference.ref_time, trace_inputs=((2, reference_id),))
     row['pico_reference'] = dict(q=motion.q.tolist(), root_wxyz=motion.quat.tolist(),
         base=motion.base.tolist(), ref_time=runtime.reference.ref_time,
         raw_body_poses=snapshot.get('raw_body_poses'),
@@ -636,6 +650,17 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
     references = reference_adapter if reference_adapter is not None else JointReferences(runtime)
     if not math.isfinite(args.seconds) or args.seconds < 0:
         raise ValueError('Live duration must be finite and nonnegative; 0 means until STOP')
+    trace = getattr(runtime, 'trace', None)
+    trace_cycle_pending = False
+    trace_counts = array('Q', [0]) if trace is not None else None
+    trace_status = array('Q', [0, 0, 0, 0]) if trace is not None else None
+    def cycle_event(outcome, count=1):
+        nonlocal trace_cycle_pending
+        if trace is not None:
+            trace_counts[0] = count
+            trace.mark('cycle', kind=9, outcome=outcome,
+                       iteration_id=getattr(runtime, 'trace_cycle_id', 0), integers=trace_counts)
+        trace_cycle_pending = False
     params, receipt = load_robot_config(args.robot_config, runtime)
     if motion_source is not None:
         write(dict(record_type='robot_configuration', robot_config=receipt, actions_sent=0))
@@ -818,7 +843,11 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
         if gripper_config is not None:
             # Info, State and output preparation complete before entry; output
             # permission is only checked once the gripper thread starts.
-            grippers = GripperRunner(gripper_config, manual_pico.controls, connection=controller)
+            gripper_options = {}
+            if trace is not None:
+                gripper_options['trace_recorder'] = trace
+            grippers = GripperRunner(gripper_config, manual_pico.controls, connection=controller,
+                                     **gripper_options)
             write_gripper_events()
         attempted = True
         entered = controller.enter_external(timeout=5.)
@@ -879,6 +908,7 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
 
         def skip_stale(phase_name, error, **details):
             nonlocal stale_ticks
+            cycle_event(7)
             stale_ticks += 1
             cancel = stale_ticks > MAX_STALE_TICKS
             write(dict(record_type='body_state_age_failure', phase=phase_name,
@@ -926,9 +956,12 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
             return True
 
         def advance(current):
+            if trace_cycle_pending:
+                cycle_event(9)  # A nonpublication without a measured specific outcome.
             following, missed = next_policy_deadline(current, clock.monotonic(), runtime.model.contract.period)
             report['missed_policy_ticks'] += missed
             if missed:
+                cycle_event(8, missed)
                 write(dict(record_type='policy_ticks_skipped', missed_ticks=missed,
                            total_missed_ticks=report['missed_policy_ticks'], actions_sent=sent_count))
             return following
@@ -948,6 +981,10 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
             if stop.is_set() or clock.monotonic() >= end:
                 break
             cycle = clock.monotonic()
+            if trace is not None:
+                runtime.trace_cycle_id = trace.new_id()
+                runtime.trace_planner_result_id = runtime.trace_input_id = 0
+                trace_cycle_pending = True
             cpu_clock = getattr(clock,'thread_time',None)
             cpu_start = cpu_clock() if cpu_clock is not None else None
             status = guard.check(controller.status, entered)
@@ -955,6 +992,12 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
                 write_gripper_events()
                 grippers.check()
             if status.ingress_drop_count != logged_drops:
+                if trace is not None:
+                    trace_status[0] = status.generation
+                    trace_status[1] = status.reject_count
+                    trace_status[2] = status.ingress_drop_count
+                    trace_status[3] = status.status_seq
+                    trace.mark('firmware_counters', integers=trace_status)
                 write(dict(record_type='firmware_ingress_drop', previous=logged_drops,
                            count=status.ingress_drop_count, actions_sent=sent_count))
                 logged_drops = status.ingress_drop_count
@@ -987,6 +1030,7 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
                         f'unchanged_age_ms={unchanged_ms:.3f}, limit_ms={STATE_AGE*1000:g}'))
                 else:
                     report['duplicate_body_ticks'] += 1
+                    cycle_event(6)
                     write(dict(record_type='body_state_not_advanced', state_id=int(state.state_id),
                         source_state_us=int(state.ts_state_real_us), ages=state_age_at_read,
                         unchanged_age_ms=unchanged_ms, action='skip_tick', actions_sent=sent_count))
@@ -1171,6 +1215,7 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
                         q=q, dq=dq, root=root, gyro=gyro, yaw_offset=tracking_yaw)
                 else:
                     stand_motion=lead
+                    stand_inputs=()
                     if modes is not None and modes.upper_follow is not None:
                         try:
                             upper,diag=references.acquire(snapshot,clock.monotonic())
@@ -1182,8 +1227,11 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
                         indices=np.minimum(start+np.arange(runtime.reference.steps),len(lead.q)-1)
                         stand_motion=runtime.math.Motion(lead.q[indices],lead.base[indices],lead.quat[indices])
                         stand_motion=modes.follow_upper(stand_motion,upper_q)
+                        if trace is not None and upper_q is not None:
+                            stand_inputs=((2,runtime.trace_input_id),)
                     command, obs, row = references.infer(stand_motion, q=q, dq=dq,
-                        root=root, gyro=gyro, ref_time=0. if stand_motion is not lead else reference_time, yaw_offset=offset)
+                        root=root, gyro=gyro, ref_time=0. if stand_motion is not lead else reference_time,
+                        yaw_offset=offset, **({'trace_inputs':stand_inputs} if stand_inputs else {}))
             except (ValueError, TimeoutError) as error:
                 if not handle_pico_loss(error, q, root):
                     raise
@@ -1244,12 +1292,16 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
             state_age_before_publish = inputs.ages(state)
             before = clock.monotonic()
             # SDK alone owns session + sequence, shared with end-effector output.
-            sent = controller.publish(command, target_names=envelope.target_names,
-                                      required_fields=BODY_FIELDS_ALL)
+            with trace_span(runtime, 'body_submit',
+                            iteration_id=getattr(runtime, 'last_trace_iteration_id', 0),
+                            inference_id=getattr(runtime, 'last_trace_inference_id', 0)):
+                sent = controller.publish(command, target_names=envelope.target_names,
+                                          required_fields=BODY_FIELDS_ALL)
             runtime.policy.last_action = pending_action
             if runtime.head is not None:
                 runtime.head.commit(pending_head)
             sent_count += 1
+            cycle_event(1)
             stale_ticks = 0
             policy_tick += 1
             if not tracking:
@@ -1297,6 +1349,8 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
         print(f"ACTOR_STOP: {report['stop_reason']}, elapsed={report['elapsed_s']:.2f}s; CANCEL -> PASSIVE",flush=True)
         return report
     finally:
+        if trace_cycle_pending:
+            cycle_event(3 if sys.exc_info()[1] is not None else 4)
         if grippers is not None:
             # Opens and releases EE clients while EXTERNAL is still owned.
             try:

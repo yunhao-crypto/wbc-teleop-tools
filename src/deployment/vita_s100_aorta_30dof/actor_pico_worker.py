@@ -4,6 +4,7 @@ The process starts idle before EXTERNAL. Vendor initialization occurs only on
 CONNECT, outside the control interpreter/GIL. Snapshots cross a bounded queue;
 the controller keeps current policy history, SDK ownership and sequence.
 """
+from array import array
 import logging
 import copy
 import multiprocessing
@@ -63,7 +64,7 @@ class ReferenceStream:
     ``clock`` is the local monotonic clock shared with the control process.
     """
     def __init__(self, root, config, contract, math_api, source_log=None, source_path=None,
-                 clock=time.monotonic):
+                 clock=time.monotonic, trace_enabled=False):
         self.reference = create_reference(contract, math_api, config)
         self.retarget = create_retargeter(root, config, contract, math_api)
         self.source_log = (source_log if source_log is None or hasattr(source_log, 'enqueue')
@@ -76,6 +77,11 @@ class ReferenceStream:
         self.source_clock = SourceClock()
         self.pending_log = None
         self.previous_reader_sequence = None
+        self.trace_enabled = trace_enabled
+        if trace_enabled:
+            import uuid
+            self.trace_process = str(uuid.uuid4())
+            self.trace_sequence = 0
 
     def push(self, body, metadata, anchor):
         reference, retarget = self.reference, self.retarget
@@ -91,6 +97,7 @@ class ReferenceStream:
         base = retarget.last_qpos[:3].copy()
         received = float(metadata['timestamp_monotonic'])
         source_s = 0. if reference.origin_ns is None else (stamp-reference.origin_ns)*1e-9
+        filter_begin = time.monotonic() if self.trace_enabled else None
         if self.filter is not None:
             q, base, root_quat = self.filter(source_s, q, base, root_quat)
         gap_info = dict(source_gap_s=0. if reference.last_stamp_ns is None else
@@ -98,6 +105,7 @@ class ReferenceStream:
             receipt_gap_s=0. if reference.last_receive_monotonic is None else
             received-reference.last_receive_monotonic)
         reference.append(stamp,q,root_quat,received_monotonic=received,base=base)
+        filter_end = time.monotonic() if self.trace_enabled else None
         available = self.clock()
         offset = self.source_clock.update(source_s, available)
         # Enqueued by flush_log after the snapshot is published, never inside
@@ -129,6 +137,14 @@ class ReferenceStream:
             retarget_q=raw_q.tolist(), retarget_root_wxyz=list(map(float, raw_root)),
             source_log=None if self.source_path is None else str(self.source_path),
             retarget_ms=retarget_ms, retarget_cpu_ms=retarget_cpu_ms)
+        if self.trace_enabled:
+            self.trace_sequence += 1
+            snapshot['trace_process'] = self.trace_process
+            snapshot['trace_sequence'] = self.trace_sequence
+            # Existing bounded latest-snapshot IPC; no subprocess writer/queue.
+            snapshot['trace_points_us'] = (int(begin*1e6), int(solve_end*1e6),
+                int(filter_begin*1e6), int(filter_end*1e6), int(available*1e6), int(received*1e6), stamp//1000)
+            snapshot['trace_reader_sequence'] = metadata.get('reader_frame_sequence')
         if reference.ready():
             if self.settings is not None:
                 snapshot.update(state='ready', stream=dict(reference.export(), clock_offset_s=offset))
@@ -146,7 +162,7 @@ class ReferenceStream:
 
 
 def _capture(root, config, contract, lower, upper, commands, output, stop, controls=None,
-             head_pose=None, *, record_logs=True):
+             head_pose=None, *, record_logs=True, trace_enabled=False):
     # All descendants (including the owned vendor service) belong to this
     # process group so the parent can clean up even if vendor init blocks.
     os.setsid()
@@ -165,7 +181,7 @@ def _capture(root, config, contract, lower, upper, commands, output, stop, contr
             return
         from .pico_input import create_pico_source
         math_api = sdk_math(root, config)
-        stream = ReferenceStream(root, config, contract, math_api)
+        stream = ReferenceStream(root, config, contract, math_api, trace_enabled=trace_enabled)
         sdk = Path(root)/'vendor_packages/xrobotoolkit-arm64/opt/apps/roboticsservice'
         if record_logs:
             log = (Path(root)/'outputs/pico_service_actor.log').open('a')
@@ -186,7 +202,7 @@ def _capture(root, config, contract, lower, upper, commands, output, stop, contr
             buttons = TriggerReader(pico.reader.sdk,controls,maximum_age=config['pico_max_age_s'])
             buttons.start()
         gmr_affinity = thread_affinity(settings.gmr_cpus)
-        if record_logs:
+        if record_logs and not trace_enabled:
             source_path = Path(root)/'outputs'/f'actor_pico_gmr_input_{time.time_ns()}.jsonl'
             source_log = SourceWriter(source_path, header=dict(record_type='header',
                 retargeting=config['retargeting'], model=config['artifacts']['model'],
@@ -237,18 +253,38 @@ class PicoReferenceProcess:
         # [trigger count, event time, controller receipt, grip receipt, grip stamp, left grip, right grip]
         self.controls = context.Array('d',[0.]*14) if buttons else None
         self.head_pose = LatestPicoPose(context)
+        self.trace = getattr(runtime, 'trace', None)
+        self.trace_output = (os.environ.get('MIMICLITE_WTT_TRACE_OUTPUT')
+                             if runtime.config.get('policy_kind') == 'mimiclite_vita02a_tracking'
+                             else None)
+        self.owns_trace = False
+        self.trace_previous = None
+        self.trace_input_id = 0
         # The reader can own an optional raw-frame writer process. A daemon
         # cannot spawn it; close() owns and reaps the entire process group.
         self.process = context.Process(target=_capture, args=(str(runtime.root), runtime.config,
             runtime.model.contract, None, None,
             self.commands, self.output, self.stop,self.controls,self.head_pose),
-            kwargs=dict(record_logs=record_logs))
+            kwargs=dict(record_logs=record_logs,
+                        trace_enabled=self.trace is not None or self.trace_output is not None))
         self.connected = False
         self.closed = False
         self.previous = dict(state='idle')
 
     def start(self):
-        self.process.start()
+        if self.trace_output is not None and self.trace is None:
+            from locomotion_aorta.trace import Trace
+            from .actor_trace import STAGES
+
+            self.trace = Trace(self.trace_output, stages=STAGES)
+            self.owns_trace = True
+        try:
+            self.process.start()
+        except BaseException:
+            if self.owns_trace:
+                self.trace.close()
+                self.owns_trace = False
+            raise
 
     def connect(self, robot_root):
         if self.connected:
@@ -268,6 +304,31 @@ class PicoReferenceProcess:
                 break
         if not self.process.is_alive() and self.previous['state'] != 'failed':
             self.previous = dict(state='failed', error='Pico worker exited')
+        if self.trace is not None and 'trace_points_us' in self.previous:
+            identity = (self.previous.get('trace_process'), self.previous.get('pico_timestamp_ns'))
+            if identity != self.trace_previous:
+                points = self.previous['trace_points_us']
+                if self.trace_previous is None or identity[0] != self.trace_previous[0]:
+                    self.trace_process_id = self.trace.new_id()
+                    self.trace_sequence = 0
+                    self.trace.define('gmr', dict(source_process=identity[0], source_id=self.trace_process_id,
+                        clock='same-host CLOCK_MONOTONIC', transport='existing bounded latest-snapshot IPC',
+                        point_names=['gmr_begin', 'gmr_end', 'filter_append_begin', 'filter_append_end',
+                                     'available', 'source_receipt', 'pico_source'],
+                        point_domains=['client_monotonic']*6+['pico_source_unmapped'],
+                        coverage='only received snapshots; dropped IPC snapshots remain unobserved'))
+                sequence = self.previous['trace_sequence']
+                if sequence != self.trace_sequence+1:
+                    self.trace.incomplete('gmr', missing_count=max(0, sequence-self.trace_sequence-1),
+                                          reference_id=self.trace_process_id)
+                self.trace_sequence = sequence
+                self.trace_input_id = self.trace.mark('pico_input', kind=11,
+                    reference_id=self.trace_process_id, times_us=array('Q', points),
+                    validity=array('B', [1]*len(points)))
+                self.trace.observed_span('gmr', points[0], points[1], reference_id=self.trace_input_id)
+                self.trace.observed_span('reference_filter', points[2], points[3], reference_id=self.trace_input_id)
+                self.trace_previous = identity
+            self.previous['trace_input_id'] = self.trace_input_id
         result = dict(self.previous)
         head = self.head_pose.snapshot()
         if head is not None:
@@ -287,20 +348,27 @@ class PicoReferenceProcess:
             return
         self.closed = True
         self.stop.set()
-        # Allow reader shutdown, bounded recorder drain, SDK close and owned
-        # service termination before escalating to process-group cleanup.
-        self.process.join(timeout=9)
-        if self.process.is_alive():
-            try:
-                os.killpg(self.process.pid, signal.SIGTERM)
-            except ProcessLookupError:
-                self.process.terminate()
-            self.process.join(timeout=1)
-        # Also clean up an owned service left by an already-exited worker.
         try:
-            os.killpg(self.process.pid, signal.SIGKILL)
-        except ProcessLookupError:
-            pass
-        self.process.join(timeout=1)
-        self.commands.close(); self.output.close()
-        self.commands.cancel_join_thread(); self.output.cancel_join_thread()
+            if self.process.pid is not None:
+                # Allow reader shutdown, bounded recorder drain, SDK close and owned
+                # service termination before escalating to process-group cleanup.
+                self.process.join(timeout=9)
+                if self.process.is_alive():
+                    try:
+                        os.killpg(self.process.pid, signal.SIGTERM)
+                    except ProcessLookupError:
+                        self.process.terminate()
+                    self.process.join(timeout=1)
+                # Also clean up an owned service left by an already-exited worker.
+                try:
+                    os.killpg(self.process.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+                self.process.join(timeout=1)
+        finally:
+            self.commands.close()
+            self.output.close()
+            self.commands.cancel_join_thread()
+            self.output.cancel_join_thread()
+            if self.owns_trace:
+                self.trace.close()

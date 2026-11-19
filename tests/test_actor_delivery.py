@@ -27,6 +27,23 @@ def archive(root, entries):
 
 
 class InstallerTests(unittest.TestCase):
+    def test_package_rejects_same_version_sdk_with_different_body_contract(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root/'config').mkdir()
+            config = json.loads((ROOT/'config/actor_pico.json').read_text())
+            for name in bootstrap.POLICY_CONFIGS.values():
+                (root/name).write_text(json.dumps(config))
+            guard = {key: config[key] for key in ('sdk_commit', 'sdk_version')}
+            guard['source_sha256'] = dict(config['sdk_sources'])
+            path = root/'config/sdk021-wheel-guard.json'
+            path.write_text(json.dumps(guard))
+            bootstrap.verify_actor_sdk_pin(root)
+            guard['source_sha256']['body_types.py'] = 'c1d7f9b03c93590ab748b65067b0452da4c2bce87c28c8414186bbee4174a1c1'
+            path.write_text(json.dumps(guard))
+            with self.assertRaisesRegex(RuntimeError, 'differs from the sealed ARM64 wheel guard'):
+                bootstrap.verify_actor_sdk_pin(root)
+
     def test_environment_uses_isolated_python_and_offline_pip(self):
         import os
         with tempfile.TemporaryDirectory() as tmp:

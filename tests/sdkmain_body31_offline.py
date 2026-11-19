@@ -41,7 +41,8 @@ def body_buffer(f):
             f['q44'][slot] if slot is not None else float('nan'),
             f['dq44'][slot] if slot is not None else float('nan'),0.,f.get('error_code',0) if i==0 else 0)
     joints=b.EndVector();m.BodyStateStart(b)
-    m.BodyStateAddProtocolVersion(b,2);m.BodyStateAddStateId(b,f['state_id'])
+    m.BodyStateAddProtocolVersion(b,3);m.BodyStateAddStateId(b,f['state_id'])
+    m.BodyStateAddRuntimeId(b,int(f.get('runtime_id',11)))
     m.BodyStateAddTsStateRealUs(b,f['real']);m.BodyStateAddTsStatePubUs(b,f['pub'])
     m.BodyStateAddJoints(b,joints);m.BodyStateAddImuStates(b,imus)
     m.BodyStateAddAttitudeValid(b,True)

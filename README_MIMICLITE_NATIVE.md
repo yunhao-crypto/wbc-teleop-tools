@@ -14,7 +14,7 @@ source /app/script/env.sh
 python3.10 scripts/bootstrap_actor_s100.py --native-reference-only
 ```
 
-The base delivery uses its pinned `locomotion_aorta` wheel. The launcher reads
+The base delivery uses the pinned `locomotion_aorta` 1.0.1rc3 wheel. The launcher reads
 BodyState, RobotInfo and ControlStatus through `PullStateSource`. Body commands
 are emitted by native locomotion. The WTT bootstrap verifies the existing SDK
 wheel and its dependencies before importing the native reference modules.
@@ -83,6 +83,14 @@ enabled camera diagnostics under `outputs/`. Long captures can use significant
 disk space. With the default settings, lifecycle status and errors are still
 reported in the terminal and the launcher still prepares its Zenoh session
 configuration and temporary readiness files.
+
+Use `--trace on` to capture the WTT Pico/GMR reference path with the SDK FBS
+recorder. `--trace-output /absolute/reference.ftrace` selects a new file;
+the default is a unique path under `/tmp`. Trace records Pico receipt,
+retargeting, reference filtering and gaps in the worker snapshot stream.
+The native policy and actuator commands run inside locomotion. Trace is
+available in Pico mode and cannot be combined with `--log` or the raw Pico
+recorder.
 
 The launcher uses the same WTT operator lock as the existing entries and checks
 the selected ONNX against the daemon's working directory before activation.

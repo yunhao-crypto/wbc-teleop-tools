@@ -40,6 +40,7 @@ def test_plan_defaults_to_cpu4_and_selects_reference_source(tmp_path):
     assert 'native inference thread CPUs: 4' in pico
     assert '--no-camera' in pico and '--pico' in pico
     assert '--activation-file' in pico and '--log' not in pico
+    assert 'MIMICLITE_WTT_TRACE_OUTPUT' not in pico
     assert '--no-camera' not in run_entry(tmp_path, '--plan', '--stand-only')
     assert '--motion' in run_entry(tmp_path, '--plan', '--motion', '/example.npz')
 
@@ -58,3 +59,15 @@ def test_plan_forwards_explicit_accessory_options(tmp_path):
     plan = run_entry(tmp_path, "--plan", "--gripper-config", "/etc/op3.json", "--fixed-neck")
     assert "--gripper-config /etc/op3.json" in plan and "--fixed-neck" in plan
     run_entry(tmp_path, "--plan", "--stand-only", "--gripper-config", "/etc/op3.json", expected=2)
+
+
+def test_pico_trace_is_opt_in_and_exclusive_with_jsonl(tmp_path):
+    output = tmp_path/'reference.ftrace'
+    plan = run_entry(tmp_path, '--plan', '--camera', '--trace=on', '--trace-output', str(output))
+    assert f'MIMICLITE_WTT_TRACE_OUTPUT={output}' in plan
+    assert '--no-camera-logs' in plan and '--log' not in plan
+    assert '--activation-file' in plan and 'inference thread CPUs: 4' in plan
+    assert not output.exists()
+    run_entry(tmp_path, '--plan', '--trace', 'on', '--log', expected=2)
+    run_entry(tmp_path, '--plan', '--trace', 'on', '--stand-only', expected=2)
+    run_entry(tmp_path, '--plan', '--trace', 'off', '--trace-output', str(output), expected=2)

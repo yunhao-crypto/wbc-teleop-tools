@@ -14,6 +14,8 @@ Usage: start_mimiclite_native.sh --model NAME [options]
   --fixed-neck                  Hold the neck at neutral during Pico following.
   --gripper-config JSON_PATH     Enable Pico side-grip control of configured OP3 grippers.
   --log                         Save session diagnostics under outputs/ (off by default).
+  --trace {on,off}               Record the WTT Pico/GMR reference path as SDK FBS (default: off).
+  --trace-output PATH.ftrace     Trace output path (default: unique file under /tmp).
   --check                       Verify the native bundle without robot access.
   --plan                        Print the command only; do not check/start the package.
   --help, -h                    Show this help without accessing robot services.
@@ -41,6 +43,8 @@ STAND=0
 MOTION=0
 ACCESSORIES=0
 SAVE_LOGS=0
+TRACE=off
+TRACE_OUTPUT=
 CAMERA_OPTIONS=(--no-camera)
 ARGS=()
 while (($#)); do
@@ -64,6 +68,10 @@ while (($#)); do
     --fixed-neck) ACCESSORIES=1; ARGS+=("$1"); shift ;;
     --gripper-config) value "$@"; ACCESSORIES=1; ARGS+=("$1" "$2"); shift 2 ;;
     --log) SAVE_LOGS=1; shift ;;
+    --trace) value "$@"; TRACE=$2; shift 2 ;;
+    --trace=*) TRACE=${1#*=}; shift ;;
+    --trace-output) value "$@"; TRACE_OUTPUT=$2; shift 2 ;;
+    --trace-output=*) TRACE_OUTPUT=${1#*=}; shift ;;
     --check) CHECK=1; shift ;;
     --plan) PLAN=1; shift ;;
     *) fail "unknown option: $1 (see --help)" ;;
@@ -75,6 +83,15 @@ done
 [[ -n "$NATIVE_ROOT" ]] || fail '--native-root or MIMICLITE_NATIVE_ROOT is required'
 [[ "$NATIVE_ROOT" == /* ]] || fail '--native-root must be absolute'
 [[ $PLAN == 0 || $CHECK == 0 ]] || fail '--plan and --check are mutually exclusive'
+[[ $TRACE == on || $TRACE == off ]] || fail '--trace must be on or off'
+[[ $TRACE == on || -z $TRACE_OUTPUT ]] || fail '--trace-output requires --trace on'
+if [[ $TRACE == on ]]; then
+  [[ $STAND == 0 && $MOTION == 0 ]] || fail '--trace on requires Pico mode'
+  [[ $SAVE_LOGS == 0 ]] || fail '--trace on cannot run with --log'
+  [[ -z ${VITA_PICO_CAPTURE_DIR:-} ]] || fail '--trace on cannot run with VITA_PICO_CAPTURE_DIR'
+  TRACE_OUTPUT=${TRACE_OUTPUT:-"/tmp/mimiclite-reference-$(date -u +%Y%m%dT%H%M%S%NZ)-$$.ftrace"}
+  [[ $TRACE_OUTPUT == *.ftrace ]] || fail '--trace-output must end in .ftrace'
+fi
 
 WTT_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 MODEL_FILE="$NATIVE_ROOT/$MODEL.onnx"
@@ -111,6 +128,9 @@ elif ((${#CAMERA_OPTIONS[@]} == 0)); then
 elif [[ $ACCESSORIES == 1 ]]; then
   fail '--fixed-neck and --gripper-config require Pico mode'
 fi
+if [[ $TRACE == on ]]; then
+  COMMAND=(env "MIMICLITE_WTT_TRACE_OUTPUT=$TRACE_OUTPUT" "${COMMAND[@]}")
+fi
 if [[ $PLAN == 1 ]]; then
   printf '%q ' taskset -c "$HOST_CPUS" "${COMMAND[@]}"
   printf '\n# native inference thread CPUs: %s\n' "$PIN_CPUS"
@@ -143,6 +163,7 @@ set +u
 source /app/script/env.sh >/dev/null
 set -u
 unset HOLOMOTION_REAL_ROBOT PYTHONHOME VITA_PREPROCESS_LIBRARY VITA_PREPROCESS_NATIVE_STAGES VITA_STATE_LIBRARY
+unset MIMICLITE_WTT_TRACE_OUTPUT
 export PYTHONNOUSERSITE=1 OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 MUJOCO_GL=disable
 SDK="$WTT_ROOT/vendor_packages/xrobotoolkit-arm64/opt/apps/roboticsservice"
 export PYTHONPATH="$WTT_ROOT/src:$WTT_ROOT/src/deployment/unitree_g1_ros2_29dof/src:$WTT_ROOT/build/pico"
@@ -167,5 +188,8 @@ export VITA_ACTOR_CLI_SESSION_CONFIG="$WTT_ROOT/outputs/mimiclite_cli_session.js
 if [[ $PIN_CPUS != off ]]; then
   taskset -c "$HOST_CPUS" "$PYTHON" "$WTT_ROOT/scripts/pin_native_inference.py" \
     --cpus "$PIN_CPUS" --launcher-pid "$$" "${PIN_OPTIONS[@]}" </dev/null 9>&- &
+fi
+if [[ $TRACE == on ]]; then
+  printf 'WTT Pico/GMR Trace output: %s\n' "$TRACE_OUTPUT"
 fi
 exec taskset -c "$HOST_CPUS" "${COMMAND[@]}"

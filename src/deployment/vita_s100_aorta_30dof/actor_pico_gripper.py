@@ -11,6 +11,8 @@ the same EXTERNAL connection as the body; an SDK without that client is refused
 before any control handle is taken.
 """
 import json
+from array import array
+from contextlib import nullcontext
 import math
 import threading
 import time
@@ -213,8 +215,19 @@ class GripperRunner:
     binding has no controller vibration call, so live passes none.
     """
 
-    def __init__(self, config, shared, *, connection, sdk=None, haptics=None, clock=time.monotonic):
+    def __init__(self, config, shared, *, connection, sdk=None, haptics=None, clock=time.monotonic,
+                 trace_recorder=None):
         self.sdk = load_sdk() if sdk is None else sdk
+        self.trace = trace_recorder
+        self.trace_input_id = 0
+        if self.trace is not None:
+            self.trace_values = array('d', [0., 0.])
+            self.trace_times = array('Q', [0])
+            self.trace_valid = array('B', [0, 0, 0])
+            self.trace_decision = array('Q', [0, 0, 0, 0])
+            self.trace.define('grip_input', {'values': ['left_grip', 'right_grip'],
+                'times_us': ['receipt_monotonic'], 'input_identity': 'local shared-snapshot observation',
+                'source_stamp': 'not recorded: units/precision of existing floating IPC token not proven'})
         self.config, self.shared, self.haptics, self.clock = config, shared, haptics, clock
         self.mode = getattr(self.sdk.ControlMode, config['control_mode'])
         self.events = deque()
@@ -353,7 +366,8 @@ class GripperRunner:
         if feedback is None:
             return
         latest, position = feedback
-        self.clients[side].publish(self.targets[side][closed], input_observations=(position.sample_ref,))
+        with self.trace.span('grip_submit', inference_id=self.trace_input_id) if self.trace is not None else nullcontext():
+            self.clients[side].publish(self.targets[side][closed], input_observations=(position.sample_ref,))
         self.publishes[side] += 1
         opening, current = self._opening(position), self._current(latest)
         if closed != self.commanded[side]:
@@ -400,7 +414,8 @@ class GripperRunner:
         try:
             latest, position, _, _ = self.clients[side].motion_feedback()
             observations = () if position is None else (position.sample_ref,)
-            self.clients[side].publish(self.targets[side][False], input_observations=observations)
+            with self.trace.span('fault_open', inference_id=self.trace_input_id) if self.trace is not None else nullcontext():
+                self.clients[side].publish(self.targets[side][False], input_observations=observations)
             return True
         except Exception:
             return False
@@ -416,12 +431,29 @@ class GripperRunner:
             self.started_at = now
         with self.shared.get_lock():
             received, stamp, left, right = self.shared[3:7]
+        if self.trace is not None:
+            for i, value in enumerate((left, right)):
+                valid = isinstance(value, (int, float)) and math.isfinite(value)
+                self.trace_values[i] = value if valid else 0.
+                self.trace_valid[i] = valid
+            valid = isinstance(received, (int, float)) and math.isfinite(received) and 0 < received < 2**64/1e6
+            self.trace_times[0] = int(received*1e6) if valid else 0
+            self.trace_valid[2] = valid
+            self.trace_input_id = self.trace.mark('grip_input', kind=11, values=self.trace_values,
+                times_us=self.trace_times, validity=self.trace_valid)
         for side in self.config['sides']:
             if side in self.disabled:
                 continue
             gate = self.gates[side]
             closed = gate.update(received, stamp, left if side == 'left' else right, now)
             reason = 'grip' if closed else 'release' if gate.valid else 'input_invalid'
+            if self.trace is not None:
+                self.trace_decision[0] = closed
+                self.trace_decision[1] = gate.valid
+                self.trace_decision[2] = gate.armed
+                self.trace_decision[3] = 1 if closed else 2 if gate.valid else 3
+                self.trace.mark('grip_decision', kind=12, stream=2 if side == 'left' else 3,
+                    reference_id=self.trace_input_id, integers=self.trace_decision)
             try:
                 self._step(side, closed, now, reason)
             except Exception as error:

@@ -168,7 +168,9 @@ def main():
                 package = built['root']
                 package_site = package/'venv/lib/python3.10/site-packages'
                 shutil.copytree(site, package_site)
-                run([sys.executable, 'scripts/actor_pico.py', 'check', '--steps', '10'], cwd=package, env=env)
+                run([sys.executable, 'scripts/actor_pico.py', 'check', '--steps', '10'],
+                    cwd=package, env=dict(env, PYTHONPATH=str(package_site)))
+            env['PYTHONPATH'] = str(site)
             actor_tests = run_tests('tests/test_actor_pico.py', cwd=export, env=env)
             head_tests = run_tests('tests/test_actor_pico_head.py', cwd=export, env=env)
             provision_tests = run_tests('tests/test_actor_local_provision.py', cwd=export, env=env)

@@ -14,13 +14,13 @@ class SourceTests(unittest.TestCase):
         aligned=(module/'pico_aligned_runtime.py').read_text(encoding='utf-8')
         self.assertIn('from .actor_pico_live import run_live',aligned)
         self.assertIn('reference_adapter=TaskReferences(runtime)',aligned)
-    def test_legacy_policies_and_default_sdk_are_retained(self):
+    def test_legacy_policies_use_rc3_and_pico_sdk_is_isolated(self):
         shell=(ROOT/'scripts/start_actor_pico.sh').read_text()
         for policy in ('sonic','supermimic','morphmimic','pico_smpl','pico_teleop'):self.assertIn(policy,shell)
         self.assertIn('ACTOR_ENTRY="$ROOT/scripts/actor_pico.py"',shell)
         self.assertNotIn('ACTOR_ENTRY="$ROOT/scripts/pico_actor_aligned.py"',shell)
         self.assertIn('from pico_actor_aligned import main',(ROOT/'scripts/actor_pico.py').read_text())
-        self.assertIn('locomotion-aorta==0.3.0',(ROOT/'deploy/actor_s100/requirements.txt').read_text())
+        self.assertIn('locomotion-aorta[trace]==1.0.1rc3',(ROOT/'deploy/actor_s100/requirements.txt').read_text())
         self.assertIn('bodycmdv4.6863ad7',(ROOT/'deploy/pico_27000/requirements.txt').read_text())
     def test_delivery_paths_unique_and_no_private_asset_bytes_published(self):
         data=json.loads((ROOT/'deploy/pico_27000/delivery_inputs.json').read_text())
