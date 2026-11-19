@@ -5,7 +5,7 @@ CONNECT, outside the control interpreter/GIL. Snapshots cross a bounded queue;
 the controller keeps current policy history, SDK ownership and sequence.
 """
 import logging
-import json
+import copy
 import multiprocessing
 import os
 from pathlib import Path
@@ -20,6 +20,7 @@ from .actor_pico_stream import SourceClock, StreamFilter, stream_settings, worke
 from .actor_pico_buttons import TriggerReader
 from .actor_pico_runtime import sdk_math
 from .actor_pico_latest import LatestPicoPose
+from .actor_pico_source_writer import SourceWriter
 
 
 def _latest(output, item):
@@ -37,12 +38,19 @@ def _latest(output, item):
 
 
 def thread_affinity(cpus):
-    """Restrict only the calling thread; children inherit its mask at creation."""
-    available = os.sched_getaffinity(0)
+    """Set only the calling thread's mask; children inherit it at creation.
+
+    The mask may leave the inherited one (a GMR CPU kept free of the launcher),
+    but every requested CPU must be usable.
+    """
     if cpus:
-        if not set(cpus) <= available:
-            raise ValueError(f'Requested Pico CPUs {list(cpus)} outside available CPUs {sorted(available)}')
-        os.sched_setaffinity(0, cpus)
+        try:
+            os.sched_setaffinity(0, cpus)
+        except OSError as error:
+            raise ValueError(f'Requested Pico CPUs {list(cpus)} are unavailable: {error}') from error
+        applied = os.sched_getaffinity(0)
+        if applied != set(cpus):
+            raise ValueError(f'Requested Pico CPUs {list(cpus)} but the thread runs on {sorted(applied)}')
     return sorted(os.sched_getaffinity(0))
 
 
@@ -58,13 +66,16 @@ class ReferenceStream:
                  clock=time.monotonic):
         self.reference = create_reference(contract, math_api, config)
         self.retarget = create_retargeter(root, config, contract, math_api)
-        self.source_log, self.source_path = source_log, source_path
+        self.source_log = (source_log if source_log is None or hasattr(source_log, 'enqueue')
+                           else SourceWriter(sink=source_log))
+        self.source_path = source_path
         self.last_source_stamp = 0
         self.clock = clock
         self.settings = stream_settings(config)
         self.filter = StreamFilter(self.settings) if self.settings is not None else None
         self.source_clock = SourceClock()
         self.pending_log = None
+        self.previous_reader_sequence = None
 
     def push(self, body, metadata, anchor):
         reference, retarget = self.reference, self.retarget
@@ -89,7 +100,7 @@ class ReferenceStream:
         reference.append(stamp,q,root_quat,received_monotonic=received,base=base)
         available = self.clock()
         offset = self.source_clock.update(source_s, available)
-        # Written after the snapshot is published (flush_log), never inside
+        # Enqueued by flush_log after the snapshot is published, never inside
         # the measured retarget time or ahead of the control loop.
         timing = dict(gmr_start_monotonic=begin, gmr_end_monotonic=solve_end,
             gmr_start_thread_cpu_s=cpu, gmr_end_thread_cpu_s=cpu_end,
@@ -97,9 +108,20 @@ class ReferenceStream:
             reader_frame_sequence=metadata.get('reader_frame_sequence'),
             reader_realtime_ns=metadata.get('reader_realtime_ns'),
             reader_monotonic_ns=metadata.get('reader_monotonic_ns'))
+        sequence = metadata.get('reader_frame_sequence')
+        previous = self.previous_reader_sequence
+        # Reader frames this worker never retargeted; unknown identity stays None.
+        timing.update(**gap_info,
+            reader_frames_observed_not_retargeted=None if sequence is None or previous is None
+                or sequence <= previous else sequence-previous-1)
+        self.previous_reader_sequence = sequence
         if retarget.last_foot_support is not None:
-            timing['foot_support'] = retarget.last_foot_support
-        self.pending_log = (stamp, received, available, body, retarget.last_qpos.copy(), residual, timing)
+            timing['foot_support'] = copy.deepcopy(retarget.last_foot_support)
+        # The pending row owns buffers even before enqueue (vendor may reuse them).
+        self.pending_log = None if self.source_log is None else dict(record_type='gmr_frame',
+            timestamp_ns=stamp, received_monotonic=received, available_monotonic=available,
+            body_poses=body.copy(), qpos=retarget.last_qpos.copy(),
+            gmr_task_error=copy.deepcopy(residual), **timing)
         snapshot = dict(state='collecting', received_monotonic=received,
             **gap_info,
             pico_timestamp_ns=stamp, gmr_task_error=residual,
@@ -119,12 +141,8 @@ class ReferenceStream:
         if self.source_log is None or self.pending_log is None:
             self.pending_log = None
             return
-        stamp, received, available, body, qpos, residual, timing = self.pending_log
-        self.pending_log = None
-        self.source_log.write(json.dumps(dict(record_type='gmr_frame',
-            timestamp_ns=stamp, received_monotonic=received, available_monotonic=available,
-            body_poses=body.tolist(), qpos=qpos.tolist(),
-            gmr_task_error=residual, **timing), allow_nan=False, separators=(',', ':'))+'\n')
+        row, self.pending_log = self.pending_log, None
+        return self.source_log.enqueue(row)
 
 
 def _capture(root, config, contract, lower, upper, commands, output, stop, controls=None,
@@ -149,17 +167,17 @@ def _capture(root, config, contract, lower, upper, commands, output, stop, contr
         math_api = sdk_math(root, config)
         stream = ReferenceStream(root, config, contract, math_api)
         source_path = Path(root)/'outputs'/f'actor_pico_gmr_input_{time.time_ns()}.jsonl'
-        source_log = source_path.open('x')
         sdk = Path(root)/'vendor_packages/xrobotoolkit-arm64/opt/apps/roboticsservice'
         log = (Path(root)/'outputs/pico_service_actor.log').open('a')
-        service = subprocess.Popen([str(sdk/'RoboticsServiceProcess')], cwd=sdk,
-                                   stdout=log, stderr=subprocess.STDOUT)
-        # The vendor process keeps the inherited mask. SDK and reader threads
-        # inherit worker_cpus; narrow only the GMR thread after they start.
+        # Narrow before the fork so the vendor service, SDK and reader threads
+        # all inherit worker_cpus; only the GMR thread narrows further later.
         settings = worker_settings(config)
         worker_affinity = thread_affinity(settings.worker_cpus)
+        service = subprocess.Popen([str(sdk/'RoboticsServiceProcess')], cwd=sdk,
+                                   stdout=log, stderr=subprocess.STDOUT)
         poll = settings.reader_poll_interval_s
         pico = create_pico_source(logger=logging.getLogger('actor-manual-pico'),
+            timeline_sampling=config.get('policy_kind') == 'mimiclite_vita02a_tracking',
             maximum_age=config['pico_max_age_s'], duplicate_poll_interval_s=poll,
             on_frame=None if head_pose is None else head_pose.publish)
         pico.start()
@@ -167,11 +185,11 @@ def _capture(root, config, contract, lower, upper, commands, output, stop, contr
             buttons = TriggerReader(pico.reader.sdk,controls,maximum_age=config['pico_max_age_s'])
             buttons.start()
         gmr_affinity = thread_affinity(settings.gmr_cpus)
-        source_log.write(json.dumps(dict(record_type='header',
+        source_log = SourceWriter(source_path, header=dict(record_type='header',
             retargeting=config['retargeting'], model=config['artifacts']['model'],
             pico_stream=config.get('pico_stream'), pico_worker=config.get('pico_worker'),
             worker_affinity=worker_affinity,
-            gmr_affinity=gmr_affinity, reader_poll_interval_s=poll))+'\n')
+            gmr_affinity=gmr_affinity, reader_poll_interval_s=poll))
         stream.source_log, stream.source_path = source_log, source_path
         _latest(output, dict(state='waiting_pico'))
         while not stop.is_set():
