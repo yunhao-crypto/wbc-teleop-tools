@@ -74,6 +74,10 @@ class StreamSettingsTests(unittest.TestCase):
         self.assertTrue(set(settings.gmr_cpus) <= set(settings.worker_cpus))
         self.assertFalse(set(settings.control_cpus) & set(settings.gmr_cpus))
         self.assertEqual(sonic.stream.playback_margin_s, supermimic.stream.playback_margin_s)
+        mimiclite = stream.worker_settings(json.loads((ROOT/'config/actor_pico_mimiclite.json').read_text()))
+        # Native MimicLite keeps CPU 4 for inference and CPU 5 for locomotion RT.
+        self.assertEqual((mimiclite.worker_cpus, mimiclite.gmr_cpus, mimiclite.control_cpus),
+                         ((0, 2, 3), (1,), (2, 3)))
         self.assertEqual((sonic.stream.joint_filter, sonic.stream.root_filter),
                          (supermimic.stream.joint_filter, supermimic.stream.root_filter))
         self.assertIsNone(sonic.stream.root_max_tilt_rad)

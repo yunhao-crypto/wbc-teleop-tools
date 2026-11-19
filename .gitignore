@@ -82,6 +82,7 @@ __pycache__/
 
 # Model weights, export reports and checkpoint receipts are supplied separately.
 /artifacts/morphmimic/
+/artifacts/mimiclite/
 /artifacts/sonic/
 
 # Delivery manifests are generated inside built packages.

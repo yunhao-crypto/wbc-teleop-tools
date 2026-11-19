@@ -25,7 +25,9 @@ SCHEMA = 'vita_actor_s100_delivery_v2'
 TARGET = dict(os='Linux', architecture='aarch64', python='3.10', glibc_min='2.35')
 # Mirrors actor_pico_runtime.POLICY_CONFIGS; bootstrap runs before the venv exists.
 POLICY_CONFIGS = {'sonic': 'config/actor_pico.json', 'supermimic': 'config/actor_pico_supermimic.json',
-                  'morphmimic': 'config/actor_pico_morphmimic.json'}
+                  'morphmimic': 'config/actor_pico_morphmimic.json',
+                  'mimiclite': 'config/actor_pico_mimiclite.json',
+                  'supermimic_op3': 'config/actor_pico_supermimic_op3.json'}
 PICO_POLICIES = ('pico_smpl', 'pico_teleop')
 
 
@@ -162,7 +164,19 @@ def unpack(root, manifest, *, use_prebuilt=True):
 
 
 def configured_model(root, policy='sonic'):
-    return json.loads((root/POLICY_CONFIGS[policy]).read_text())['artifacts']['model']
+    config = json.loads((root/POLICY_CONFIGS[policy]).read_text())
+    if policy == 'mimiclite' and config.get('model_ready') is not True:
+        raise RuntimeError('MimicLite model is not configured; run import_mimiclite_policy.py '
+                           'on the host before building the sealed deployment package')
+    # MimicLite pins the BodyCmd4 SDK while this package may seal another one;
+    # refuse here rather than after pip, unpack and a failing model check.
+    guard = root/'config/sdk021-wheel-guard.json'
+    if 'sdk_version' in config and guard.is_file():
+        sealed = json.loads(guard.read_text())['sdk_version']
+        if config['sdk_version'] != sealed:
+            raise RuntimeError(f"{POLICY_CONFIGS[policy]} requires SDK {config['sdk_version']}, "
+                               f'but this package seals SDK {sealed}; see README_MIMICLITE.md')
+    return config['artifacts']['model']
 
 
 def provision_external(root, manifest, configured, source=None, *, label='model', config_name='actor configuration'):

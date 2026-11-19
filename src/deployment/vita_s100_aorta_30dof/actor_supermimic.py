@@ -311,16 +311,27 @@ class NativeModel:
         return out[0]
 
 
-def window_motion(math_api, times, q, base, quat, query):
-    """Linear/slerp resampling at ``query``, clamped at both ends exactly like np.interp."""
+def window_motion(math_api, times, q, base, quat, query, velocities=None):
+    """Linear/slerp resampling at ``query``, with optional global velocities.
+
+    Velocities are interpolated from the complete source timeline, rather than
+    differentiated after a bounded window has been cut.  Samples beyond the
+    newest source frame are terminal holds and therefore have zero velocity.
+    """
     times = np.asarray(times, dtype=np.float64)
+    query = np.asarray(query, dtype=np.float64)
     index = np.clip(np.searchsorted(times, query, side='right')-1, 0, len(times)-2)
     alpha = np.clip((query-times[index])/(times[index+1]-times[index]), 0., 1.)
     def interp(values):
         values = np.asarray(values, dtype=np.float64)
         return values[index]+alpha[:, None]*(values[index+1]-values[index])
     roots = [math_api.slerp(quat[i], quat[i+1], float(a)) for i, a in zip(index, alpha)]
-    return math_api.Motion(interp(q), interp(base), roots)
+    motion = math_api.Motion(interp(q), interp(base), roots)
+    if velocities is not None:
+        velocity = interp(velocities)
+        velocity[(query < times[0]) | (query > times[-1])] = 0.
+        motion.joint_vel = velocity
+    return motion
 
 
 class SuperMimicReference:
@@ -332,7 +343,7 @@ class SuperMimicReference:
     at a control-clock time, which needs ``history_s`` of extra samples.
     """
     def __init__(self, contract, math_api, *, past_frames, tail_frames, capacity=1024, history_s=0.):
-        if getattr(contract, 'policy_kind', '') not in (POLICY_KIND, 'morphmimic_vita02a_tracking') or capacity < 3 or not 0 <= history_s <= 2:
+        if getattr(contract, 'policy_kind', '') not in (POLICY_KIND, 'morphmimic_vita02a_tracking', 'supermimic_op3_tracking', 'mimiclite_vita02a_tracking') or capacity < 3 or not 0 <= history_s <= 2:
             raise ValueError('Invalid SuperMimic reference settings')
         self.contract, self.math = contract, math_api
         self.samples = deque(maxlen=capacity)
@@ -377,11 +388,17 @@ class SuperMimicReference:
     def query(self, end):
         return end-self.span+np.arange(self.steps)*self.contract.period
 
+    def _source_velocity(self, stream):
+        # Derivative is defined on the complete retained source timeline.  It
+        # must never be recomputed from the sparse policy window.
+        return np.gradient(stream['q'], stream['t'], axis=0, edge_order=1)
+
     def motion(self):
         if not self.ready():
             raise RuntimeError('Waiting for complete causal actor reference window')
         s = self.export()
-        return window_motion(self.math, s['t'], s['q'], s['base'], s['quat'], self.query(s['t'][-1]))
+        return window_motion(self.math, s['t'], s['q'], s['base'], s['quat'],
+            self.query(s['t'][-1]), self._source_velocity(s))
 
     def playback(self, stream, now, margin):
         """Window ending at the source time usable ``margin`` before local ``now``.
@@ -399,7 +416,8 @@ class SuperMimicReference:
         end = now-offset-margin
         if not math.isfinite(end):
             raise ValueError('Pico stream clock offset is invalid')
-        motion = window_motion(self.math, t, q, base, quat, self.query(end))
+        source_velocity = np.gradient(q, t, axis=0, edge_order=1)
+        motion = window_motion(self.math, t, q, base, quat, self.query(end), source_velocity)
         return motion, dict(playback_lead_s=float(t[-1]-end), playback_time_s=end-self.delay,
                             clock_offset_s=offset)
 
@@ -416,6 +434,15 @@ def create_policy(contract, profile, math_api, config):
     if getattr(contract, 'policy_kind', '') == 'morphmimic_vita02a_tracking':
         from .actor_morphmimic import policy_class as morph_policy
         return morph_policy(math_api)(contract, profile)
+    if getattr(contract, 'policy_kind', '') == 'supermimic_op3_tracking':
+        from .actor_supermimic_op3 import policy_class as op3_policy
+        past, tail = reference_window(config)
+        if past < 1 or tail < 1:
+            raise ValueError('OP3 streaming needs a past frame and derivative tail')
+        return op3_policy(math_api)(contract, profile)
+    if getattr(contract, 'policy_kind', '') == 'mimiclite_vita02a_tracking':
+        from .actor_mimiclite import policy_class as mimic_policy
+        return mimic_policy(math_api)(contract, profile)
     if not is_supermimic(contract):
         return create_groot_policy(contract, profile, math_api)
     past, tail = reference_window(config)
@@ -428,8 +455,14 @@ def create_reference(contract, math_api, config):
     # Playback lags the newest sample by the margin and, before the hold
     # rule takes over, by up to pico_hold_age_s; keep samples for both.
     history = 0. if settings is None else settings.playback_margin_s+config['pico_hold_age_s']+.1
-    if not is_supermimic(contract) and getattr(contract, 'policy_kind', '') != 'morphmimic_vita02a_tracking':
+    if getattr(contract, 'policy_kind', '') == 'mimiclite_vita02a_tracking':
+        from .actor_mimiclite import create_reference as mimic_reference
+        return mimic_reference(contract, math_api, config)
+    if not is_supermimic(contract) and getattr(contract, 'policy_kind', '') not in (
+            'morphmimic_vita02a_tracking', 'supermimic_op3_tracking'):
         from .actor_pico_reference import CausalActorReference
         return CausalActorReference(contract, math_api, history_s=history)
     past, tail = reference_window(config)
+    if getattr(contract, 'policy_kind', '') == 'supermimic_op3_tracking' and (past < 1 or tail < 1):
+        raise ValueError('OP3 streaming needs a past frame and derivative tail')
     return SuperMimicReference(contract, math_api, past_frames=past, tail_frames=tail, history_s=history)

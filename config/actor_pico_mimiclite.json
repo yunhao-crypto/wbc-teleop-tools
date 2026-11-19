@@ -1,0 +1,303 @@
+{
+  "schema": "vita_actor_pico_shadow_v1",
+  "scope": "inference_only",
+  "policy_kind": "mimiclite_vita02a_tracking",
+  "model_ready": true,
+  "artifacts": {
+    "model": {
+      "path": "artifacts/mimiclite/policy.onnx",
+      "sha256": "f11c94c39df59f583c01de3e98028db9b82221e3185dca3afd4ecab7779e5e6b",
+      "bytes": 9381822,
+      "source_name": "student_2000.onnx"
+    },
+    "urdf": {
+      "path": "artifacts/output_envelopes.motion.urdf",
+      "sha256": "83ce0b3ee9758889e398c5c6bb9b59b14347dfbf9a9d3d1602f650d26dade894"
+    },
+    "gmr_source_0": {
+      "path": "third_party/motion_stream_bridge/motion_stream_bridge/gmr_lite/__init__.py",
+      "sha256": "87292d7465ed4e1568c3e3dc1d09679558204edc59f59429c17ff733eacf1f13"
+    },
+    "gmr_source_1": {
+      "path": "third_party/motion_stream_bridge/motion_stream_bridge/gmr_lite/retarget.py",
+      "sha256": "20df57d111055b9a2de0fcaaac115ca8acb8a6659d1d0d989f34f0ca51056d0d"
+    },
+    "gmr_source_2": {
+      "path": "third_party/motion_stream_bridge/motion_stream_bridge/gmr_lite/streamer.py",
+      "sha256": "b61e4b5b3d33ece5b01d3c9254bc1274cf6afb6f78f27a6e354740c64f525f18"
+    },
+    "gmr_source_3": {
+      "path": "third_party/motion_stream_bridge/motion_stream_bridge/gmr_lite/geom_utils.py",
+      "sha256": "cdd7e6c0a3f4d1ef6170864f152f5963e8918d30259e995d13bab1f43d6abf05"
+    },
+    "gmr_source_4": {
+      "path": "third_party/motion_stream_bridge/motion_stream_bridge/gmr_lite/configs/xrobot_to_vita02a.json",
+      "sha256": "5116a7ea3aabd8703c793f6143cbbba73f3bad5bd5c808b605f13b85048949b1"
+    },
+    "gmr_source_5": {
+      "path": "third_party/motion_stream_bridge/motion_stream_bridge/gmr_lite/robots/vita02a/vita02a_nomesh.xml",
+      "sha256": "53e87f274a726e64fe36403be7b24aacb283fb954a4b7c71d877b08f3124769b"
+    }
+  },
+  "sdk_version": "1.0.0rc1+bodycmdv4.6863ad7",
+  "sdk_commit": "6863ad7bbde07aefd7e369ca7ee27c0eabe2d1f8",
+  "sdk_sources": {
+    "wbc_tracking_policy.py": "8bf9ecbcce9d06fde34eaaa817fe7966354958be012f74af159cfd711ce53b9e",
+    "_policy_state.py": "d28cacb350f3c838848ba6978745cb943a2406585a26d35e06b1b1d4828f1c67",
+    "body_types.py": "a6c591cf2d9e74a0ba78fb32b76c1cba3ff86b10b273d2aae26c908daee3829e"
+  },
+  "body_profile": {
+    "joint_limits": {
+      "left_hip_pitch_joint": [
+        -2.879793,
+        1.745329
+      ],
+      "right_hip_pitch_joint": [
+        -2.879793,
+        1.745329
+      ],
+      "waist_yaw_joint": [
+        -1.570796,
+        1.570796
+      ],
+      "left_hip_roll_joint": [
+        -0.436332,
+        2.181662
+      ],
+      "right_hip_roll_joint": [
+        -2.181662,
+        0.436332
+      ],
+      "waist_pitch_joint": [
+        -0.523599,
+        0.523599
+      ],
+      "left_hip_yaw_joint": [
+        -1.570796,
+        1.570796
+      ],
+      "right_hip_yaw_joint": [
+        -1.570796,
+        1.570796
+      ],
+      "left_shoulder_pitch_joint": [
+        -2.565634,
+        2.565634
+      ],
+      "right_shoulder_pitch_joint": [
+        -2.565634,
+        2.565634
+      ],
+      "left_knee_joint": [
+        0.0,
+        2.181662
+      ],
+      "right_knee_joint": [
+        0.0,
+        2.181662
+      ],
+      "left_shoulder_roll_joint": [
+        -0.235619,
+        2.277655
+      ],
+      "right_shoulder_roll_joint": [
+        -2.277655,
+        0.235619
+      ],
+      "left_ankle_pitch_joint": [
+        -0.751,
+        0.414
+      ],
+      "right_ankle_pitch_joint": [
+        -0.751,
+        0.414
+      ],
+      "left_shoulder_yaw_joint": [
+        -2.45829625,
+        2.4281675
+      ],
+      "right_shoulder_yaw_joint": [
+        -2.4281675,
+        2.45829625
+      ],
+      "left_ankle_roll_joint": [
+        -0.43625,
+        0.43625
+      ],
+      "right_ankle_roll_joint": [
+        -0.43625,
+        0.43625
+      ],
+      "left_elbow_joint": [
+        -0.667414,
+        2.421819
+      ],
+      "right_elbow_joint": [
+        -0.667414,
+        2.421819
+      ],
+      "left_wrist_roll_joint": [
+        -2.321288,
+        2.321288
+      ],
+      "right_wrist_roll_joint": [
+        -2.32129,
+        2.32129
+      ],
+      "left_wrist_yaw_joint": [
+        -0.912807,
+        1.70519
+      ],
+      "right_wrist_yaw_joint": [
+        -1.70519,
+        0.912807
+      ],
+      "left_wrist_pitch_joint": [
+        -1.87099,
+        1.96873
+      ],
+      "right_wrist_pitch_joint": [
+        -1.87099,
+        1.96873
+      ]
+    },
+    "fixed_joints": {
+      "neck_pitch_joint": {
+        "q": 0.0,
+        "kp": 20.0,
+        "kd": 1.0
+      },
+      "neck_yaw_joint": {
+        "q": 0.0,
+        "kp": 20.0,
+        "kd": 1.0
+      }
+    },
+    "ankle_clamp_feedforward": false,
+    "lead_in": {
+      "speed_q_per_s": 1.2,
+      "min_duration_s": 0.3,
+      "max_duration_s": 3.0,
+      "stand_on_activate": true
+    },
+    "fall_tilt_threshold_rad": 0.8,
+    "schema_version": 1,
+    "command_slots": 31,
+    "state_slots": 31,
+    "source": "vita-robot 6f674d249: actions/policy_profiles/vt_human_v2_tracking_asample.yaml",
+    "body_joint_order": [
+      "left_hip_pitch_joint",
+      "left_hip_roll_joint",
+      "left_hip_yaw_joint",
+      "left_knee_joint",
+      "left_ankle_pitch_joint",
+      "left_ankle_roll_joint",
+      "right_hip_pitch_joint",
+      "right_hip_roll_joint",
+      "right_hip_yaw_joint",
+      "right_knee_joint",
+      "right_ankle_pitch_joint",
+      "right_ankle_roll_joint",
+      "waist_yaw_joint",
+      "waist_pitch_joint",
+      "waist_roll_joint",
+      "left_shoulder_pitch_joint",
+      "left_shoulder_roll_joint",
+      "left_shoulder_yaw_joint",
+      "left_elbow_joint",
+      "left_wrist_roll_joint",
+      "left_wrist_yaw_joint",
+      "left_wrist_pitch_joint",
+      "right_shoulder_pitch_joint",
+      "right_shoulder_roll_joint",
+      "right_shoulder_yaw_joint",
+      "right_elbow_joint",
+      "right_wrist_roll_joint",
+      "right_wrist_yaw_joint",
+      "right_wrist_pitch_joint",
+      "neck_pitch_joint",
+      "neck_yaw_joint"
+    ],
+    "ankle_command_space": "motor_theta"
+  },
+  "pico_max_age_s": 0.6,
+  "pico_hold_age_s": 0.25,
+  "pico_loss_action": "stand",
+  "provenance": {
+    "importer": "verified wrapped ONNX (mimiclite.tracking_contract.v1)",
+    "source_onnx_sha256": "b4241b4aff0e4e5f7c7c8f73dfb6f7da68f75f046b00bd9233a7d30616fba8d7",
+    "source_yaml_sha256": "74784eae824bd3640fef48d9b0a4a5c23d9bdde182b2201865fd98ab8f980df2",
+    "model_sha256": "2f015a57135ea0fd76e2f76f60633a3d55e835c6978432fb3c43b2de4fa78a75",
+    "actuator_schema": "mimiclite.vita02a.achilles_friction.v2",
+    "checkpoint": "hist10 v2 ROA finetune student, checkpoint_2000",
+    "robot_validation": "not_measured_for_WTT_python_control"
+  },
+  "retargeting": {
+    "implementation": "motion_stream_bridge_gmr_vita02a",
+    "source_commit": "763f5607c3f0accb61a415cfd676af54b72e1232",
+    "human_height_m": 1.8,
+    "robot": "vita02a",
+    "offset_to_ground": true,
+    "ankle_reference_limits": {
+      "pitch": [
+        -0.751,
+        0.414
+      ],
+      "roll": [
+        -0.3926987648,
+        0.3926987648
+      ]
+    }
+  },
+  "reference_window": {
+    "past_frames": 8,
+    "tail_frames": 0
+  },
+  "pico_stream": {
+    "playback_margin_s": 0.06,
+    "joint_filter": {
+      "min_cutoff_hz": 3.0,
+      "beta": 0.5,
+      "d_cutoff_hz": 1.0
+    },
+    "root_filter": {
+      "min_cutoff_hz": 1.5,
+      "beta": 0.3,
+      "d_cutoff_hz": 1.0
+    },
+    "root_max_tilt_deg": 25.0,
+    "note": "Worker ships conditioned raw GMR samples; the control loop resamples them at now - clock offset - playback_margin_s - reference delay, so the reference advances 20 ms per tick."
+  },
+  "pico_worker": {
+    "ik_max_iter": 3,
+    "reader_poll_interval_s": 0.002,
+    "worker_cpus": [
+      0,
+      2,
+      3
+    ],
+    "gmr_cpus": [
+      1
+    ],
+    "control_cpus": [
+      2,
+      3
+    ],
+    "note": "ik_max_iter caps GMR refinement passes per frame (pinned default 10). S100 native-mode layout: locomotion real-time threads own CPU 5 and the native inference thread is pinned to CPU 4, so the vendor service, SDK/readers and launcher stay on worker_cpus (start_mimiclite_native.sh enters with taskset -c 0,2,3); only the GMR calling thread moves to gmr_cpus (CPU 1, otherwise unused by the session) after receivers start. Python control threads use control_cpus, off the GMR CPU. These CPU indices assume the six-core S100. Frequency is unchanged."
+  },
+  "head_control": {
+    "enabled": true,
+    "joint_limits": {
+      "neck_yaw_joint": [
+        -1.0471975511965976,
+        1.0471975511965976
+      ],
+      "neck_pitch_joint": [
+        -0.5235987755982988,
+        0.3490658503988659
+      ]
+    },
+    "max_velocity_rad_s": null,
+    "filter_time_constant_s": 0.04
+  }
+}

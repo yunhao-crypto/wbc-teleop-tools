@@ -14,6 +14,8 @@ import locomotion_aorta.wbc_tracking_policy as sdk
 from deployment.vita_s100_aorta_30dof import actor_groot_ankle as groot
 from deployment.vita_s100_aorta_30dof import actor_supermimic as supermimic
 from deployment.vita_s100_aorta_30dof import actor_morphmimic as morph
+from deployment.vita_s100_aorta_30dof import actor_mimiclite as mimic
+from mimiclite_fixture import contract as mimic_contract
 from deployment.vita_s100_aorta_30dof.actor_parallel_ankle import MotorThetaAnkle, command_space
 from deployment.vita_s100_aorta_30dof.actor_pico_live import load_robot_config, CommandEnvelope
 from deployment.vita_s100_aorta_30dof.actor_pico_startup import StartupPlan
@@ -42,17 +44,19 @@ def contracts():
         policy_default=gc.policy_default,policy_lower=gc.policy_lower,policy_upper=gc.policy_upper,ankle=gc.ankle)
     # Output decoder is shared; actual MorphMimic input/ONNX parity has a separate integration check.
     mc=morph.MorphMimicContract(**{f: getattr(gc,f) for f in gc.__dataclass_fields__ if f!='policy_kind'})
-    return gc,sm,mc
+    # MimicLite has its own raw-action/history contract and named joint order.
+    return gc,sm,mc,mimic_contract()
 
 
 class NativeAnkleTests(unittest.TestCase):
     def policies(self):
         profile=json.loads((ROOT/'config/actor_pico.json').read_text())['body_profile']
         profile['ankle_command_space']='policy'
-        gc,sm,mc=contracts()
+        gc,sm,mc,lc=contracts()
         return [groot.create_policy(gc,copy.deepcopy(profile),sdk),
                 supermimic.policy_class(sdk)(sm,copy.deepcopy(profile),past_frames=1,tail_frames=1),
-                morph.policy_class(sdk)(mc,copy.deepcopy(profile))]
+                morph.policy_class(sdk)(mc,copy.deepcopy(profile)),
+                mimic.policy_class(sdk)(lc,dict(copy.deepcopy(profile),ankle_command_space='motor_theta'))]
 
     def test_all_three_send_ab_and_independent_gains_without_fk_or_compensation(self):
         for policy in self.policies():
@@ -80,8 +84,9 @@ class NativeAnkleTests(unittest.TestCase):
                 with self.subTest(kind=policy.contract.policy_kind, sign=sign):
                     c = policy.contract
                     cmd, row = policy.decode(np.full(28, sign*100.))
-                    expected = c.policy_default+c.scale*(sign*c.action_clip)
-                    np.testing.assert_array_equal(policy.last_action, sign*c.action_clip)
+                    magnitude = c.action_clip if getattr(policy,'clip_actions',True) else 100.
+                    expected = c.policy_default+c.scale*(sign*magnitude)
+                    np.testing.assert_array_equal(policy.last_action, sign*magnitude)
                     np.testing.assert_allclose(row['target'], expected)
                     self.assertFalse(any(row['clamped']))
                     self.assertFalse(any(row['tau_ff']))
@@ -99,6 +104,10 @@ class NativeAnkleTests(unittest.TestCase):
     def test_legacy_wire_path_retains_fk(self):
         for policy in self.policies():
             policy.profile['ankle_command_space']='virtual_pitch_roll'
+            if isinstance(policy.contract,mimic.MimicLiteContract):
+                with self.assertRaisesRegex(ValueError,'motor_theta command space'):
+                    policy.decode(np.zeros(28))
+                continue
             cmd,row=policy.decode(np.zeros(28))
             for i in policy.contract.ankle.slots:
                 self.assertAlmostEqual(cmd.joints[policy.mapping[i]].q,policy.contract.default[i],places=6)
@@ -248,7 +257,8 @@ class NativeAnkleTests(unittest.TestCase):
                     # the actor still validates its policy envelope locally.
                     from locomotion_aorta.controller import _validate_body_targets
                     _validate_body_targets(extreme,body,envelope.target_names,0x1f)
-                    expected = policy.contract.policy_default+policy.contract.scale*policy.contract.action_clip
+                    magnitude = policy.contract.action_clip if getattr(policy,'clip_actions',True) else 100.
+                    expected = policy.contract.policy_default+policy.contract.scale*magnitude
                     for i, slot in enumerate(policy.mapping):
                         self.assertEqual(extreme.joints[slot].q, float(np.float32(expected[i])))
                     first = int(policy.mapping[0])
@@ -284,7 +294,8 @@ class NativeAnkleTests(unittest.TestCase):
         for policy in self.policies():
             _,runtime=self.config(policy)
             motion=ActorPicoRuntime.hold_motion(runtime)
-            expected=policy.contract.nominal_root_height if isinstance(policy.contract,morph.MorphMimicContract) else 0.
+            expected=(policy.contract.nominal_root_height
+                      if isinstance(policy.contract,(morph.MorphMimicContract,mimic.MimicLiteContract)) else 0.)
             self.assertAlmostEqual(motion.base[0,2],expected)
 
     def test_native_caps_must_fit_float32_wire_fields(self):

@@ -3,7 +3,7 @@ set -euo pipefail
 ROOT=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 PICO_ONLY=0
 if [[ -f "$ROOT/config/actor_smpl.json" && ! -f "$ROOT/config/actor_pico.json" ]]; then PICO_ONLY=1; fi
-USAGE='Usage: start_actor_pico.sh [sonic|supermimic|morphmimic|pico_smpl|pico_teleop] [connect|check|replay|motion-check|state-check|shadow|configure|live|auto] [options] [--no-camera] [--camera-topic TOPIC]'
+USAGE='Usage: start_actor_pico.sh [sonic|supermimic|morphmimic|pico_smpl|pico_teleop|mimiclite|supermimic_op3] [connect|check|replay|motion-check|state-check|shadow|configure|live|auto] [options] [--no-camera] [--camera-topic TOPIC]'
 # The actor policy is always an explicit choice: a positional name, --policy,
 # or the interactive menu. There is no default and no substitute policy.
 POLICY=
@@ -12,15 +12,15 @@ choose_policy() {
     echo 'This isolated Pico R4 delivery supports pico_smpl and pico_teleop only; use the original deployment for other policies.' >&2; exit 2
   fi
   case "$1" in
-    sonic|supermimic|morphmimic|pico_smpl|pico_teleop) ;;
-    *) echo "Unknown policy '$1'; choose sonic, supermimic, morphmimic, pico_smpl or pico_teleop. $USAGE" >&2; exit 2 ;;
+    sonic|supermimic|morphmimic|pico_smpl|pico_teleop|mimiclite|supermimic_op3) ;;
+    *) echo "Unknown policy '$1'; choose sonic, supermimic, morphmimic, pico_smpl, pico_teleop, mimiclite or supermimic_op3. $USAGE" >&2; exit 2 ;;
   esac
   if [[ -n "$POLICY" && "$POLICY" != "$1" ]]; then
     echo "Conflicting policy selections: $POLICY and $1; nothing started." >&2; exit 2
   fi
   POLICY=$1
 }
-if [[ "${1:-}" == sonic || "${1:-}" == supermimic || "${1:-}" == morphmimic || "${1:-}" == pico_smpl || "${1:-}" == pico_teleop ]]; then
+if [[ "${1:-}" == sonic || "${1:-}" == supermimic || "${1:-}" == morphmimic || "${1:-}" == pico_smpl || "${1:-}" == pico_teleop || "${1:-}" == mimiclite || "${1:-}" == supermimic_op3 ]]; then
   choose_policy "$1"; shift
 fi
 if [[ "${1:-}" == --help || "${1:-}" == -h ]]; then
@@ -35,7 +35,7 @@ case "$MODE" in
   connect|auto|check|replay|motion-check|state-check|shadow|live|configure) shift ;;
   *) echo "$USAGE" >&2; exit 2 ;;
 esac
-if [[ "${1:-}" == sonic || "${1:-}" == supermimic || "${1:-}" == morphmimic || "${1:-}" == pico_smpl || "${1:-}" == pico_teleop ]]; then
+if [[ "${1:-}" == sonic || "${1:-}" == supermimic || "${1:-}" == morphmimic || "${1:-}" == pico_smpl || "${1:-}" == pico_teleop || "${1:-}" == mimiclite || "${1:-}" == supermimic_op3 ]]; then
   choose_policy "$1"; shift
 fi
 HELP=0
@@ -47,7 +47,7 @@ while (( $# )); do
     --motion-config) (( $# >= 2 )) || { echo '--motion-config requires a path' >&2; exit 2; }
               FILE_REFERENCE=1; REST+=("$1" "$2"); shift 2 ;;
     --motion-config=*) FILE_REFERENCE=1; REST+=("$1"); shift ;;
-    --policy) (( $# >= 2 )) || { echo '--policy requires sonic, supermimic, morphmimic, pico_smpl or pico_teleop' >&2; exit 2; }
+    --policy) (( $# >= 2 )) || { echo '--policy requires sonic, supermimic, morphmimic, pico_smpl, pico_teleop, mimiclite or supermimic_op3' >&2; exit 2; }
               choose_policy "$2"; shift 2 ;;
     --policy=*) choose_policy "${1#--policy=}"; shift ;;
     --no-camera) CAMERA_OPTIONS+=("$1"); shift ;;
@@ -75,8 +75,12 @@ if [[ "$MODE" != configure && "$MODE" != connect && $HELP == 0 && -z "$POLICY" ]
       fi
       echo '  4) pico_smpl   SMPL human encoder'
       echo '  5) pico_teleop three-point encoder'
+      if [[ $PICO_ONLY == 0 ]]; then
+        echo '  6) mimiclite   MimicLite actor    config/actor_pico_mimiclite.json'
+        echo '  7) supermimic_op3  SuperMimic OP3 actor  config/actor_pico_supermimic_op3.json'
+      fi
     } >&2
-    if [[ $PICO_ONLY == 1 ]]; then POLICY_PROMPT='Policy [4/5]: '; else POLICY_PROMPT='Policy [1/2/3/4/5]: '; fi
+    if [[ $PICO_ONLY == 1 ]]; then POLICY_PROMPT='Policy [4/5]: '; else POLICY_PROMPT='Policy [1/2/3/4/5/6/7]: '; fi
     read -r -p "$POLICY_PROMPT" answer || answer=
     case "$answer" in
       1|sonic) choose_policy sonic ;;
@@ -84,6 +88,8 @@ if [[ "$MODE" != configure && "$MODE" != connect && $HELP == 0 && -z "$POLICY" ]
       3|morphmimic) choose_policy morphmimic ;;
       4|pico_smpl) choose_policy pico_smpl ;;
       5|pico_teleop) choose_policy pico_teleop ;;
+      6|mimiclite) choose_policy mimiclite ;;
+      7|supermimic_op3) choose_policy supermimic_op3 ;;
       *) echo 'No policy selected; nothing started.' >&2; exit 2 ;;
     esac
   else

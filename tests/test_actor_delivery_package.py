@@ -39,8 +39,27 @@ class PackageTests(unittest.TestCase):
                 self.assertEqual(manifest['source'], self.built[variant]['source'])
                 self.assertEqual(manifest['target']['architecture'], 'aarch64')
                 self.assertEqual({i['role'] for i in manifest['external_resources']},
-                    {'sonic_actor', 'supermimic_actor', 'morphmimic_actor'} |
+                    {'sonic_actor', 'supermimic_actor', 'morphmimic_actor', 'mimiclite_actor',
+                     'supermimic_op3_actor'} |
                     ({'planner', 'bridge'} if variant == 'planner' else set()))
+
+    def test_mimiclite_readiness_is_explicit_and_sdk_mismatch_is_refused(self):
+        from bootstrap_actor_s100 import configured_model
+        config = json.loads((ROOT/'config/actor_pico_mimiclite.json').read_text())
+        for package in self.packages.values():
+            model, = [m for m in verify(package)['external_resources'] if m['role'] == 'mimiclite_actor']
+            self.assertIs(model['configured'], config['model_ready'])
+            module = package/'src/deployment/vita_s100_aorta_30dof'
+            for name in ('actor_mimiclite.py', 'actor_morphmimic.py', 'actor_supermimic_op3.py'):
+                self.assertTrue((module/name).is_file(), name)
+            self.assertTrue((package/'artifacts/supermimic_op3/actor.contract.json').is_file())
+            self.assertTrue((package/'third_party/supermimic/LICENSE').is_file())
+            sealed = json.loads((package/'config/sdk021-wheel-guard.json').read_text())['sdk_version']
+            if config['sdk_version'] != sealed:
+                with self.assertRaisesRegex(RuntimeError, 'requires SDK'):
+                    configured_model(package, 'mimiclite')
+            self.assertEqual(configured_model(package, 'supermimic_op3')['path'],
+                             'artifacts/supermimic_op3/actor.onnx')
 
     def test_archive_contains_runtime_only_and_one_manifest(self):
         for package in self.packages.values():

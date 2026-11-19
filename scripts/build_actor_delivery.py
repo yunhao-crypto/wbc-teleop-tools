@@ -88,12 +88,25 @@ def runtime_inputs(root, variant):
                      and '__pycache__' not in p.parts)
     names.update(('third_party/motion_stream_bridge/GMR-LICENSE',
                   'third_party/pico_binding/LICENSE', 'third_party/double-conversion/LICENSE'))
+    names.update(('third_party/supermimic/LICENSE', 'third_party/supermimic/NOTICE',
+                  'artifacts/supermimic_op3/actor.contract.json'))
     names.update(item['path'] for item in ARCHIVES)
     external = []
     for policy, name in POLICY_CONFIGS.items():
         names.add(name)
         config = json.loads((root/name).read_text())
-        external.append(dict(config['artifacts']['model'], role=policy+'_actor'))
+        model = dict(config['artifacts']['model'], role=policy+'_actor')
+        if policy == 'mimiclite':
+            ready = config.get('model_ready')
+            if type(ready) is not bool:
+                raise RuntimeError('MimicLite model_ready must be explicit')
+            model['configured'] = ready
+            if not ready and (model.get('sha256') is not None or model.get('bytes') is not None):
+                raise RuntimeError('Unconfigured MimicLite must not carry a fabricated model identity')
+            if ready and (not isinstance(model.get('sha256'), str) or len(model['sha256']) != 64
+                          or type(model.get('bytes')) is not int or model['bytes'] <= 0):
+                raise RuntimeError('Configured MimicLite requires a pinned model size/SHA256')
+        external.append(model)
         for key, item in config['artifacts'].items():
             if key == 'model':
                 continue

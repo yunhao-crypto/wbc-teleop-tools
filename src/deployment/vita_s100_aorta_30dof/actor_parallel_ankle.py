@@ -233,8 +233,17 @@ def decode_motor_theta(policy, math_api, raw_action, **timing):
     action = np.asarray(raw_action, dtype=np.float64)
     if action.shape != (28,) or not np.isfinite(action).all():
         raise ValueError('model output must have 28 finite actions')
-    policy.last_action = np.clip(action, -c.action_clip, c.action_clip).astype(np.float32)
-    raw_q = c.policy_default+c.scale*policy.last_action.astype(np.float64)
+    # SONIC/SuperMimic clip their actions; MimicLite's raw mean action and
+    # previous-action history must not acquire a new deployment-time clamp.
+    if getattr(policy, 'clip_actions', True):
+        action = np.clip(action, -c.action_clip, c.action_clip)
+    with np.errstate(over='ignore', invalid='ignore'):
+        last_action = action.astype(np.float32)
+        raw_q = c.policy_default+c.scale*last_action.astype(np.float64)
+        representable = raw_q.astype(np.float32)
+    if not np.isfinite(last_action).all() or not np.isfinite(representable).all():
+        raise ValueError('Motor policy action/target cannot be represented as finite float32')
+    policy.last_action = last_action
     # PD setpoints may exceed travel; physical limits belong to the plant.
     motor_q = raw_q.copy()
     slots = c.ankle.slots

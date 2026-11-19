@@ -120,6 +120,14 @@ class ProfileTests(unittest.TestCase):
                 self.assertNotIn('calibration_profile', settings)
                 self.assertNotIn('foot_support', settings)
                 self.assertIsNotNone(stream_settings(config))
+        for name in ('actor_pico_mimiclite.json', 'actor_pico_supermimic_op3.json'):
+            with self.subTest(config=name):
+                # Shipped retargeting defaults only; these models are supplied separately.
+                config = json.loads((ROOT/'config'/name).read_text())
+                self.assertEqual(config['retargeting']['human_height_m'], 1.8)
+                self.assertNotIn('calibration_profile', config['retargeting'])
+                self.assertNotIn('foot_support', config['retargeting'])
+                self.assertIsNotNone(stream_settings(config))
         self.assertEqual(self.profile['human_height_m'], 1.8)
         self.assertNotIn('root_max_tilt_deg', load_actor_config(ROOT, 'sonic')['pico_stream'])
         rt = self.retarget()
