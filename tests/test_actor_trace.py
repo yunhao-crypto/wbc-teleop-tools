@@ -210,6 +210,101 @@ class TraceTests(unittest.TestCase):
         self.assertNotEqual(ready['producer'], admit['producer'])
         self.assertEqual(reference.runtime.trace_planner_result_id, accepted)
 
+    def reference_runtime(self, trace):
+        runtime = ActorPicoRuntime.__new__(ActorPicoRuntime)
+        runtime.trace, runtime.policy_name = trace, 'synthetic-reference-test'
+        runtime.config = {'pico_max_age_s': .3, 'pico_hold_age_s': .1}
+        runtime.reference = NS(steps=11, current_index=0, delay=.2, ref_time=0.)
+        runtime.held_motion = None
+        runtime.math = NS(Motion=lambda q, base, quat: NS(q=q, base=base, quat=quat), yaw=lambda _: 0.)
+        runtime.model = NS(backend='synthetic-test', infer=lambda observation: np.ones(2))
+        runtime.policy = NS(order=(), observe=lambda *args: np.zeros(3),
+                            decode=lambda action: (NS(joints=()), {}))
+        motion = runtime.math.Motion(np.zeros((11,28)), np.zeros((11,3)), np.tile([1.,0,0,0],(11,1)))
+        runtime.hold_motion = lambda: motion
+        return runtime, motion
+
+    def snapshot(self, identity, motion, age=0.):
+        return dict(state='ready', received_monotonic=1.-age, trace_input_id=identity,
+                    q=motion.q, base=motion.base, quat=motion.quat,
+                    retarget_ms=0., gmr_task_error=0.)
+
+    def consumption(self):
+        reader = Reader(self.path)
+        rows = list(reader)
+        self.assertTrue(reader.integrity.complete, reader.integrity.issues)
+        return [r for r in rows if r['kind'] == Kind.TRACE_LINK
+                and r['stage'] == 12+STAGES.index('planner_consume')]
+
+    def test_planner_and_pico_both_link_to_the_same_actual_actor_inference(self):
+        from test_actor_sonic_planner import Tests
+        from deployment.vita_s100_aorta_30dof.actor_pico_live import pico_reference_command
+        with Trace(self.path, stages=STAGES) as trace:
+            runtime, motion = self.reference_runtime(trace)
+            planner = Tests().pending_reference(10)
+            planner.runtime = runtime
+            runtime.planner = planner
+            pico = trace.new_id()
+            pico_reference_command(runtime, self.snapshot(pico,motion), 1., q=np.zeros(28), dq=(), root=(), gyro=())
+            accepted, inference = planner.trace_result_id, runtime.last_trace_inference_id
+        links = self.consumption()
+        self.assertEqual([(r['integers'],r['reference_id']) for r in links], [([1],accepted),([2],pico)])
+        self.assertEqual({r['inference_id'] for r in links}, {inference})
+
+    def test_stale_or_invalid_pico_upper_never_creates_a_false_consumption_edge(self):
+        from test_actor_sonic_planner import Tests
+        from deployment.vita_s100_aorta_30dof.actor_pico_live import pico_reference_command
+        with Trace(self.path, stages=STAGES) as trace:
+            runtime, motion = self.reference_runtime(trace)
+            planner = Tests().pending_reference(10)
+            planner.runtime, runtime.planner = runtime, planner
+            for snap in (self.snapshot(trace.new_id(),motion,age=.2), {'state':'waiting_pico'}):
+                runtime.trace_input_id = trace.new_id()  # Provenance left by an older good snapshot.
+                pico_reference_command(runtime, snap, 1., q=np.zeros(28), dq=(), root=(), gyro=())
+        links = self.consumption()
+        self.assertEqual(len(links),2)
+        self.assertTrue(all(r['integers'] == [1] for r in links))
+
+    def test_loading_ignores_upper_unless_the_live_arm_follower_actually_uses_it(self):
+        from concurrent.futures import Future
+        from test_actor_sonic_planner import Tests
+        from deployment.vita_s100_aorta_30dof.actor_pico_live import pico_reference_command
+        from deployment.vita_s100_aorta_30dof.actor_sonic_planner import ArmFusion,VITA_NAMES
+        with Trace(self.path, stages=STAGES) as trace:
+            runtime, motion = self.reference_runtime(trace)
+            planner = Tests().pending_reference(10)
+            planner.runtime, runtime.planner = runtime, planner
+            planner.clip, planner.future = None, Future()
+            planner.stick.armed = False
+            pico = trace.new_id()
+            snap = self.snapshot(pico,motion)
+            pico_reference_command(runtime,snap,1.,q=np.zeros(28),dq=(),root=(),gyro=())
+            self.assertFalse(runtime.trace_pico_upper_used)
+            fusion = ArmFusion(VITA_NAMES,np.zeros(28))
+            runtime.teleop_modes = NS(mode='joystick',stage='ready',needs_center=False,entry=None,
+                upper_follow=fusion, stick_sample=lambda *args: None,
+                filter=lambda motion,heading:(motion,heading),
+                follow_upper=lambda motion,upper: runtime.math.Motion(*fusion.apply((motion.q,motion.base,motion.quat),upper)))
+            pico_reference_command(runtime,snap,1.,q=np.zeros(28),dq=(),root=(),gyro=())
+        links = self.consumption()
+        self.assertEqual([(r['integers'],r['reference_id']) for r in links],[([2],pico)])
+
+    def test_stand_does_not_consume_residual_reference_ids(self):
+        with Trace(self.path, stages=STAGES) as trace:
+            runtime,_ = self.reference_runtime(trace)
+            runtime.trace_input_id,runtime.trace_planner_result_id = trace.new_id(),trace.new_id()
+            runtime.infer_motion_command(None,q=(),dq=(),root=(),gyro=())
+        self.assertEqual(self.consumption(),[])
+
+    def test_held_pico_reference_links_to_its_original_snapshot(self):
+        from deployment.vita_s100_aorta_30dof.actor_pico_live import pico_reference_command
+        with Trace(self.path, stages=STAGES) as trace:
+            runtime,motion = self.reference_runtime(trace)
+            first = trace.new_id()
+            for identity in (first,trace.new_id()):
+                pico_reference_command(runtime,self.snapshot(identity,motion,age=.2),1.,q=(),dq=(),root=(),gyro=())
+        self.assertEqual([(r['integers'],r['reference_id']) for r in self.consumption()],[([2],first),([2],first)])
+
     def test_grip_trace_preserves_invalid_input_open_and_records_real_decision(self):
         import test_actor_pico_gripper as fixture
         fixture.FakeClient.infos, fixture.FakeClient.created = {}, []

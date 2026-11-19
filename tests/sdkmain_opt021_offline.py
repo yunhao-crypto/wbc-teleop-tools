@@ -147,6 +147,15 @@ class FakePull:
         self.latest = latest; self.calls = []; self.closed = 0
         self.transport = types.SimpleNamespace(node=types.SimpleNamespace(group=lambda: group))
 
+    def get_robot_info(self, timeout):
+        from aorta.services.common.ServiceStatus import ServiceStatus
+        joints = tuple(types.SimpleNamespace(body_index=i, is_mock=i == 14)
+                       for i in range(31))
+        body = types.SimpleNamespace(slot_count=31, joint_names=boundary.BODY_NAMES,
+                                     joints=joints)
+        return types.SimpleNamespace(status=ServiceStatus.SUCCESS,
+            info=types.SimpleNamespace(protocol_version=2, body=body))
+
     def wait_state(self, timeout):
         self.calls.append(timeout)
         if self.closed:

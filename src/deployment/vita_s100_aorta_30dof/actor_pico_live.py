@@ -542,6 +542,8 @@ def pico_reference_command(runtime, snapshot, now, *, q, dq, root, gyro, yaw_off
     from .actor_teleop_modes import active_planner
     planner = active_planner(runtime)
     runtime.trace_planner_result_id = 0
+    runtime.trace_input_id = 0
+    runtime.trace_pico_upper_used = False
     modes=getattr(runtime,'teleop_modes',None)
     if planner is not None:
         try:
@@ -556,12 +558,18 @@ def pico_reference_command(runtime, snapshot, now, *, q, dq, root, gyro, yaw_off
             if extra['planner_state'] not in ('loading','waiting_previous'):
                 motion,heading=modes.filter(motion,heading)
             motion=modes.follow_upper(motion,upper_q)
+            if getattr(modes, 'upper_follow', None) is not None and upper_q is not None:
+                runtime.trace_pico_upper_used = True
             extra.update(teleop_mode=modes.mode,teleop_mode_stage=modes.stage,
                 stick_armed=planner.stick.armed,stick_needs_center=modes.needs_center,
                 reference_limiter_active=modes.entry is not None)
         diagnostics.update(extra)
+        trace_inputs = ()
+        if getattr(runtime, 'trace', None) is not None:
+            trace_inputs = ((1, runtime.trace_planner_result_id),
+                            (2, runtime.trace_input_id if runtime.trace_pico_upper_used else 0))
         command, obs, row = runtime.infer_motion_command(motion,q=q,dq=dq,root=root,gyro=gyro,
-            diagnostics=diagnostics,yaw_offset=heading,ref_time=0.)
+            diagnostics=diagnostics,yaw_offset=heading,ref_time=0.,trace_inputs=trace_inputs)
         row['pico_reference'] = dict(q=motion.q.tolist(),root_wxyz=motion.quat.tolist(),
             base=motion.base.tolist(),ref_time=0.,yaw_offset=heading,source='planner_legs_pico_arms',
             timestamp_ns=snapshot.get('pico_timestamp_ns'),sticks=snapshot.get('planner_sticks'))
@@ -571,6 +579,8 @@ def pico_reference_command(runtime, snapshot, now, *, q, dq, root, gyro, yaw_off
         yaw_offset = reference_yaw(runtime, motion, root)
     motion, diagnostics['reference_hold'] = runtime.hold_stale_reference(
         motion, diagnostics['pico_age_s'])
+    reference_id = (runtime.trace_held_input_id if diagnostics['reference_hold']
+                    else runtime.trace_input_id)
     if modes is not None:
         upper_q=motion.q.copy()
         motion,yaw_offset=modes.filter(motion,yaw_offset)
@@ -578,7 +588,7 @@ def pico_reference_command(runtime, snapshot, now, *, q, dq, root, gyro, yaw_off
         diagnostics.update(teleop_mode=modes.mode,teleop_mode_stage=modes.stage)
     command, obs, row = runtime.infer_motion_command(motion, q=q, dq=dq,
         root=root, gyro=gyro, diagnostics=diagnostics, yaw_offset=yaw_offset,
-        ref_time=runtime.reference.ref_time)
+        ref_time=runtime.reference.ref_time, trace_inputs=((2, reference_id),))
     row['pico_reference'] = dict(q=motion.q.tolist(), root_wxyz=motion.quat.tolist(),
         base=motion.base.tolist(), ref_time=runtime.reference.ref_time,
         raw_body_poses=snapshot.get('raw_body_poses'),

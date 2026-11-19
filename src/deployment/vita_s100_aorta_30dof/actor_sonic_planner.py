@@ -6,7 +6,6 @@ Quaternions are wxyz throughout. The actor remains the only motor policy.
 """
 from concurrent.futures import ThreadPoolExecutor
 from array import array
-from contextlib import nullcontext
 from dataclasses import dataclass
 import hashlib
 import json
@@ -152,8 +151,7 @@ class PlannerPipeline:
                 specific_target_headings=np.zeros((1,4),np.float32),
                 allowed_pred_num_tokens=np.array([[int(24+4*i in self.allowed_counts) for i in range(11)]],np.int64),height=np.array([-1],np.float32))
         started=time.perf_counter()
-        trace = getattr(getattr(self, 'runtime', None), 'trace', None)
-        with trace.span('planner_infer', inference_id=identity) if trace is not None else nullcontext() as capture:
+        with trace_span(runtime, 'planner_infer', inference_id=identity) as capture:
             pred,count=self.planner.run(['mujoco_qpos','num_pred_frames'],inputs)
         self.last_trace_planner_id = capture.inference_id if capture is not None else 0
         self.last_inference_ms=(time.perf_counter()-started)*1000
@@ -190,8 +188,7 @@ class PlannerPipeline:
             w,x,y,z=motion[:,3:7].T
             gravity=np.stack((-2*(x*z-w*y),-2*(y*z+w*x),-(1-2*(x*x+y*y))),axis=1)
             features=np.concatenate(features+[gravity],axis=1).astype(np.float32)
-        trace = getattr(getattr(self, 'runtime', None), 'trace', None)
-        with trace.span('planner_map', inference_id=identity) if trace is not None else nullcontext() as capture:
+        with trace_span(runtime, 'planner_map', inference_id=identity) as capture:
             residual=self.bridge.run(['joint_residual'],{'window_features':features})[0]
         self.last_trace_map_id = capture.inference_id if capture is not None else 0
         with trace_span(runtime, 'map_postprocess', inference_id=identity):
@@ -352,6 +349,7 @@ class PlannerReference:
     def tick(self, upper, stick_sample, now, robot_root, *, robot_q, input_enabled=True):
         r=self.runtime
         r.trace_planner_result_id = 0
+        r.trace_pico_upper_used = False
         self.control_tick+=1
         if not self.active:
             if self.future is not None and not self.future.done():
@@ -423,6 +421,7 @@ class PlannerReference:
                 indices=np.minimum(self.lead_cursor+np.arange(self.steps),len(self.lead[0])-1)
                 lower=tuple(x[indices].copy() for x in self.lead)
                 self.lead_cursor+=1
+                r.trace_pico_upper_used = upper is not None
                 return r.math.Motion(*self.fusion.apply(lower,upper)),self.heading,dict(
                     planner_state='lead_in',planner_cursor=self.cursor,planner_lead_frame=self.lead_cursor,
                     planner_lead_frames=len(self.lead[0])-1)
@@ -440,6 +439,7 @@ class PlannerReference:
             self.last_request=self.control_tick;self.last_command=command
         indices=np.minimum(local+np.arange(self.steps),len(self.clip[0])-1)
         lower=tuple(x[indices].copy() for x in self.clip)
+        r.trace_pico_upper_used = upper is not None
         fused=self.fusion.apply(lower,upper)
         self.cursor=min(self.cursor+1,self.origin+len(self.clip[0])-1)
         return r.math.Motion(*fused),self.heading,dict(planner_state='tracking',planner_cursor=self.cursor,

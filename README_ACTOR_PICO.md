@@ -15,6 +15,12 @@ launchers, SDK installation and protocol guards are not replaced.
 
 ## FBS Trace development integration
 
+Reference-consumption links share the actual Actor inference ID. Their
+`planner_consume` integer column `source_role` is `1` for an accepted Planner
+result and `2` for a Pico reference. Mixed Planner/Pico-arm inference records
+both inputs. Loading/stand or stale upper input adds no unused-source link;
+a held Pico reference keeps the snapshot ID from which the hold was created.
+
 Trace uses the installed SDK's recorder and automatic SDK call instrumentation.
 The three Actor profiles pin SDK #27 at `6d4fa5920296a3b5c599cfad7a762b5b7bbee7f6`,
 whose tree matches SDK main at `3a7475136c48db299e6997b65790243e46bce1ca`.

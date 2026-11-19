@@ -505,6 +505,8 @@ def main():
                 Trace(args.trace_output, stages=TRACE_STAGES))
         runtime.trace = args._trace_recorder
         if runtime.trace is not None:
+            runtime.trace.define('planner_consume', dict(integer_columns=['source_role'],
+                source_roles={'1': 'planner', '2': 'pico_reference'}))
             runtime.trace.define('cycle', dict(mode=args.mode, feedback_source=(
                 'synthetic_model_stand' if args.mode == 'check' else 'replay_input' if args.mode == 'replay' else 'robot'),
                 policy=args.policy, **ankle_type(runtime)))

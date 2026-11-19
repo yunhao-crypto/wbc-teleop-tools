@@ -282,11 +282,13 @@ class ActorPicoRuntime:
         """
         if age <= self.config['pico_hold_age_s']:
             self.held_motion = None
+            self.trace_held_input_id = 0
             return motion, False
         if self.held_motion is None:
             i, n = self.reference.current_index, len(motion.q)
             frame = lambda x: np.repeat(np.asarray(x)[i:i+1], n, axis=0)
             self.held_motion = self.math.Motion(frame(motion.q), frame(motion.base), frame(motion.quat))
+            self.trace_held_input_id = getattr(self, 'trace_input_id', 0)
         return self.held_motion, True
 
     def infer_motion(self, motion, *, q, dq, root, gyro, diagnostics=None):
@@ -295,7 +297,7 @@ class ActorPicoRuntime:
         return observation, row
 
     def infer_motion_command(self, motion, *, q, dq, root, gyro,
-                             diagnostics=None, ref_time=0., yaw_offset=0.):
+                             diagnostics=None, ref_time=0., yaw_offset=0., trace_inputs=()):
         """Return the complete inert SDK command, including ankle feedforward.
 
         Only the explicit live runner may publish it. Offline/shadow callers
@@ -307,10 +309,11 @@ class ActorPicoRuntime:
         inference = trace.new_id() if trace is not None else 0
         self.last_trace_iteration_id = iteration
         if trace is not None:
-            reference = getattr(self, 'trace_planner_result_id', 0) or getattr(self, 'trace_input_id', 0)
-            if reference:
-                trace.mark('planner_consume', kind=17, iteration_id=iteration,
-                           inference_id=inference, reference_id=reference)
+            for role, reference in trace_inputs:
+                if reference:
+                    trace.mark('planner_consume', kind=17, iteration_id=iteration,
+                               inference_id=inference, reference_id=reference,
+                               integers=array('Q', [role]))
         with trace_span(self, 'actor_observe', iteration_id=iteration, inference_id=inference):
             observation = self.policy.observe(motion, ref_time, q, dq, root, gyro, yaw_offset)
         if trace is not None:
