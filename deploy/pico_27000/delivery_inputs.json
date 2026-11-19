@@ -1,0 +1,244 @@
+{
+  "schema": "vita_pico_27000_build_inputs_v1",
+  "template": {
+    "schema": "vita_actor_s100_delivery_v2",
+    "variant": "base",
+    "target": {
+      "os": "Linux",
+      "architecture": "aarch64",
+      "python": "3.10",
+      "glibc_min": "2.35"
+    },
+    "requirements": "deploy/actor_s100/requirements.txt",
+    "archives": [
+      {
+        "path": "deploy/actor_s100/runtime/pico_service_arm64.tar.gz",
+        "role": "pico_service",
+        "destination": "vendor_packages/xrobotoolkit-arm64/opt/apps/roboticsservice",
+        "required_members": [
+          "RoboticsServiceProcess",
+          "SDK/arm64/libPXREARobotSDK.so",
+          "libPXREAGRPCServer.so",
+          "plugins/platforms/libqoffscreen.so",
+          "epDBBackup.s3db"
+        ]
+      },
+      {
+        "path": "deploy/actor_s100/runtime/pico_binding_cp310_aarch64.tar.gz",
+        "role": "pico_binding",
+        "destination": "build/pico",
+        "required_members": [
+          "xrobotoolkit_sdk.cpython-310-aarch64-linux-gnu.so",
+          "libdouble-conversion.so.3"
+        ]
+      }
+    ],
+    "external_resources": [],
+    "pico_inputs_release": {
+      "schema": "vita_pico_inputs_s100_physical_v1",
+      "primary_route": "pico_smpl",
+      "motion_enabled": true,
+      "backend": "ort",
+      "offline_check": {
+        "input": {
+          "path": "checks/pico_historical_75frames.npz",
+          "sha256": "1d744df8f8376b2c6d2a6e9e1454d6667dd00369e8f1b0a5680c0ecd8c644b11"
+        },
+        "triggers": {
+          "path": "checks/synthetic_trigger_scenario.json",
+          "sha256": "4b301f05fbe1fe6bee8c0a0b54edead8fb27f923f4dad05974c5ecfb14c4a8d7"
+        }
+      },
+      "delivery_version": "35000-pico-only-r4",
+      "isolated_sdk": true,
+      "unified_environment": false,
+      "allowed_policies": [
+        "pico_smpl",
+        "pico_teleop"
+      ],
+      "physical_workflow": true,
+      "physical_backend": "sdk",
+      "physical_entry": "scripts/start_actor_pico.sh",
+      "installation_actions_sent": 0,
+      "body_cmd_protocol_version": 4,
+      "sdk_version": "1.0.0rc1+bodycmdv4.6863ad7",
+      "aligned_routes": [
+        "pico_smpl",
+        "pico_teleop"
+      ],
+      "upstream_commit": "ca0aa6ec8496d0c65932350b38eba5103f570140",
+      "checkpoint_iteration": 35000
+    }
+  },
+  "source_files": [
+    {
+      "path": "README_PICO.md",
+      "source": "README_PICO_27000.md"
+    },
+    {
+      "path": "src/deployment/vita_s100_aorta_30dof/onboard_preprocessing.py",
+      "source": "src/deployment/vita_s100_aorta_30dof/onboard_preprocessing.py"
+    },
+    {
+      "path": "artifacts/actor_threepoint/control_contract.json",
+      "source": "artifacts/actor_threepoint/control_contract.json"
+    },
+    {
+      "path": "artifacts/actor_threepoint/teleop_site_interface.json",
+      "source": "artifacts/actor_threepoint/teleop_site_interface.json"
+    },
+    {
+      "path": "config/actor_smpl.json",
+      "source": "config/actor_smpl.json"
+    },
+    {
+      "path": "config/actor_threepoint.json",
+      "source": "config/actor_threepoint.json"
+    },
+    {
+      "path": "config/pico_inputs.json",
+      "source": "config/pico_inputs.json"
+    },
+    {
+      "path": "config/pico_smpl_live.json",
+      "source": "config/pico_smpl_live.json"
+    },
+    {
+      "path": "config/pico_teleop_live.json",
+      "source": "config/pico_teleop_live.json"
+    },
+    {
+      "path": "config/sdk021-wheel-guard.json",
+      "source": "config/pico_27000_sdk_guard.json"
+    },
+    {
+      "path": "config/sonic_smpl_27000_contract.json",
+      "source": "config/sonic_smpl_27000_contract.json"
+    },
+    {
+      "path": "config/sonic_threepoint_27000_contract.json",
+      "source": "config/sonic_threepoint_27000_contract.json"
+    },
+    {
+      "path": "deploy/actor_s100/requirements.txt",
+      "source": "deploy/pico_27000/requirements.txt"
+    },
+    {
+      "path": "scripts/bootstrap_pico_inputs_s100.py",
+      "source": "scripts/bootstrap_pico_inputs_s100.py"
+    },
+    {
+      "path": "scripts/check_pico_aligned.py",
+      "source": "scripts/check_pico_aligned.py"
+    },
+    {
+      "path": "scripts/pico_actor_aligned.py",
+      "source": "scripts/pico_actor_aligned.py"
+    },
+    {
+      "path": "scripts/pico_aligned_modes.py",
+      "source": "scripts/pico_aligned_modes.py"
+    },
+    {
+      "path": "scripts/pico_inputs.py",
+      "source": "scripts/pico_inputs.py"
+    },
+    {
+      "path": "scripts/verify_bodycmd4_codec.py",
+      "source": "scripts/verify_bodycmd4_codec.py"
+    },
+    {
+      "path": "src/deployment/vita_s100_aorta_30dof/actor_human_encoder.py",
+      "source": "src/deployment/vita_s100_aorta_30dof/actor_human_encoder.py"
+    },
+    {
+      "path": "src/deployment/vita_s100_aorta_30dof/actor_smpl.py",
+      "source": "src/deployment/vita_s100_aorta_30dof/actor_smpl.py"
+    },
+    {
+      "path": "src/deployment/vita_s100_aorta_30dof/actor_threepoint.py",
+      "source": "src/deployment/vita_s100_aorta_30dof/actor_threepoint.py"
+    },
+    {
+      "path": "src/deployment/vita_s100_aorta_30dof/pico_aligned_runtime.py",
+      "source": "src/deployment/vita_s100_aorta_30dof/pico_aligned_runtime.py"
+    },
+    {
+      "path": "src/deployment/vita_s100_aorta_30dof/pico_input_process.py",
+      "source": "src/deployment/vita_s100_aorta_30dof/pico_input_process.py"
+    },
+    {
+      "path": "src/deployment/vita_s100_aorta_30dof/pico_realtime.py",
+      "source": "src/deployment/vita_s100_aorta_30dof/pico_realtime.py"
+    },
+    {
+      "path": "src/deployment/vita_s100_aorta_30dof/pico_service.py",
+      "source": "src/deployment/vita_s100_aorta_30dof/pico_service.py"
+    },
+    {
+      "path": "src/deployment/vita_s100_aorta_30dof/pico_shadow_math.py",
+      "source": "src/deployment/vita_s100_aorta_30dof/pico_shadow_math.py"
+    },
+    {
+      "path": "src/deployment/vita_s100_aorta_30dof/pico_threepoint_frontend.py",
+      "source": "src/deployment/vita_s100_aorta_30dof/pico_threepoint_frontend.py"
+    }
+  ],
+  "external_files": [
+    {
+      "path": "artifacts/actor_smpl/standing_human_reference.npz",
+      "bytes": 2364,
+      "sha256": "ce860e034fed9486c922ee4475775d5c5b9808fbaa21f258ef2ae1b69d2b33dc"
+    },
+    {
+      "path": "artifacts/actor_threepoint/standing_reference.npz",
+      "bytes": 2055,
+      "sha256": "81d55f6b0abf7460c3abb5ad5aa8e56f897a5c85dfd42574b436b196943f1a01"
+    },
+    {
+      "path": "checks/pico_historical_75frames.npz",
+      "bytes": 47868,
+      "sha256": "1d744df8f8376b2c6d2a6e9e1454d6667dd00369e8f1b0a5680c0ecd8c644b11"
+    },
+    {
+      "path": "checks/synthetic_trigger_scenario.json",
+      "bytes": 337,
+      "sha256": "4b301f05fbe1fe6bee8c0a0b54edead8fb27f923f4dad05974c5ecfb14c4a8d7"
+    },
+    {
+      "path": "deploy/actor_s100/wheelhouse/locomotion_aorta-1.0.0rc1+bodycmdv4.6863ad7-cp310-cp310-linux_aarch64.whl",
+      "bytes": 6926499,
+      "sha256": "b55110e32165cab68d5bca7f97459b7facf741d66ee9ed83c215d3b8fc364813"
+    },
+    {
+      "path": "artifacts/actor_smpl/human_encoder_step035000.onnx",
+      "bytes": 18743719,
+      "sha256": "d44250476b963b2c28bef94bbedf0f6e4f30a350e2cbba3ef4b54f70dee7be0d"
+    },
+    {
+      "path": "artifacts/actor_smpl/model_step_035000_decoder.onnx",
+      "bytes": 40630956,
+      "sha256": "40767b22124b54d66d45309c89ea565b510a3c05cacc4f58f66e3ba30f43061a"
+    },
+    {
+      "path": "artifacts/actor_smpl/model_step_035000_smpl.onnx",
+      "bytes": 59373305,
+      "sha256": "5092e1a46eed65634bf175b81aee2ada829b1d5bc5f6d8efcc81476d69f48edf"
+    },
+    {
+      "path": "artifacts/actor_threepoint/model_step_035000_decoder.onnx",
+      "bytes": 40630956,
+      "sha256": "40767b22124b54d66d45309c89ea565b510a3c05cacc4f58f66e3ba30f43061a"
+    },
+    {
+      "path": "artifacts/actor_threepoint/model_step_035000_teleop.onnx",
+      "bytes": 54688166,
+      "sha256": "6fda1b2e2a0a2d28894b8f888c3ffce6c4197f510f42e47388e66d1dc405eddb"
+    },
+    {
+      "path": "artifacts/actor_threepoint/teleop_encoder_step035000.onnx",
+      "bytes": 14058780,
+      "sha256": "156ef94a5133abd8cb7d3626f4eff32495f7f884782a8d6f3f37a9cccb04668f"
+    }
+  ]
+}

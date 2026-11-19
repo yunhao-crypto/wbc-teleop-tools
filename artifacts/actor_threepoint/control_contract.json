@@ -1,0 +1,424 @@
+{
+  "action_clip": 20.0,
+  "action_dim": 28,
+  "action_scale": [
+    0.14957953989505768,
+    0.14957953989505768,
+    0.2962976396083832,
+    0.14957953989505768,
+    0.14957953989505768,
+    0.19583334028720856,
+    0.14957953989505768,
+    0.14957953989505768,
+    0.21686896681785583,
+    0.21686896681785583,
+    0.14957953989505768,
+    0.14957953989505768,
+    0.21686896681785583,
+    0.21686896681785583,
+    0.4385773241519928,
+    0.4385773241519928,
+    0.21686896681785583,
+    0.21686896681785583,
+    0.4385773241519928,
+    0.4385773241519928,
+    0.21686896681785583,
+    0.21686896681785583,
+    0.26929181814193726,
+    0.26929181814193726,
+    0.26929181814193726,
+    0.26929181814193726,
+    0.26929181814193726,
+    0.26929181814193726
+  ],
+  "actor_history_order": "term_major_oldest_first",
+  "actor_observation_terms": [
+    {
+      "frame_dim": 3,
+      "history_length": 10,
+      "name": "base_ang_vel"
+    },
+    {
+      "frame_dim": 28,
+      "history_length": 10,
+      "name": "joint_pos"
+    },
+    {
+      "frame_dim": 28,
+      "history_length": 10,
+      "name": "joint_vel"
+    },
+    {
+      "frame_dim": 28,
+      "history_length": 10,
+      "name": "actions"
+    },
+    {
+      "frame_dim": 3,
+      "history_length": 10,
+      "name": "gravity_dir"
+    }
+  ],
+  "ankle": {
+    "control_space": "motor_theta",
+    "geometry": {
+      "lx": 0.05,
+      "ly": 0.02175,
+      "z_bot": 0.235,
+      "z_top": 0.31
+    },
+    "joints": {
+      "left_ankle_pitch_joint": {
+        "action_scale": 0.43857731389829635,
+        "armature": 0.0192325,
+        "kd": 1.0,
+        "kp": 20.0
+      },
+      "left_ankle_roll_joint": {
+        "action_scale": 0.43857731389829635,
+        "armature": 0.0192325,
+        "kd": 1.0,
+        "kp": 20.0
+      },
+      "right_ankle_pitch_joint": {
+        "action_scale": 0.43857731389829635,
+        "armature": 0.0192325,
+        "kd": 1.0,
+        "kp": 20.0
+      },
+      "right_ankle_roll_joint": {
+        "action_scale": 0.43857731389829635,
+        "armature": 0.0192325,
+        "kd": 1.0,
+        "kp": 20.0
+      }
+    },
+    "motor_limits": [
+      -0.95975,
+      0.61075
+    ],
+    "motor_model": {
+      "gain_rule": "motor_pd_equals_virtual_pitch_gain_over_neutral_pitch_column_ss",
+      "qd_no_load": 12.25221135,
+      "tau_max": 50.0
+    },
+    "policy_joint_aliases": {
+      "left_A_achilles_joint": "left_ankle_pitch_joint",
+      "left_B_achilles_joint": "left_ankle_roll_joint",
+      "right_A_achilles_joint": "right_ankle_pitch_joint",
+      "right_B_achilles_joint": "right_ankle_roll_joint"
+    },
+    "reference_conversion": "virtual_pitch_roll_to_motor_theta",
+    "robot_type": "vita02a_closed_loop",
+    "roll_sign": {
+      "left": 1,
+      "right": -1
+    },
+    "schema_version": 3,
+    "slots": {
+      "left_ankle_pitch_joint": {
+        "joint": "left_A_achilles_joint",
+        "motor": "theta_top",
+        "side": "left"
+      },
+      "left_ankle_roll_joint": {
+        "joint": "left_B_achilles_joint",
+        "motor": "theta_bottom",
+        "side": "left"
+      },
+      "right_ankle_pitch_joint": {
+        "joint": "right_A_achilles_joint",
+        "motor": "theta_top",
+        "side": "right"
+      },
+      "right_ankle_roll_joint": {
+        "joint": "right_B_achilles_joint",
+        "motor": "theta_bottom",
+        "side": "right"
+      }
+    }
+  },
+  "decoder_name": "g1_dyn",
+  "default_joint_pos": [
+    -0.20000000298023224,
+    -0.20000000298023224,
+    0.0,
+    0.08799999952316284,
+    -0.08799999952316284,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.4000000059604645,
+    0.4000000059604645,
+    0.42260000109672546,
+    -0.42260000109672546,
+    -0.23838967084884644,
+    -0.23838967084884644,
+    0.0,
+    0.0,
+    -0.1619075983762741,
+    -0.1619075983762741,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+  ],
+  "encoder_name": "teleop",
+  "future_reference": {
+    "dt": 0.02,
+    "num_frames": 10,
+    "orientation_representation": "rotation_matrix_6d",
+    "quaternion_order": "wxyz"
+  },
+  "input_dim": 1167,
+  "input_layout": "tokenizer_then_proprioception",
+  "joint_damping": [
+    12.768186569213867,
+    12.768186569213867,
+    3.7868757247924805,
+    12.768186569213867,
+    12.768186569213867,
+    5.0,
+    12.768186569213867,
+    12.768186569213867,
+    4.403256416320801,
+    4.403256416320801,
+    12.768186569213867,
+    12.768186569213867,
+    4.403256416320801,
+    4.403256416320801,
+    1.0,
+    1.0,
+    4.403256416320801,
+    4.403256416320801,
+    1.0,
+    1.0,
+    4.403256416320801,
+    4.403256416320801,
+    1.7730387449264526,
+    1.7730387449264526,
+    1.7730387449264526,
+    1.7730387449264526,
+    1.7730387449264526,
+    1.7730387449264526
+  ],
+  "joint_names": [
+    "left_hip_pitch_joint",
+    "right_hip_pitch_joint",
+    "waist_yaw_joint",
+    "left_hip_roll_joint",
+    "right_hip_roll_joint",
+    "waist_pitch_joint",
+    "left_hip_yaw_joint",
+    "right_hip_yaw_joint",
+    "left_shoulder_pitch_joint",
+    "right_shoulder_pitch_joint",
+    "left_knee_joint",
+    "right_knee_joint",
+    "left_shoulder_roll_joint",
+    "right_shoulder_roll_joint",
+    "left_ankle_pitch_joint",
+    "right_ankle_pitch_joint",
+    "left_shoulder_yaw_joint",
+    "right_shoulder_yaw_joint",
+    "left_ankle_roll_joint",
+    "right_ankle_roll_joint",
+    "left_elbow_joint",
+    "right_elbow_joint",
+    "left_wrist_roll_joint",
+    "right_wrist_roll_joint",
+    "left_wrist_yaw_joint",
+    "right_wrist_yaw_joint",
+    "left_wrist_pitch_joint",
+    "right_wrist_pitch_joint"
+  ],
+  "joint_pos_limit_lower": [
+    -2.648533821105957,
+    -2.648533821105957,
+    -1.413719892501831,
+    -0.3054323196411133,
+    -2.05076003074646,
+    -0.4712391197681427,
+    -1.413719892501831,
+    -1.413719892501831,
+    -2.3090667724609375,
+    -2.3090667724609375,
+    0.10908299684524536,
+    0.10908299684524536,
+    -0.1099550724029541,
+    -2.1519956588745117,
+    -0.8812249302864075,
+    -0.8812249302864075,
+    -2.213972806930542,
+    -2.1838443279266357,
+    -0.8812249302864075,
+    -0.8812249302864075,
+    -0.5129522085189819,
+    -0.5129522085189819,
+    -2.089160680770874,
+    -2.089160680770874,
+    -0.7819069623947144,
+    -1.5742899179458618,
+    -1.6790038347244263,
+    -1.6790038347244263
+  ],
+  "joint_pos_limit_upper": [
+    1.5140738487243652,
+    1.5140738487243652,
+    1.413719892501831,
+    2.05076003074646,
+    0.3054323196411133,
+    0.4712391197681427,
+    1.413719892501831,
+    1.413719892501831,
+    2.3090667724609375,
+    2.3090667724609375,
+    2.0725767612457275,
+    2.0725767612457275,
+    2.1519956588745117,
+    0.1099550724029541,
+    0.5322249531745911,
+    0.5322249531745911,
+    2.1838443279266357,
+    2.213972806930542,
+    0.5322249531745911,
+    0.5322249531745911,
+    2.2673583030700684,
+    2.2673583030700684,
+    2.089160680770874,
+    2.089160680770874,
+    1.5742899179458618,
+    0.7819069623947144,
+    1.776743769645691,
+    1.776743769645691
+  ],
+  "joint_stiffness": [
+    200.56219482421875,
+    200.56219482421875,
+    59.48410415649414,
+    200.56219482421875,
+    200.56219482421875,
+    90.0,
+    200.56219482421875,
+    200.56219482421875,
+    69.16619110107422,
+    69.16619110107422,
+    200.56219482421875,
+    200.56219482421875,
+    69.16619110107422,
+    69.16619110107422,
+    20.0,
+    20.0,
+    69.16619110107422,
+    69.16619110107422,
+    20.0,
+    20.0,
+    69.16619110107422,
+    69.16619110107422,
+    27.850828170776367,
+    27.850828170776367,
+    27.850828170776367,
+    27.850828170776367,
+    27.850828170776367,
+    27.850828170776367
+  ],
+  "policy_dt": 0.02,
+  "policy_kind": "groot_vita02a_tracking",
+  "proprioception_dim": 900,
+  "robot_type": "vita02a_closed_loop",
+  "schema_version": 1,
+  "tokenizer_observations": [
+    {
+      "name": "motion_anchor_ori_b",
+      "shape": [
+        6
+      ]
+    },
+    {
+      "name": "command_multi_future_lower_body",
+      "shape": [
+        240
+      ]
+    },
+    {
+      "name": "vr_3point_local_target",
+      "shape": [
+        9
+      ]
+    },
+    {
+      "name": "vr_3point_local_orn_target",
+      "shape": [
+        12
+      ]
+    }
+  ],
+  "policy_joint_names": [
+    "left_hip_pitch_joint",
+    "right_hip_pitch_joint",
+    "waist_yaw_joint",
+    "left_hip_roll_joint",
+    "right_hip_roll_joint",
+    "waist_pitch_joint",
+    "left_hip_yaw_joint",
+    "right_hip_yaw_joint",
+    "left_shoulder_pitch_joint",
+    "right_shoulder_pitch_joint",
+    "left_knee_joint",
+    "right_knee_joint",
+    "left_shoulder_roll_joint",
+    "right_shoulder_roll_joint",
+    "left_A_achilles_joint",
+    "right_A_achilles_joint",
+    "left_shoulder_yaw_joint",
+    "right_shoulder_yaw_joint",
+    "left_B_achilles_joint",
+    "right_B_achilles_joint",
+    "left_elbow_joint",
+    "right_elbow_joint",
+    "left_wrist_roll_joint",
+    "right_wrist_roll_joint",
+    "left_wrist_yaw_joint",
+    "right_wrist_yaw_joint",
+    "left_wrist_pitch_joint",
+    "right_wrist_pitch_joint"
+  ],
+  "legacy_slot_names": [
+    "left_hip_pitch_joint",
+    "right_hip_pitch_joint",
+    "waist_yaw_joint",
+    "left_hip_roll_joint",
+    "right_hip_roll_joint",
+    "waist_pitch_joint",
+    "left_hip_yaw_joint",
+    "right_hip_yaw_joint",
+    "left_shoulder_pitch_joint",
+    "right_shoulder_pitch_joint",
+    "left_knee_joint",
+    "right_knee_joint",
+    "left_shoulder_roll_joint",
+    "right_shoulder_roll_joint",
+    "left_ankle_pitch_joint",
+    "right_ankle_pitch_joint",
+    "left_shoulder_yaw_joint",
+    "right_shoulder_yaw_joint",
+    "left_ankle_roll_joint",
+    "right_ankle_roll_joint",
+    "left_elbow_joint",
+    "right_elbow_joint",
+    "left_wrist_roll_joint",
+    "right_wrist_roll_joint",
+    "left_wrist_yaw_joint",
+    "right_wrist_yaw_joint",
+    "left_wrist_pitch_joint",
+    "right_wrist_pitch_joint"
+  ],
+  "note": "All28 normalized actions are retained. Stationary leg reference does not overwrite leg actions.",
+  "checkpoint_step": 35000
+}

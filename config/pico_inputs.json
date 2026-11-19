@@ -1,0 +1,30 @@
+{
+  "schema": "vita_pico_inputs_shadow_v1",
+  "routes": [
+    "pico_smpl",
+    "pico_teleop"
+  ],
+  "motion_enabled": false,
+  "neutral_seconds": 2.0,
+  "reference_freshness_ms": 100,
+  "maximum_frame_gap_ms": 100,
+  "smpl_wrist_policy": "explicit_contract_stand",
+  "assets": {
+    "smpl_config": {
+      "path": "config/actor_smpl.json",
+      "sha256": "076688b179b0a2dab2dde6698826d841fefb9f714b5f41ec336f57eafe88fcb4"
+    },
+    "teleop_config": {
+      "path": "config/actor_threepoint.json",
+      "sha256": "8e156ad476361082c1ab1dbef1ca9e64b4fb68a628aacdaf3e8e5cd86c3e800c"
+    },
+    "standing_reference": {
+      "path": "artifacts/actor_threepoint/standing_reference.npz",
+      "sha256": "81d55f6b0abf7460c3abb5ad5aa8e56f897a5c85dfd42574b436b196943f1a01"
+    },
+    "site_interface": {
+      "path": "artifacts/actor_threepoint/teleop_site_interface.json",
+      "sha256": "bb4f910efa6b9826a63036e356c625e71947648717d72f72d299a660def72563"
+    }
+  }
+}

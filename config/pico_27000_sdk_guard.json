@@ -1,0 +1,70 @@
+{
+  "status": "SEALED_FROM_REVIEWED_WHEEL",
+  "sdk_commit": "6863ad7bbde07aefd7e369ca7ee27c0eabe2d1f8",
+  "sdk_version": "1.0.0rc1+bodycmdv4.6863ad7",
+  "wheel": {
+    "filename": "locomotion_aorta-1.0.0rc1+bodycmdv4.6863ad7-cp310-cp310-linux_aarch64.whl",
+    "sha256": "b55110e32165cab68d5bca7f97459b7facf741d66ee9ed83c215d3b8fc364813",
+    "bytes": 6926499
+  },
+  "source_sha256": {
+    "__init__.py": "c58f8895c660381015c5848ecd5409a1b9c1aba986437779e0ae0119f39b9493",
+    "_body_codec.py": "5a9e316a923e4d5b83094f81361e6dd78728985a57aa6dea0835ca8f11232933",
+    "_ee_pull.py": "04c4d0339f25b8e4f9c3e6689f0a490aa6e64cd49f04859dc9be2e9e8e458ef6",
+    "_end_effector_codec.py": "215fde4700489ca8a7687d784bff21928a3dbe4b0d3ddae1a8cd1714bcdba978",
+    "_group.py": "11381672a06c1615e58c523dadb729e0d64635716b696262ca56107121f429b7",
+    "_motor_codec.py": "9067a3ddc1d21fe7beabb08389c143372d19915d91ab322d6721af18e92a4bf3",
+    "_policy_state.py": "d28cacb350f3c838848ba6978745cb943a2406585a26d35e06b1b1d4828f1c67",
+    "_state_stream.py": "6b0d71efe78f2cdb74483aadc0eaea80049c6a13d6e2d7d4e988dbfc79f9d569",
+    "body_types.py": "a6c591cf2d9e74a0ba78fb32b76c1cba3ff86b10b273d2aae26c908daee3829e",
+    "brainco_capture.py": "436319bd20f5c7a9b138bcc0e823c75a97318b98e1ef276c8e3503d961f9fa9b",
+    "controller.py": "9ca89b72a07c23d675fb00fdf457a72099f57ea9aca09b6e2b2de20486c74d40",
+    "end_effector.py": "5a20f811e9898410064a51a5365429db358c16ed954d81197af34bdf70a6cf19",
+    "end_effector_types.py": "4deccfc09477f5cd721c28c122f5e3b513e452d7219e952198018c257c6cb532",
+    "joy.py": "65e57b42cec72d3b061b643e3f5046ce2dcb54f1bf4e499a38e6537f9e835792",
+    "state.py": "ee33ac5e364c4b71182cbbc32fd1ce138aa0b1bcf6aa42faa1d737b43060f911",
+    "transport.py": "24c66f615d8748764411e649d02846c1b9078a68a68e1c7dd405dce20b2c7810",
+    "types.py": "2ce78c645d9450d4a9869880205006802942078432e352be9063f4a3a87c3a6a",
+    "wbc_tracking_policy.py": "8bf9ecbcce9d06fde34eaaa817fe7966354958be012f74af159cfd711ce53b9e"
+  },
+  "runtime_source_sha256": {
+    "pull.py": "7dc7ee32386a8c5022c3472ae456f1fb8c86539b5bba25ea4b148b3fe9f31df2",
+    "state_arrays.py": "8ab8abc4e8b3147a7f61652186ceabe97c42eaeb90dcf251e72c5dbdb4122242",
+    "_native_body_codec.py": "a5fad03bc84f51eabbea502edac87fd709f5b68d58fa0789c942c9544d5b5c85"
+  },
+  "native_sha256": {
+    "_body_cmd_native.cpython-310-aarch64-linux-gnu.so": "65a104d30e911a60f3fbef27d0598bed7a97b8064f4488f6b94c3417ccc1eb2d",
+    "_onnx/.libs/libonnxruntime.so.1": "f8407a59e7e4c4dddf3b6e01198a24444aa66ac4ad93b4b4284b6e98d1f938b1",
+    "_onnx/.libs/libonnxruntime_providers_shared.so": "d93c6b9016eb23a46b7ace5a6c7d56139fdf11bfe0228e93801de758707dee2b",
+    "_onnx/_native.cpython-310-aarch64-linux-gnu.so": "d5380e3dd57d52008bb267d6719a200ed0784fc9fe7fd1d656860ca499d83209"
+  },
+  "schema_sha256": {
+    "body_cmd": "de52ffa81239439af1edee5d426d206fd8ca6870999eca5ea220bdf18df8abcb",
+    "body_state": "a075e96c07eb2167be7f1d03600764fd49afbbae8326041c128108b90f710626",
+    "control_ack": "62c55098ecc90644da9781c0d1877b84c41d69b354d0c56570484b0908caab8b",
+    "control_request": "27cc08ee7991c0886aeeaee8c33d51d5c0340ec6507343a4aa5e64c10935c777",
+    "control_status": "1c92e68e0a9e27c566c71917eead5e11331103415f3c3d469a7729282831835f",
+    "end_effector_cmd": "61f24b8d402e4e736696f950a083ca429666112b95e2d9adc82dfdd23cae684a",
+    "end_effector_info": "77dff3e0681e9cfd3c7ff26d9d882eea5cc580da31dbd7c62beb9d863b1f6401",
+    "end_effector_set_touch": "601b24664a53504f415ceaa86eb67759f3695af03d194cfdd59816cf03004c0f",
+    "end_effector_state": "9fa8fccc64698b59806c5961007582fda187ccba916d1d28324828a97beee366",
+    "end_effector_touch": "0078dcd78ec93b81a0d69b64894e137a188459c9933b8058276a80fbfd063acf",
+    "get_robot_info": "324d7a8c31ca14b05f15ff620a3751ef28a62802d17fd321c73d56cd46c2a5a7",
+    "humanoid_low_state": "327a9db17f299ebcdcc2cf249d358dd3f69fe32b7af6a80c10ba4ac0da631f24",
+    "joy": "7a94e11f6a4cfd10e881ee126b99813421161513a67ba195bac03f54d2652e66",
+    "low_cmd": "b048ce7f06a560a671565deca3480dd68fc6f16ee60d6c65e99b7dbce8857485",
+    "robot_info": "5a564e37e3d44acc3b15b929eac79dc1213cea4fd9cc247ef0857f6b05de8277"
+  },
+  "dependencies": {
+    "aorta_version": "0.0.0+g7649a87ebb03",
+    "humanoid_msgs_version": "0.0.0+g35ce9eb82d5b",
+    "flatbuffers_version": "25.12.19"
+  },
+  "build_provenance": {
+    "method": "codec_only_cross_build_over_verified_release_payload",
+    "official_sdk_release": false,
+    "base_wheel_sha256": "71d89644bc213769ee573907773e8e8f23d8340de6ef11e48ffcc67bd85edb31",
+    "sdk_commit": "6863ad7bbde07aefd7e369ca7ee27c0eabe2d1f8",
+    "robot_hil": "NOT_RUN"
+  }
+}
