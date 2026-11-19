@@ -16,8 +16,8 @@
     "method": "first2s_quality_checked_median_positions_SO3_mean_root",
     "physical_standing_validated": false
   },
-  "unchanged_guards": {
-    "src/deployment/vita_s100_aorta_30dof/actor_pico_live.py": "8c9a911071d2e82e4536af875f35b7f4c1b3aa5031733e562576cb01eaff2c3b",
+  "reviewed_guards": {
+    "src/deployment/vita_s100_aorta_30dof/actor_pico_live.py": "a8743f88e37374e12ce583bebcb202690af759b45d88687b5fad2a1cfea44dda",
     "src/deployment/vita_s100_aorta_30dof/actor_pico_startup.py": "fc4abaf444f0039aa2ee52d910111bbeace3e392709c1761efa0498e72a9c5b3",
     "src/deployment/vita_s100_aorta_30dof/sdkmain_adapter.py": "7848b0127d6f9fdc8fbc67ba3ef3e71e57a5083af4a5a942dc03e4d88164c38d"
   }

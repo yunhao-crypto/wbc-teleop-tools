@@ -536,10 +536,6 @@
       "source": "src/deployment/vita_s100_aorta_30dof/onboard_state.py"
     },
     {
-      "path": "src/deployment/vita_s100_aorta_30dof/pico_aligned_lifecycle.py",
-      "source": "src/deployment/vita_s100_aorta_30dof/pico_aligned_lifecycle.py"
-    },
-    {
       "path": "src/deployment/vita_s100_aorta_30dof/pico_aligned_runtime.py",
       "source": "src/deployment/vita_s100_aorta_30dof/pico_aligned_runtime.py"
     },
@@ -568,16 +564,8 @@
       "source": "src/deployment/vita_s100_aorta_30dof/pico_shadow_math.py"
     },
     {
-      "path": "src/deployment/vita_s100_aorta_30dof/pico_smpl_live.py",
-      "source": "src/deployment/vita_s100_aorta_30dof/pico_smpl_live.py"
-    },
-    {
       "path": "src/deployment/vita_s100_aorta_30dof/pico_smpl_workflow.py",
       "source": "src/deployment/vita_s100_aorta_30dof/pico_smpl_workflow.py"
-    },
-    {
-      "path": "src/deployment/vita_s100_aorta_30dof/pico_teleop_live.py",
-      "source": "src/deployment/vita_s100_aorta_30dof/pico_teleop_live.py"
     },
     {
       "path": "src/deployment/vita_s100_aorta_30dof/pico_threepoint_frontend.py",

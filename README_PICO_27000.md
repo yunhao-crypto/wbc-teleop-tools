@@ -1,8 +1,8 @@
 # 35000 SMPL and stationary three-point Pico deployment
 
 `pico_smpl` and `pico_teleop` retain their 35000 encoders, FSQ and shared
-decoder. Both use the Git actor's `run_live` function body through explicit typed
-reference hooks. All five policies use the same actor directory, `venv`,
+decoder. Both call the actor's single `actor_pico_live.run_live` function through
+an explicit task-reference adapter. All five policies use the same actor directory, `venv`,
 build/bootstrap/launch entry points and installation receipt.
 
 Enable 35000 support in the original base build to select the shared pinned
@@ -59,6 +59,10 @@ environment. The bundled G1 model uses `--policy sonic` without `--model`;
 SuperMimic/MorphMimic still require `--policy <name> --model ...`.
 No second venv or SDK is installed for a policy switch. The old 27000-specific
 builder/bootstrap scripts remain compatibility helpers, not a separate runtime.
+The compatibility bootstrap delegates to the standard bootstrap transaction.
+Both install and unpack acquire `build/operator.lock` before changing models,
+libraries or receipts. An interrupted/failed transaction invalidates the old
+installation receipts; success publishes the new receipt atomically.
 
 After confirming current firmware/configuration, fresh healthy feedback and
 on-site support, first run a supported short stand/exit trial without triggers:
@@ -92,16 +96,39 @@ three seconds preparation. `encoded_reference` records the actual model input.
 SMPL re-engagement aligns reference heading; Teleop retains its standing heading.
 Input freshness stays at 100ms; per-frame measured joint bounds/runtime-id checks
 are retained in addition to the shared Git lifecycle guards.
+The 2ms receiver latches each trigger press with the receipt time of the release
+that armed it. The parent accepts it only when both occurred after the current
+body-recovery boundary; a release before loss cannot arm recovery.
+
+`JointReferences` supplies the original joint-reference behavior. `TaskReferences`
+changes only input acquisition, heading alignment, neutral task references and
+observation inference. The control loop owns startup, ownership checks,
+publication and checked cancellation for every route. The copied lifecycle and
+the two old modality-specific live runners have been removed.
 
 Robot EXTERNAL must already match native `motor_theta`,
 `ankle_virtual_pd_intent: false`, explicit affine-target opt-in and an adequate
 finite position-target margin, with command interpolation disabled. This code
 does not write robot YAML, firmware or system services.
 
-Offline validation reran 36 lifecycle/model cases against the 35000 weights,
-plus 17 checkpoint/delivery/entry checks. All passed. G1 also completed 100
-no-action runtime steps and matched its complete ONNX output exactly.
-Each route completed 524 simulated publications, 224 tracking steps and three
-engagements; full-model versus split-model absolute error was 0.0. These are local
-regressions, not current Pico reception, target ABI/performance or physical
-stability acceptance. Keep hardware deployment paused until explicitly resumed.
+The no-asset fault regressions are committed in `tests/test_pico_aligned_live.py`,
+`tests/test_pico_trigger_recovery.py` and `tests/test_pico_install_modes.py`.
+Run them with Python 3.10+, NumPy and PyYAML:
+
+```bash
+python -m unittest discover -s tests -p 'test_pico_aligned_live.py' -v
+python -m unittest discover -s tests -p 'test_pico_trigger_recovery.py' -v
+python -m unittest discover -s tests -p 'test_pico_install_modes.py' -v
+```
+
+The live tests call `run_aligned` -> `actor_pico_live.run_live`, using simulated
+network/controller I/O; they cover both routes, trigger recovery, stale body
+feedback, ownership loss, measured bounds, publish failures and checked exit.
+The installer tests use real cross-process OS locking (Linux flock on target;
+Windows byte locks for host tooling). These tests need no ONNX assets.
+
+`check_pico_aligned.py` is separately a model/input-adapter parity check. It does
+not exercise the live state machine or prove training semantics. Golden export
+input/action parity, full-versus-split network parity and lifecycle tests are
+separate evidence. None verifies current Pico reception, target ABI/performance
+or physical stability. Keep hardware deployment paused until explicitly resumed.

@@ -6,9 +6,11 @@
   "stand_preparation_seconds": 3.0,
   "bindings": {
     "config/actor_smpl.json": "076688b179b0a2dab2dde6698826d841fefb9f714b5f41ec336f57eafe88fcb4",
-    "config/pico_smpl_workflow.json": "3b095b0e4418ba63fbde86ab84fec129fb9832e29e972bc447c3fcb09c6dd3da",
+    "config/pico_smpl_workflow.json": "b37976853e04cb4c343ab962b3c61b3755d14329a0402349ac54d5f9f5d00e6e",
     "src/deployment/vita_s100_aorta_30dof/pico_realtime.py": "93ee0f04f0cadb7cee9a3ae6e8405ad1cf7ab88edfac96edccb1f22d82ea2ac6",
-    "src/deployment/vita_s100_aorta_30dof/pico_input_process.py": "4fea5324f2b3f934e1f33e9e0e11f4d8e1f4de15f9fc52b54db986a567d2f189"
+    "src/deployment/vita_s100_aorta_30dof/pico_input_process.py": "77ebb5e05174b99aba484c63b7432b32c684549c543b7ba3b248c1b2e979e2c9",
+    "src/deployment/vita_s100_aorta_30dof/actor_pico_live.py": "a8743f88e37374e12ce583bebcb202690af759b45d88687b5fad2a1cfea44dda",
+    "src/deployment/vita_s100_aorta_30dof/pico_aligned_runtime.py": "04fb10cdfb4bebf8de5ddf1dd455b02f70ec7471a6a5052449097ad1e5337863"
   },
   "output": "actual_original_sdk_body31",
   "robot_configuration_modified": false,

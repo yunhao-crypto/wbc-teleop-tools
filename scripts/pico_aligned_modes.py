@@ -1,5 +1,5 @@
 """Git-style non-actuating modes for the two explicit policy modalities."""
-import importlib.util,json,os,sys,time
+import importlib.util,json,os,sys
 from pathlib import Path
 def run_mode(args,parser):
     root=args.root.resolve()
@@ -24,9 +24,13 @@ def run_mode(args,parser):
         if args.mode=='replay':command+=['--input',str(root/fixture['input']['path']),'--sha256',fixture['input']['sha256'],
             '--trigger-script',str(root/fixture['triggers']['path'])]
         else:command+=['--pico-service',args.pico_service,'--group',args.group]
-        if args.out:command+=['--out',str(args.out)]
+        output=args.out
+        if output is None:
+            from uuid import uuid4
+            output=root/'outputs'/(args.policy+'_'+args.mode+'_'+uuid4().hex)
+        command+=['--out',str(output)]
         if args.record_observations:command+=['--record-observations']
-        os.execv(sys.executable,command)
+        return os.execv(sys.executable,command)
     require_target()
     from deployment.vita_s100_aorta_30dof.pico_aligned_runtime import AlignedRuntime
     runtime=AlignedRuntime(root,args.policy,backend='sdk',threads=args.threads)

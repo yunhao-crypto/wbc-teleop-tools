@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Offline modality networks and Git-reference bridge; zero robot/Pico handles."""
+"""Model/input-adapter check only, not live lifecycle or hardware acceptance."""
 import argparse,json,sys
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1];sys.path.insert(0,str(ROOT/'src'))
@@ -24,7 +24,6 @@ def check(root,route,backend,steps=240):
     runtime.infer_motion_command(plan,**feedback)
     for i in range(steps):
         snapshot=manual.snapshot()
-        if i==160:runtime.on_lifecycle(dict(record_type='tracking_started'))
         if i>=160:
             command,observation,row=pico_reference_command(runtime,snapshot,clock.monotonic(),**feedback);tracking+=1
         else:command,observation,row=runtime.infer_motion_command(plan,ref_time=i*.02,**feedback)
@@ -35,6 +34,7 @@ def check(root,route,backend,steps=240):
         clock.sleep(.02)
     if peak>1e-6 or not tracking:raise ValueError('Original modality model parity/tracking failed')
     return dict(status='PASS_ALIGNED_OFFLINE_CHECK',route=route,backend=backend,inference_steps=steps,
+        scope='model_and_input_adapter_only',live_lifecycle_exercised=False,
         checkpoint_iteration=runtime.runtime.config['checkpoint_iteration'],
         model_sha256=runtime.runtime.config['artifacts']['model']['sha256'],
         tracking_steps=tracking,full_onnx_parity_abs_max=peak,actions_sent=0,control_handles_created=0,

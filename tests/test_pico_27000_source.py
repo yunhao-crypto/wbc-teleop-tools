@@ -4,11 +4,16 @@ from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT/'scripts'))
 class SourceTests(unittest.TestCase):
-    def test_shared_lifecycle_function_matches_git_runner(self):
+    def test_one_live_loop_with_explicit_reference_adapter(self):
         module=ROOT/'src/deployment/vita_s100_aorta_30dof'
-        original=(module/'actor_pico_live.py').read_text(encoding='utf-8')
-        aligned=(module/'pico_aligned_lifecycle.py').read_text(encoding='utf-8')
-        self.assertEqual(original[original.index('def run_live('):],aligned[aligned.index('def run_live('):])
+        runner=ast.parse((module/'actor_pico_live.py').read_text(encoding='utf-8'))
+        live=next(n for n in runner.body if isinstance(n,ast.FunctionDef) and n.name=='run_live')
+        self.assertIn('reference_adapter',[a.arg for a in live.args.args])
+        for obsolete in ('pico_aligned_lifecycle.py','pico_smpl_live.py','pico_teleop_live.py'):
+            self.assertFalse((module/obsolete).exists())
+        aligned=(module/'pico_aligned_runtime.py').read_text(encoding='utf-8')
+        self.assertIn('from .actor_pico_live import run_live',aligned)
+        self.assertIn('reference_adapter=TaskReferences(runtime)',aligned)
     def test_legacy_policies_and_default_sdk_are_retained(self):
         shell=(ROOT/'scripts/start_actor_pico.sh').read_text()
         for policy in ('sonic','supermimic','morphmimic','pico_smpl','pico_teleop'):self.assertIn(policy,shell)

@@ -1,12 +1,10 @@
 #!/usr/bin/env python3
-"""Install this isolated no-action Pico input package; never start SDK/services.
+"""Shared Pico installation checks and a compatibility bootstrap alias.
 
 The shipped original bootstrap supplies path/hash/archive validation and runtime
 unpacking. This entry never invokes its G1 model installer or motion launcher.
 """
-import argparse
 import json
-import os
 from pathlib import Path
 import platform
 import subprocess
@@ -15,7 +13,7 @@ import tarfile
 import time
 import hashlib
 
-from bootstrap_actor_s100 import unpack, environment, sha, inside, SCHEMA, TARGET
+from bootstrap_actor_s100 import unpack, environment, sha, inside, SCHEMA, TARGET, write_install_receipt
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -90,7 +88,7 @@ def verify_inputs(root):
         item=settings['standing_reference']
         if item['path'] not in seen or sha(root/item['path'])!=item['sha256']:
             raise ValueError('Unsealed SMPL standing reference')
-        for path,expected in settings['unchanged_guards'].items():
+        for path,expected in settings['reviewed_guards'].items():
             if path not in seen or sha(root/path)!=expected:raise ValueError('Original workflow guard changed')
         fixture=json.loads((root/workflow['fixture']['path']).read_text())
         for item in fixture['files'].values():
@@ -101,7 +99,7 @@ def verify_inputs(root):
         for path,expected in settings['bindings'].items():
             if path not in seen or sha(root/path)!=expected:raise ValueError('Unsealed physical SMPL workflow binding')
         for path in ('config/pico_smpl_live.json','scripts/pico_smpl_live.py','scripts/start_actor_pico_smpl_live.sh',
-                     'src/deployment/vita_s100_aorta_30dof/pico_smpl_live.py'):
+                     'src/deployment/vita_s100_aorta_30dof/pico_aligned_runtime.py'):
             if path not in seen:raise ValueError('Missing physical SMPL workflow entry')
     return manifest
 
@@ -183,7 +181,7 @@ def install(root, manifest):
                     or sdk_workflow_report['lifecycle_stage']!='CLOSED' or sdk_workflow_report['tracking_steps']<=0):
                 raise RuntimeError('Native SDK inference workflow check failed before physical deployment')
     receipt = dict(status='PASS_PICO_SMPL_S100_OFFLINE_INSTALL', route='pico_smpl', backend='ort',
-        model_sha256=sha(root/'artifacts/actor_smpl/model_step_027000_smpl.onnx'),
+        model_sha256=sha(root/json.loads((root/'config/actor_smpl.json').read_text())['artifacts']['model']['path']),
         payload_sha256=manifest['payload_sha256'], pip_check='PASS', real_binding_import='PASS',
         model_check_steps=checked['inference_steps'], model_check_report=str(output/'report.json'),
         pico_service_started=False, pico_sdk_initialized=False, hardware_inputs_checked=False,
@@ -212,33 +210,15 @@ def install(root, manifest):
             if proof['status']!='PASS_ALIGNED_OFFLINE_CHECK' or proof['actions_sent'] or proof['control_handles_created']:
                 raise RuntimeError('Aligned original-encoder check failed')
             receipt['aligned_model_checks'][route][backend]=proof
-    (root/'build/pico_inputs_s100_install.json').write_text(json.dumps(receipt,indent=2)+'\n')
-    (root/'build/actor_s100_install.json').write_text(json.dumps(receipt,indent=2)+'\n')
+    write_install_receipt(root,'pico_inputs_s100_install.json',receipt)
+    write_install_receipt(root,'actor_s100_install.json',receipt)
     return receipt
 
 
-def main():
-    parser=argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--root',type=Path,default=ROOT)
-    modes=parser.add_mutually_exclusive_group()
-    modes.add_argument('--verify-only',action='store_true')
-    modes.add_argument('--unpack-only',action='store_true')
-    args=parser.parse_args();root=args.root.resolve();manifest=verify_inputs(root)
-    if args.verify_only:
-        result=dict(status='PASS_PICO_INPUTS_DELIVERY_FILES',files=len(manifest['files']),
-            models_included=True,s100_execution='not_measured',actions_sent=0,control_handles_created=0)
-    elif args.unpack_only:
-        unpack(root,manifest)
-        result=dict(status='PASS_PICO_INPUTS_RUNTIME_UNPACK',s100_execution='not_measured',
-            actions_sent=0,control_handles_created=0)
-    else:
-        require_target()
-        import fcntl
-        (root/'build').mkdir(exist_ok=True)
-        with (root/'build/pico_inputs_install.lock').open('a') as lock:
-            fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
-            result=install(root,manifest)
-    print(json.dumps(result,indent=2))
+def main(argv=None):
+    # Compatibility spelling only: one CLI transaction, lock and policy install.
+    from bootstrap_actor_s100 import main as actor_main
+    return actor_main(['--policy','pico_smpl',*(sys.argv[1:] if argv is None else argv)])
 
 
 if __name__=='__main__':main()

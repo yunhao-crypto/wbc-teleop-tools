@@ -66,7 +66,7 @@ def main():
     if (manifest['pico_inputs_release'].get('physical_workflow') is not True
             or receipt.get('payload_sha256')!=manifest['payload_sha256']
             or receipt.get('sdk_workflow_check',{}).get('status')!='PASS_SMPL_NO_ACTION_WORKFLOW_REPLAY'):
-        raise RuntimeError('This independent physical package must pass its SDK no-action install check first')
+        raise RuntimeError('This shared actor package must pass its SDK no-action install check first')
     if (manifest['pico_inputs_release'].get('body_cmd_protocol_version')!=4
             or receipt.get('bodycmd4_codec_check',{}).get('status')!='PASS_NATIVE_BODYCMD4_SERIALIZATION'):
         raise RuntimeError('This native AB entry requires a successful SDK BodyCmd4 bytes-only self-check')
@@ -105,7 +105,7 @@ def main():
                 log.write(json.dumps(row,ensure_ascii=False,allow_nan=False)+'\n');log.flush()
             def record(result,stamp):
                 if args.record_observations:trace.append((stamp,result['observation'].copy(),result['report']['raw_action']))
-            # Separate package operator lock; the Pico service also holds the
+            # Shared deployment operator lock; the Pico service also holds the
             # existing global per-port lease across all worktrees/operators.
             import fcntl
             lock_path=root/'build/operator.lock'

@@ -12,6 +12,32 @@ import numpy as np
 from .actor_pico_buttons import DualTriggerToggle
 
 
+class TriggerEventLatch:
+    """Retain the released packet that actually armed each high-rate press.
+
+    The policy process owns reference recovery, which this receive-only worker
+    cannot inspect. Carry both monotonic receipt times so it can reject a press
+    armed before its current recovery boundary even when polls are coalesced.
+    """
+    def __init__(self):
+        self.toggle=DualTriggerToggle(.6)
+        self.release_ns=0;self.sequence=0;self.event_ns=0;self.event_release_ns=0
+
+    def update(self,sample,now_ns):
+        previous=self.toggle.last_stamp
+        fired=self.toggle.update(sample,now_ns/1_000_000_000)
+        available,stamp,age,left,right=sample
+        if not self.toggle.armed and not fired:self.release_ns=0
+        if self.toggle.last_stamp>previous and self.toggle.armed and left<=.7 and right<=.7:
+            self.release_ns=now_ns-int(round(age*1e9))
+        if fired:
+            self.sequence+=1
+            self.event_ns=now_ns-int(round(age*1e9))
+            self.event_release_ns=self.release_ns
+            self.release_ns=0
+        return fired
+
+
 def _worker(stop, lock, poses, clocks, buttons, status, sdk_dir, dll_dirs):
     sdk = None; initialized = False
     try:
@@ -31,7 +57,7 @@ def _worker(stop, lock, poses, clocks, buttons, status, sdk_dir, dll_dirs):
             status.put(dict(state='receiving', sdk_path=getattr(sdk, '__file__', None),
                 binding_test_fixture=bool(getattr(sdk, 'CODEX_PICO_TEST_FIXTURE', False))))
             previous_body = None; previous_stamp = None
-            trigger_toggle=DualTriggerToggle(.6)
+            trigger_latch=TriggerEventLatch()
             while not stop.is_set():
                 available, stamp, body = sdk.get_body_pose_snapshot()
                 now_ns = time.monotonic_ns()
@@ -51,13 +77,14 @@ def _worker(stop, lock, poses, clocks, buttons, status, sdk_dir, dll_dirs):
                 now_ns = time.monotonic_ns()
                 valid = (available and type(stamp) is int and 0 < stamp < 2**63 and
                     np.isfinite([age, left, right]).all() and 0 <= age <= .6 and 0 <= left <= 1 and 0 <= right <= 1)
-                fired=trigger_toggle.update((available,stamp,age,left,right),now_ns/1_000_000_000)
+                fired=trigger_latch.update((available,stamp,age,left,right),now_ns)
                 with lock:
                     clocks[3] = 1 if valid else 0
                     if valid and stamp != clocks[4]:
                         clocks[4:6] = [stamp, now_ns-int(round(age*1e9))]
                         buttons[:] = [float(left), float(right)]
-                    if fired:clocks[6]+=1;clocks[7]=now_ns
+                    if fired:
+                        clocks[6:9]=[trigger_latch.sequence,trigger_latch.event_ns,trigger_latch.event_release_ns]
                 stop.wait(.002)
     except Exception as exc:
         try: status.put_nowait(dict(state='failed', error=f'{type(exc).__name__}: {exc}'))
@@ -75,7 +102,7 @@ class PicoInputProcess:
             if not Path(directory).is_dir(): raise ValueError('Pico SDK/DLL directory missing')
         self.ctx = mp.get_context('spawn'); self.stop_event = self.ctx.Event()
         self.lock = self.ctx.Lock(); self.poses = self.ctx.RawArray('f', 24*7)
-        self.clocks = self.ctx.RawArray('q', 8); self.buttons = self.ctx.RawArray('d', 2)
+        self.clocks = self.ctx.RawArray('q', 9); self.buttons = self.ctx.RawArray('d', 2)
         self.status = self.ctx.Queue(maxsize=4); self.state = dict(state='starting')
         self.process = self.ctx.Process(target=_worker, args=(self.stop_event, self.lock, self.poses,
             self.clocks, self.buttons, self.status, str(Path(sdk_dir).resolve()) if sdk_dir else None,
@@ -104,12 +131,13 @@ class PicoInputProcess:
         pose = None
         if self.lock.acquire(False):
             try:
-                stamp, received, sequence, available, button_stamp, button_received,event_seq,event_ns = self.clocks[:]
+                stamp, received, sequence, available, button_stamp, button_received,event_seq,event_ns,release_ns = self.clocks[:]
                 if sequence != self.last_sequence:
                     pose = (np.frombuffer(self.poses, dtype=np.float32).reshape(24, 7).copy(), stamp, received)
                     self.last_sequence = sequence
                 self.last_buttons = (bool(available), button_stamp, (now_ns-button_received)*1e-9, *self.buttons[:])
-                self.state.update(trigger_event_seq=int(event_seq),trigger_event_monotonic_ns=int(event_ns))
+                self.state.update(trigger_event_seq=int(event_seq),trigger_event_monotonic_ns=int(event_ns),
+                    trigger_event_release_monotonic_ns=int(release_ns))
             finally: self.lock.release()
         return pose, self.last_buttons, dict(self.state)
 

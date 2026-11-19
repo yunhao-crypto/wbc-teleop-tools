@@ -121,7 +121,7 @@ class SmplWorkflow:
                 or settings.get('entry_policy') != 'policy-online' or settings.get('wrist_mode') != 'stand'
                 or settings.get('lead_in_seconds') != .3):
             raise ValueError('Unsupported SMPL lifecycle settings; motion gate cannot be overridden')
-        for path, expected in settings['unchanged_guards'].items():
+        for path, expected in settings['reviewed_guards'].items():
             if digest(self.root/path) != expected: raise ValueError('Original guard changed: '+path)
         self.settings = settings
         self.flow = PicoFlow(self.root,'pico_smpl',backend=backend,threads=threads,wrist_mode='stand')

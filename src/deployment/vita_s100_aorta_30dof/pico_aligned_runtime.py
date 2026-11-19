@@ -1,4 +1,4 @@
-"""Typed human/three-point references for the unchanged Git live state machine.
+"""Typed human/three-point inputs for the shared actor live state machine.
 
 Only reference acquisition and encoder input differ from the Git joint-reference
 actor. No controller, middleware node or service is constructed here.
@@ -9,7 +9,7 @@ import time
 import numpy as np
 from .actor_pico_buttons import DualTriggerToggle
 from .pico_realtime import Feedback
-from .actor_pico_live import Inputs as GitInputs,MEASURED_Q_MARGIN
+from .actor_pico_live import Inputs as GitInputs,JointReferences,MEASURED_Q_MARGIN
 
 
 class GuardedInputs(GitInputs):
@@ -17,7 +17,7 @@ class GuardedInputs(GitInputs):
 
     The fetched runner checks measured ranges during entry. The existing SMPL
     deployment additionally checks them on every frame; keep that protection
-    while retaining the Git state-machine function itself unchanged.
+    while using the same shared control loop as the joint-reference policies.
     """
     def __init__(self,runtime,controller,pico,clock):
         super().__init__(runtime,controller,pico,clock)
@@ -65,15 +65,70 @@ class StandReference:
         return self.owner.flow.blend(self.source,target,a)
 
 
+class TaskInputs:
+    """Model/asset/calibration container; it never owns a control session."""
+    def __init__(self,root,route,*,backend,threads):
+        import json
+        from pathlib import Path
+        from .actor_smpl import SmplReference,digest
+        from .pico_realtime import PicoFlow
+        from .actor_parallel_ankle import command_space
+        from locomotion_aorta.body_types import BODY_CMD_MOTOR_THETA_PROTOCOL_VERSION
+        if route not in ('pico_smpl','pico_teleop'):
+            raise ValueError('Explicit pico_smpl or pico_teleop required')
+        self.root=Path(root).resolve();self.route=route
+        self.settings=json.loads((self.root/f'config/{route}_live.json').read_text())
+        settings=self.settings;config='actor_smpl' if route=='pico_smpl' else 'actor_threepoint'
+        schema='vita_pico_smpl_physical_workflow_v1' if route=='pico_smpl' else 'vita_pico_teleop_physical_workflow_v1'
+        if (settings.get('schema')!=schema or settings.get('route')!=route or settings.get('entry_policy')!='policy-online'
+                or settings.get('policy_step')!=json.loads((self.root/f'config/{config}.json').read_text())['checkpoint_iteration']
+                or settings.get('body_cmd_protocol_version')!=4
+                or settings.get('body_cmd_coordinate_contract')!='native_motor_ab_ankles_virtual_pr_feedback'
+                or settings.get('stand_preparation_seconds')!=3.):
+            raise ValueError('Unsupported physical Pico workflow contract')
+        spec=json.loads((self.root/'config/pico_smpl_workflow.json').read_text())
+        for path,expected in {**spec['reviewed_guards'],**settings['bindings']}.items():
+            target=(self.root/path).resolve()
+            if not target.is_relative_to(self.root) or digest(target)!=expected:
+                raise ValueError('Physical Pico binding changed: '+path)
+        self.flow=PicoFlow(self.root,route,backend=backend,threads=threads,wrist_mode='stand')
+        self.runtime=self.flow.runtime;self.math=self.runtime.math;self.policy=self.runtime.policy
+        self.config=self.runtime.config
+        self.model=self.runtime.model if route=='pico_smpl' else NS(contract=self.runtime.contract)
+        if BODY_CMD_MOTOR_THETA_PROTOCOL_VERSION!=4 or command_space(self.policy)!='motor_theta':
+            raise ValueError('This physical entry requires SDK BodyCmd4 and native motor AB targets')
+        self.command_protocol_version=BODY_CMD_MOTOR_THETA_PROTOCOL_VERSION
+        if route=='pico_smpl':
+            item=spec['standing_reference'];target=(self.root/item['path']).resolve()
+            if not target.is_relative_to(self.root) or digest(target)!=item['sha256']:
+                raise ValueError('Standing reference mismatch')
+            self.asset=SmplReference.from_npz(self.math,target)
+        else:
+            self.standing=self.flow.standing;self.asset_root=self.runtime.reference_root.copy()
+
+    def align(self,root):
+        m=self.math
+        if self.route=='pico_smpl':
+            from .actor_smpl import SmplReference
+            rotation=m.yaw_quaternion(m.yaw(root)-m.yaw(self.asset.quat[0]))
+            self.standing=SmplReference(m,self.asset.joints@m.rotation(rotation).T,
+                np.array([m.multiply(rotation,q) for q in self.asset.quat]),self.asset.wrists.copy())
+            self.flow.standing=self.standing
+        else:
+            # Only the reference heading is fixed; measured leg inputs and
+            # the model's complete leg outputs remain active.
+            rotation=m.yaw_quaternion(m.yaw(root)-m.yaw(self.asset_root))
+            self.runtime.reference_root=m.multiply(rotation,self.asset_root)
+
+    def push(self,pose,feedback):
+        try:return self.flow.push(*pose,feedback)
+        finally:
+            if self.route=='pico_smpl':self.flow.standing=self.standing
+
+
 class AlignedRuntime:
     def __init__(self,root,route,*,backend='sdk',threads=1,human_height=1.70):
-        if route=='pico_smpl':
-            from .pico_smpl_live import SmplLiveRuntime
-            self.base=SmplLiveRuntime(root,backend=backend,threads=threads)
-        elif route=='pico_teleop':
-            from .pico_teleop_live import TeleopLiveRuntime
-            self.base=TeleopLiveRuntime(root,backend=backend,threads=threads)
-        else:raise ValueError('Explicit pico_smpl or pico_teleop required')
+        self.base=TaskInputs(root,route,backend=backend,threads=threads)
         self.root=self.base.root;self.route=route;self.flow=self.base.flow
         self.runtime=self.base.runtime;self.policy=self.base.policy;self.math=self.base.math
         self.model=NS(contract=self.base.model.contract,backend=backend)
@@ -141,7 +196,7 @@ class ManualInput:
         self.runtime=runtime;self.receiver=receiver;self.clock=clock;runtime.clock=clock
         self.service_check=service_check;self.write=write;self.connected=False
         self.toggle=DualTriggerToggle(.6);self.event_seq=0;self.event_time=float('-inf');self.event_index=0
-        self.last_loss=0
+        self.last_loss=0;self.source_event_seq=0;self.button_boundary=0
 
     def connect(self,root):
         if self.connected:return False
@@ -158,15 +213,31 @@ class ManualInput:
                 r.base.push(pose,r.last_feedback)
             if flow.last_frame_ns is not None and stamp-flow.last_frame_ns>100_000_000:
                 flow.lose(stamp,'No fresh Pico reference within100ms')
-            if flow.losses!=self.last_loss:
+            if flow.losses!=self.last_loss or flow.button_not_before_ns!=self.button_boundary:
                 self.toggle=DualTriggerToggle(.6);self.last_loss=flow.losses
+                self.button_boundary=flow.button_not_before_ns
+                self.event_time=float('-inf')
             if 'trigger_event_seq' in state:
                 # Receiver latches at 2ms, independently of inference. The Git
-                # runner consumes its monotonic event counter, not a late poll
-                # of a potentially already released trigger pulse.
-                self.event_seq=int(state['trigger_event_seq'])
-                self.event_time=int(state['trigger_event_monotonic_ns'])/1_000_000_000
-            elif self.toggle.update(buttons,now):self.event_seq+=1;self.event_time=now
+                # runner receives only events whose actual arming release AND
+                # press followed the current body-recovery boundary. Resetting
+                # a parent-local latch cannot reset the child event source.
+                sequence=int(state['trigger_event_seq'])
+                if sequence!=self.source_event_seq:
+                    consecutive=sequence==self.source_event_seq+1
+                    self.source_event_seq=sequence
+                    pressed=int(state['trigger_event_monotonic_ns'])
+                    released=int(state.get('trigger_event_release_monotonic_ns',0))
+                    if (consecutive and flow.reference_ready(stamp) and not flow.source_fault
+                            and 0<released<=pressed<=stamp
+                            and released>=flow.button_not_before_ns):
+                        self.event_seq+=1;self.event_time=pressed/1_000_000_000
+            else:
+                age=buttons[2]
+                if (not np.isfinite(age) or stamp-int(round(age*1e9))<flow.button_not_before_ns
+                        or not flow.reference_ready(stamp)):
+                    self.toggle=DualTriggerToggle(.6)
+                elif self.toggle.update(buttons,now):self.event_seq+=1;self.event_time=now
             for row in flow.events[self.event_index:]:self.write(row)
             self.event_index=len(flow.events)
             available,_,age,_,_=buttons
@@ -180,6 +251,7 @@ class ManualInput:
                 source_gap_s=0.,retarget_ms=0.,gmr_task_error=0.)
         except Exception as exc:
             self.toggle=DualTriggerToggle(.6)
+            self.event_time=float('-inf')
             flow.lose(stamp,str(exc))
             result=dict(state='failed',error=str(exc),trigger_event_seq=self.event_seq)
         for row in flow.events[self.event_index:]:self.write(row)
@@ -220,10 +292,25 @@ def pico_reference_command(runtime,snapshot,now,*,q,dq,root,gyro,yaw_offset=None
     return runtime.infer_motion_command(motion,q=q,dq=dq,root=root,gyro=gyro,diagnostics=diagnostics)
 
 
+class TaskReferences(JointReferences):
+    """Only the task-reference seam changes; ownership and cancellation do not."""
+    def create_inputs(self,controller,pico,clock):
+        return GuardedInputs(self.runtime,controller,pico,clock)
+
+    def acquire(self,snapshot,now):
+        return manual_reference(self.runtime,snapshot,now)
+
+    def align_heading(self,motion,root):
+        return reference_yaw(self.runtime,motion,root)
+
+    def follow(self,snapshot,now,**feedback):
+        return pico_reference_command(self.runtime,snapshot,now,**feedback)
+
+
 def run_aligned(runtime,args,write,controller,receiver,stop,*,service_alive=lambda:True,clock=time,
                 request_action=None,on_result=lambda result,stamp:None,poll_command=lambda:None):
-    """Call the source-identical Git runner with real or test-injected I/O."""
-    from .pico_aligned_lifecycle import run_live
+    """Call the one actor control loop with an explicit task-reference adapter."""
+    from .actor_pico_live import run_live
     runtime.clock=clock
     options=NS(**vars(args));options.auto_start=True;options.manual_pico=True;options.wait_pico=True
     options.auto_pico=False;options.stand_only=False;options.entry_policy='policy-online';options.gripper_config=None
@@ -240,7 +327,8 @@ def run_aligned(runtime,args,write,controller,receiver,stop,*,service_alive=lamb
         write(dict(row,route=runtime.route,actions_sent=counts['actions_sent'],control_handles_created=1))
     manual=ManualInput(runtime,receiver,clock=clock,service_check=service_alive,write=record)
     result=run_live(runtime,options,record,controller,None,stop,service_alive,clock=clock,
-        manual_pico=manual,poll_command=poll_command,request_action=request_action)
+        manual_pico=manual,poll_command=poll_command,request_action=request_action,
+        reference_adapter=TaskReferences(runtime))
     result.update(counts,route=runtime.route,policy_step=runtime.runtime.config['checkpoint_iteration'],pico_frames=runtime.flow.frames,
         original_git_commit='ca0aa6ec8496d0c65932350b38eba5103f570140',
         robot_configuration_modified=False,protection_relaxed=False,physical_stability_verified=False,
