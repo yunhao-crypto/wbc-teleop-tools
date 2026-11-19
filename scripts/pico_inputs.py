@@ -200,7 +200,14 @@ def main(route=None):
                     from locomotion_aorta.pull import PullStateSource
                     source = PullStateSource(group=args.group, node_name='vita-'+route+'-shadow')
                     resources.callback(source.close)
+                    # The SDK rejects native BodyState candidates until robot
+                    # discovery binds this read-only source to its runtime.
+                    source.get_robot_info(timeout=min(5.,args.startup_timeout))
                     validator = Inputs(SimpleNamespace(config={'pico_max_age_s': .6}, policy=flow.runtime.policy), None, None, time)
+                    # Allow subscription startup within the explicit budget;
+                    # subsequent reads retain the normal 20ms wait and 100ms
+                    # freshness checks, including this first measured frame.
+                    validator.validate_state(source.wait_state(timeout=args.startup_timeout))
                 libraries = library_directories(args.root, service.report['executable'])
                 receiver = PicoInputProcess(sdk_dir=args.sdk_dir,
                     dll_dirs=list(dict.fromkeys([*map(str,args.dll_dir), *(libraries if os.name=='nt' else [])])),
