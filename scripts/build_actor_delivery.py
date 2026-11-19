@@ -27,6 +27,7 @@ ARCHIVES = [
 SCRIPTS = ('actor_pico.py', 'bootstrap_actor_s100.py', 'configure_actor_s100.py',
            'start_actor_pico.sh', 'start_actor_motion.sh', 'prepare_zenoh_session.py',
            'pico_session_services.py', 'pico_camera_bridge.py', 'build_pico_arm64.sh',
+           'start_mimiclite_native.sh', 'pin_native_inference.py',
            'prepare_external_ankle_config.py', 'import_actor_motion.py')
 MODULES = ('__init__.py', 'policy_contract.py', 'state_adapter.py', 'sdkmain_adapter.py',
            'sdk021_guard.py', 'pico_input.py', 'pico_camera_bridge.py')
@@ -72,7 +73,8 @@ def extract_bundle(archive, destination):
 def runtime_inputs(root, variant):
     """Explicit runtime boundary; no tests, machine-local files or developer docs."""
     names = {str(DELIVERY/'requirements.txt'), 'config/sdk021-wheel-guard.json',
-             'config/actor_motion.json', 'config/pico_op3_gripper.example.json'}
+             'config/actor_motion.json', 'config/pico_op3_gripper.example.json',
+             'config/mimiclite_native_reference.json'}
     names.update('scripts/'+name for name in SCRIPTS)
     module = 'src/deployment/vita_s100_aorta_30dof/'
     names.update(module+name for name in MODULES)

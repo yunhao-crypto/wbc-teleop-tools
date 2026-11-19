@@ -1,5 +1,6 @@
 # Optional Linux x86_64/Python 3.10 validation environment; not used on S100.
 numpy==1.26.4
+onnx==1.21.0
 onnxruntime==1.23.2
 PyYAML==6.0.3
 flatbuffers==25.12.19

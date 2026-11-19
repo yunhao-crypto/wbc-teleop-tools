@@ -237,7 +237,7 @@ class PicoReferenceProcess:
         # The reader can own an optional raw-frame writer process. A daemon
         # cannot spawn it; close() owns and reaps the entire process group.
         self.process = context.Process(target=_capture, args=(str(runtime.root), runtime.config,
-            runtime.model.contract, runtime.policy.lower, runtime.policy.upper,
+            runtime.model.contract, None, None,
             self.commands, self.output, self.stop,self.controls,self.head_pose))
         self.connected = False
         self.closed = False

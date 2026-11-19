@@ -332,7 +332,9 @@ class SuperMimicReference:
     at a control-clock time, which needs ``history_s`` of extra samples.
     """
     def __init__(self, contract, math_api, *, past_frames, tail_frames, capacity=1024, history_s=0.):
-        if getattr(contract, 'policy_kind', '') not in (POLICY_KIND, 'morphmimic_vita02a_tracking') or capacity < 3 or not 0 <= history_s <= 2:
+        if (getattr(contract, 'policy_kind', '') not in
+                (POLICY_KIND, 'morphmimic_vita02a_tracking', 'mimiclite_vita02a_tracking')
+                or capacity < 3 or not 0 <= history_s <= 2):
             raise ValueError('Invalid SuperMimic reference settings')
         self.contract, self.math = contract, math_api
         self.samples = deque(maxlen=capacity)
@@ -424,6 +426,9 @@ def create_policy(contract, profile, math_api, config):
 
 def create_reference(contract, math_api, config):
     from .actor_pico_stream import stream_settings
+    if getattr(contract, 'policy_kind', '') == 'mimiclite_vita02a_tracking':
+        from .actor_mimiclite_reference import create_reference as mimic_reference
+        return mimic_reference(contract, math_api, config)
     settings = stream_settings(config)
     # Playback lags the newest sample by the margin and, before the hold
     # rule takes over, by up to pico_hold_age_s; keep samples for both.

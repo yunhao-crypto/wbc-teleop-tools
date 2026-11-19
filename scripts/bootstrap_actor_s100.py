@@ -253,7 +253,7 @@ def validate_environment(root,manifest,policy):
     validate_pico(root,manifest,policy)
 
 
-def install(root, manifest, *, build_pico=False, policy='sonic'):
+def install(root, manifest, *, build_pico=False, policy='sonic', native_reference_only=False):
     validate_environment(root,manifest,policy)
     if sys.platform != 'linux' or platform.machine() != 'aarch64' or sys.version_info[:2] != (3, 10):
         raise RuntimeError('Install on S100 Linux aarch64 with Python 3.10; use --verify-only on x86')
@@ -309,6 +309,16 @@ def install(root, manifest, *, build_pico=False, policy='sonic'):
         receipt=check_installation(root,manifest,python,env,policy)
         write_install_receipt(root,receipt)
         return receipt
+    if native_reference_only:
+        subprocess.run([str(python), '-c',
+                        'from locomotion_aorta.pull import PullStateSource; '
+                        'from deployment.vita_s100_aorta_30dof.actor_mimiclite_reference import MimicLiteReferenceContract'],
+                       cwd=root, env=env, check=True)
+        receipt = dict(status='PASS_S100_NATIVE_REFERENCE_INSTALL',
+                       source=manifest['source'], payload_sha256=manifest['payload_sha256'],
+                       variant=manifest['variant'], python=str(python), actions_sent=0)
+        (root/'build/mimiclite_native_reference_install.json').write_text(json.dumps(receipt, indent=2)+'\n')
+        return receipt
     subprocess.run([str(python), str(root/'scripts/actor_pico.py'), 'check', '--steps', '10',
                     '--policy', policy], cwd=root, env=env, check=True)
     receipt = dict(status='PASS_S100_OFFLINE_INSTALL_AND_MODEL_CHECK',
@@ -328,6 +338,8 @@ def main(argv=None):
     modes = parser.add_mutually_exclusive_group()
     modes.add_argument('--verify-only', action='store_true')
     modes.add_argument('--unpack-only', action='store_true')
+    modes.add_argument('--native-reference-only', action='store_true',
+                       help='Install SDK and Pico for the native locomotion actor without a WTT model')
     parser.add_argument('--build-pico', action='store_true', help='Rebuild from tracked C++ sources on S100')
     parser.add_argument('--model', type=Path, help='External model of --policy; verified before copying locally')
     parser.add_argument('--planner-model', type=Path, help='External SONIC planner ONNX; verified before copying locally')
@@ -336,6 +348,9 @@ def main(argv=None):
                         help='Actor whose pinned model --model supplies and the install check runs')
     parser.add_argument('--root', type=Path, default=ROOT)
     args = parser.parse_args(argv)
+    if args.native_reference_only and (args.policy != 'sonic' or args.model
+                                       or args.planner_model or args.bridge_model):
+        parser.error('--native-reference-only installs the reference stack and takes no actor assets')
     root = args.root.resolve()
     manifest = verify(root)
     pico=args.policy in PICO_POLICIES
@@ -363,14 +378,15 @@ def main(argv=None):
                 from bootstrap_pico_inputs_s100 import installation_transaction
                 transaction=installation_transaction(root)
             with transaction:
-                if args.model or not args.unpack_only:
+                if not args.native_reference_only and (args.model or not args.unpack_only):
                     if not pico:provision_model(root, manifest, args.model, args.policy)
                 provision_planner_assets(root, manifest, args.planner_model, args.bridge_model)
                 if args.unpack_only:
                     unpack(root, manifest)
                     result = dict(status='PASS_RUNTIME_UNPACK', s100_execution='not_measured', actions_sent=0)
                 else:
-                    result = install(root, manifest, build_pico=args.build_pico, policy=args.policy)
+                    result = install(root, manifest, build_pico=args.build_pico, policy=args.policy,
+                                     native_reference_only=args.native_reference_only)
     print(json.dumps(result, indent=2))
 
 
