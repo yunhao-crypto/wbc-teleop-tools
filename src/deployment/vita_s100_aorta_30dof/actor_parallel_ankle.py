@@ -14,7 +14,6 @@ roll`` (left +1, right -1). Jacobian columns are ``(roll, pitch)``, rows
 import math
 
 import numpy as np
-from locomotion_aorta import body_types
 
 SIDES = ('left', 'right')
 
@@ -259,6 +258,7 @@ def decode_motor_theta(policy, math_api, raw_action, **timing):
                                              float(np.float32(c.kp[p])), float(np.float32(c.kd[p])))
     for name, fixed in policy.profile['fixed_joints'].items():
         motors[policy.order.index(name)] = math_api.BodyJointCmd(fixed['q'], 0., 0., fixed['kp'], fixed['kd'])
+    from locomotion_aorta import body_types
     version = (body_types.BODY_CMD_MOTOR_THETA_PROTOCOL_VERSION if native
                else body_types.BODY_CMD_PROTOCOL_VERSION)
     return math_api.BodyCmd(joints=tuple(motors), protocol_version=version, **timing), {

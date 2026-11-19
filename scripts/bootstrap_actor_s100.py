@@ -137,7 +137,8 @@ def verify(root):
     payload = hashlib.sha256(json.dumps(manifest['files'], sort_keys=True).encode()).hexdigest()
     if payload != manifest['payload_sha256']:
         raise RuntimeError('Delivery payload identity mismatch')
-    verify_actor_sdk_pin(root)
+    if not is_pico_package(manifest):
+        verify_actor_sdk_pin(root)
     return manifest
 
 

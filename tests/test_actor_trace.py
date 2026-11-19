@@ -296,6 +296,31 @@ class TraceTests(unittest.TestCase):
             runtime.infer_motion_command(None,q=(),dq=(),root=(),gyro=())
         self.assertEqual(self.consumption(),[])
 
+    def test_offline_infer_links_fresh_and_held_pico_but_not_zero_or_expired_input(self):
+        with Trace(self.path, stages=STAGES) as trace:
+            runtime, motion = self.reference_runtime(trace)
+            runtime.reference.motion = lambda: motion
+            runtime.reference.last_receive_monotonic = 1.
+            runtime.reference_yaw_offset = 0.
+            runtime.head = runtime.latest_pico = None
+            runtime.last_residual = runtime.last_retarget_ms = None
+            first, held, fresh = (trace.new_id() for _ in range(3))
+            runtime.trace_input_id = first
+            runtime.infer_command(q=(), dq=(), root=(), gyro=(), now_monotonic=1.)
+            runtime.trace_input_id = held
+            runtime.infer_command(q=(), dq=(), root=(), gyro=(), now_monotonic=1.2)
+            runtime.trace_input_id = trace.new_id()
+            runtime.infer_command(q=(), dq=(), root=(), gyro=(), now_monotonic=1.21)
+            runtime.reference.last_receive_monotonic = 1.3
+            runtime.trace_input_id = fresh
+            runtime.infer_command(q=(), dq=(), root=(), gyro=(), now_monotonic=1.3)
+            runtime.trace_input_id = 0
+            runtime.infer_command(q=(), dq=(), root=(), gyro=(), now_monotonic=1.3)
+            with self.assertRaisesRegex(TimeoutError, 'stale'):
+                runtime.infer_command(q=(), dq=(), root=(), gyro=(), now_monotonic=2.)
+        self.assertEqual([(r['integers'], r['reference_id']) for r in self.consumption()],
+                         [([2], first), ([2], held), ([2], held), ([2], fresh)])
+
     def test_held_pico_reference_links_to_its_original_snapshot(self):
         from deployment.vita_s100_aorta_30dof.actor_pico_live import pico_reference_command
         with Trace(self.path, stages=STAGES) as trace:

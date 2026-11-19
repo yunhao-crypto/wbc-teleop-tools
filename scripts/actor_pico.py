@@ -21,7 +21,6 @@ import time
 import threading
 
 import numpy as np
-from locomotion_aorta.trace.cli import add_trace_arguments, resolve_trace_output
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT/'src'))
@@ -373,6 +372,7 @@ def main():
         return modality_main()
     if (ROOT/'config/actor_smpl.json').is_file() and not (ROOT/'config/actor_pico.json').is_file():
         selection.error('This isolated Pico delivery only supports --policy pico_smpl or pico_teleop')
+    from locomotion_aorta.trace.cli import add_trace_arguments, resolve_trace_output
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('mode', choices=('check', 'replay', 'motion-check', 'state-check', 'shadow', 'live'))
     parser.add_argument('--root', type=Path, default=ROOT)

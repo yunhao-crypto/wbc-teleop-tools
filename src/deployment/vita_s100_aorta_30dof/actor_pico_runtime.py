@@ -247,7 +247,9 @@ class ActorPicoRuntime:
                                  diagnostics={'reference_delay_s': self.reference.delay,
                                               'pico_age_s': age, 'reference_hold': held,
                                               'gmr_task_error': self.last_residual,
-                                              'retarget_ms': self.last_retarget_ms})
+                                              'retarget_ms': self.last_retarget_ms},
+                                 trace_inputs=((2, getattr(self, 'trace_held_input_id' if held else 'trace_input_id', 0)),)
+                                 if getattr(self, 'trace', None) is not None else ())
         command, candidate = self.apply_head(command, row, snapshot=self.latest_pico,
                                               now=now_monotonic, tracking=True)
         # Offline replay/shadow treats each returned command as a simulated
