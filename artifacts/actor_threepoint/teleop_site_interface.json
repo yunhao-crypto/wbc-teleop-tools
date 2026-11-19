@@ -1,0 +1,202 @@
+{
+  "checkpoint_iteration": 27000,
+  "batch_size": 1,
+  "dtype": "float32",
+  "input_name": "teleop_features",
+  "input_shape": [
+    1,
+    267
+  ],
+  "flatten_order": "C; complete field blocks in the following order",
+  "fields": [
+    {
+      "name": "motion_anchor_ori_b",
+      "shape": [
+        6
+      ],
+      "start": 0,
+      "stop": 6,
+      "meaning": "R(current_robot_base)^T @ R(current_reference_base); first two matrix columns flattened row-major",
+      "rotation6d_order": [
+        "R00",
+        "R01",
+        "R10",
+        "R11",
+        "R20",
+        "R21"
+      ]
+    },
+    {
+      "name": "command_multi_future_lower_body",
+      "shape": [
+        240
+      ],
+      "start": 6,
+      "stop": 246,
+      "layout": "q[10,12].reshape(120) followed by qdot[10,12].reshape(120); absolute reference angles, no default-pose subtraction",
+      "units": [
+        "rad",
+        "rad/s"
+      ],
+      "lower_joint_names": [
+        "left_hip_pitch_joint",
+        "left_hip_roll_joint",
+        "left_hip_yaw_joint",
+        "left_knee_joint",
+        "left_ankle_pitch_joint",
+        "left_ankle_roll_joint",
+        "right_hip_pitch_joint",
+        "right_hip_roll_joint",
+        "right_hip_yaw_joint",
+        "right_knee_joint",
+        "right_ankle_pitch_joint",
+        "right_ankle_roll_joint"
+      ],
+      "policy_joint_indices": [
+        0,
+        3,
+        6,
+        10,
+        14,
+        18,
+        1,
+        4,
+        7,
+        11,
+        15,
+        19
+      ],
+      "ankles": "pitch/roll-named slots hold Achilles theta_top/theta_bottom motor references, not serial virtual ankle angles"
+    },
+    {
+      "name": "vr_3point_local_target",
+      "shape": [
+        9
+      ],
+      "start": 246,
+      "stop": 255,
+      "units": "m",
+      "meaning": "current target site positions relative to reference base_link"
+    },
+    {
+      "name": "vr_3point_local_orn_target",
+      "shape": [
+        12
+      ],
+      "start": 255,
+      "stop": 267,
+      "meaning": "current site orientations relative to reference base_link, WXYZ quaternions; preserve dataset sign convention"
+    }
+  ],
+  "point_order": [
+    "left_op3_mount",
+    "right_op3_mount",
+    "head_capsule_center"
+  ],
+  "sites": [
+    {
+      "name": "left_op3_mount",
+      "parent": "left_wrist_pitch_link",
+      "offset_m": [
+        0.0458,
+        -0.01453,
+        0.00187
+      ],
+      "mount_rpy_rad": [
+        -1.5708,
+        0.0,
+        -1.5708
+      ]
+    },
+    {
+      "name": "right_op3_mount",
+      "parent": "right_wrist_pitch_link",
+      "offset_m": [
+        0.0458,
+        0.0145,
+        0.00212
+      ],
+      "mount_rpy_rad": [
+        1.5708,
+        0.0,
+        1.5708
+      ]
+    },
+    {
+      "name": "head_capsule_center",
+      "parent": "waist_pitch_link",
+      "offset_m": [
+        0.0200612,
+        0.0004282697,
+        0.512709
+      ],
+      "mount_rpy_rad": [
+        0.0,
+        0.0,
+        0.0
+      ]
+    }
+  ],
+  "lower_body_future_offsets_s": [
+    0.0,
+    0.02,
+    0.04,
+    0.06,
+    0.08,
+    0.1,
+    0.12,
+    0.14,
+    0.16,
+    0.18
+  ],
+  "three_point_temporal_scope": "one current pose per site, no future point trajectory in this encoder input",
+  "outputs": [
+    {
+      "name": "encoded_tokens",
+      "shape": [
+        1,
+        64
+      ],
+      "meaning": "FSQ-quantized numerical codes; reshape to [1,2,32]; feed to action decoder"
+    },
+    {
+      "name": "raw_latent",
+      "shape": [
+        1,
+        64
+      ],
+      "meaning": "MLP output before FSQ; not decoder-ready tokens"
+    }
+  ],
+  "hidden_dims": [
+    2048,
+    1024,
+    512,
+    512
+  ],
+  "activation": "SiLU",
+  "output_dim": 64,
+  "num_tokens": 2,
+  "token_dim": 32,
+  "fsq_levels_per_coordinate": 32,
+  "parameter_count": 3467328,
+  "mlp_internal_input_order": [
+    "command_multi_future_lower_body",
+    "vr_3point_local_target",
+    "vr_3point_local_orn_target",
+    "motion_anchor_ori_b"
+  ],
+  "requires_robot_proprioception": "Not for this encoder; shared action decoder separately needs 900 values",
+  "training_observation_corruption": {
+    "enabled": true,
+    "root6d_additive_uniform": [
+      -0.05,
+      0.05
+    ],
+    "lower_body_noise": null,
+    "site_position_noise": null,
+    "site_quaternion_noise": null,
+    "deployment_note": "Use clean features; recorded training examples include root6d corruption"
+  },
+  "note": "This encoder requires all 267 features, including planned/reference leg motion and root orientation. It does not infer leg references from three tracked poses alone."
+}

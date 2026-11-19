@@ -1,0 +1,24 @@
+{
+  "schema": "vita_pico_smpl_workflow_no_action_v1",
+  "motion_enabled": false,
+  "route": "pico_smpl",
+  "entry_policy": "policy-online",
+  "wrist_mode": "stand",
+  "lead_in_seconds": 0.3,
+  "standing_reference": {
+    "path": "artifacts/actor_smpl/standing_human_reference.npz",
+    "sha256": "ce860e034fed9486c922ee4475775d5c5b9808fbaa21f258ef2ae1b69d2b33dc"
+  },
+  "provenance": {
+    "source_sha256": "1d744df8f8376b2c6d2a6e9e1454d6667dd00369e8f1b0a5680c0ecd8c644b11",
+    "source": "historical_actual_Pico_frames_475_550",
+    "neutral_frames": 45,
+    "method": "first2s_quality_checked_median_positions_SO3_mean_root",
+    "physical_standing_validated": false
+  },
+  "reviewed_guards": {
+    "src/deployment/vita_s100_aorta_30dof/actor_pico_live.py": "a8743f88e37374e12ce583bebcb202690af759b45d88687b5fad2a1cfea44dda",
+    "src/deployment/vita_s100_aorta_30dof/actor_pico_startup.py": "fc4abaf444f0039aa2ee52d910111bbeace3e392709c1761efa0498e72a9c5b3",
+    "src/deployment/vita_s100_aorta_30dof/sdkmain_adapter.py": "7848b0127d6f9fdc8fbc67ba3ef3e71e57a5083af4a5a942dc03e4d88164c38d"
+  }
+}

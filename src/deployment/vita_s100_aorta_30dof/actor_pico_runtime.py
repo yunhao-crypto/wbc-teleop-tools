@@ -83,7 +83,8 @@ def sdk_math(root, config):
 
 
 class ActorModel:
-    def __init__(self, path, math_api, *, backend='auto', threads=1, policy_kind='groot_vita02a_tracking'):
+    def __init__(self, path, math_api, *, backend='auto', threads=1, policy_kind='groot_vita02a_tracking',
+                 smpl_contract=None):
         if backend == 'auto':
             backend = 'sdk' if platform.machine() == 'aarch64' else 'ort'
         self.backend = backend
@@ -91,6 +92,12 @@ class ActorModel:
         parse = (functools.partial(MorphMimicContract.from_metadata, math_api) if policy_kind == MORPHMIMIC_KIND else
                  SuperMimicContract.from_metadata if policy_kind == SUPERMIMIC_KIND
                  else functools.partial(groot_contract, math_api))
+        if policy_kind == 'groot_vita02a_smpl_tracking':
+            from .actor_smpl import parse_contract, validate_model_binding
+            validate_model_binding(path, smpl_contract)
+            parse = functools.partial(parse_contract, math_api, smpl_contract)
+        elif smpl_contract is not None:
+            raise ValueError('SMPL sidecar is only valid for the explicit SMPL policy')
         if backend == 'sdk':
             self.model = NativeModel(path, math_api, threads=threads, parse=parse)
             self.contract = self.model.contract

@@ -1,0 +1,789 @@
+{
+  "schema": "vita_pico_27000_build_inputs_v1",
+  "template": {
+    "schema": "vita_actor_s100_delivery_v2",
+    "variant": "base",
+    "target": {
+      "os": "Linux",
+      "architecture": "aarch64",
+      "python": "3.10",
+      "glibc_min": "2.35"
+    },
+    "requirements": "deploy/actor_s100/requirements.txt",
+    "archives": [
+      {
+        "path": "deploy/actor_s100/runtime/pico_service_arm64.tar.gz",
+        "role": "pico_service",
+        "destination": "vendor_packages/xrobotoolkit-arm64/opt/apps/roboticsservice",
+        "required_members": [
+          "RoboticsServiceProcess",
+          "SDK/arm64/libPXREARobotSDK.so",
+          "libPXREAGRPCServer.so",
+          "plugins/platforms/libqoffscreen.so",
+          "epDBBackup.s3db"
+        ]
+      },
+      {
+        "path": "deploy/actor_s100/runtime/pico_binding_cp310_aarch64.tar.gz",
+        "role": "pico_binding",
+        "destination": "build/pico",
+        "required_members": [
+          "xrobotoolkit_sdk.cpython-310-aarch64-linux-gnu.so",
+          "libdouble-conversion.so.3"
+        ]
+      }
+    ],
+    "external_resources": [],
+    "pico_inputs_release": {
+      "schema": "vita_pico_inputs_s100_physical_v1",
+      "primary_route": "pico_smpl",
+      "motion_enabled": true,
+      "backend": "ort",
+      "offline_check": {
+        "input": {
+          "path": "checks/pico_historical_75frames.npz",
+          "sha256": "1d744df8f8376b2c6d2a6e9e1454d6667dd00369e8f1b0a5680c0ecd8c644b11"
+        },
+        "triggers": {
+          "path": "checks/synthetic_trigger_scenario.json",
+          "sha256": "4b301f05fbe1fe6bee8c0a0b54edead8fb27f923f4dad05974c5ecfb14c4a8d7"
+        }
+      },
+      "workflow_check": {
+        "config": {
+          "path": "config/pico_smpl_workflow.json",
+          "sha256": "17dd9381c681740df31d5f0e9eaa115dca8e99834a7ab1273f4ab8a6dc1d9697"
+        },
+        "fixture": {
+          "path": "checks/workflow/fixture.json",
+          "sha256": "8b72f6b5c9347cb1dee39e6fef4ae19c0a25fd857f974653c33f6dc8ccf94e6b"
+        }
+      },
+      "delivery_version": "35000-shared-actor",
+      "physical_workflow": true,
+      "physical_backend": "sdk",
+      "physical_entry": "scripts/start_actor_pico_smpl_live.sh",
+      "installation_actions_sent": 0,
+      "body_cmd_protocol_version": 4,
+      "sdk_version": "1.0.0rc1+bodycmdv4.6863ad7",
+      "aligned_routes": [
+        "pico_smpl",
+        "pico_teleop"
+      ],
+      "upstream_commit": "ca0aa6ec8496d0c65932350b38eba5103f570140",
+      "checkpoint_iteration": 35000
+    }
+  },
+  "source_files": [
+    {
+      "path": "artifacts/actor_threepoint/control_contract.json",
+      "source": "artifacts/actor_threepoint/control_contract.json"
+    },
+    {
+      "path": "artifacts/actor_threepoint/teleop_site_interface.json",
+      "source": "artifacts/actor_threepoint/teleop_site_interface.json"
+    },
+    {
+      "path": "config/actor_smpl.json",
+      "source": "config/actor_smpl.json"
+    },
+    {
+      "path": "config/actor_threepoint.json",
+      "source": "config/actor_threepoint.json"
+    },
+    {
+      "path": "config/pico_git_alignment.json",
+      "source": "config/pico_git_alignment.json"
+    },
+    {
+      "path": "config/pico_inputs.json",
+      "source": "config/pico_inputs.json"
+    },
+    {
+      "path": "config/pico_smpl_live.json",
+      "source": "config/pico_smpl_live.json"
+    },
+    {
+      "path": "config/pico_smpl_workflow.json",
+      "source": "config/pico_smpl_workflow.json"
+    },
+    {
+      "path": "config/pico_teleop_live.json",
+      "source": "config/pico_teleop_live.json"
+    },
+    {
+      "path": "config/sdk021-wheel-guard.json",
+      "source": "config/pico_27000_sdk_guard.json"
+    },
+    {
+      "path": "config/sonic_smpl_27000_contract.json",
+      "source": "config/sonic_smpl_27000_contract.json"
+    },
+    {
+      "path": "config/sonic_threepoint_27000_contract.json",
+      "source": "config/sonic_threepoint_27000_contract.json"
+    },
+    {
+      "path": "deploy/actor_s100/requirements.txt",
+      "source": "deploy/pico_27000/requirements.txt"
+    },
+    {
+      "path": "deploy/actor_s100/runtime/pico_binding_cp310_aarch64.tar.gz",
+      "source": "deploy/actor_s100/runtime/pico_binding_cp310_aarch64.tar.gz"
+    },
+    {
+      "path": "deploy/actor_s100/runtime/pico_service_arm64.tar.gz",
+      "source": "deploy/actor_s100/runtime/pico_service_arm64.tar.gz"
+    },
+    {
+      "path": "deploy/actor_s100/wheelhouse/absl_py-2.5.1-py3-none-any.whl",
+      "source": "deploy/actor_s100/wheelhouse/absl_py-2.5.1-py3-none-any.whl"
+    },
+    {
+      "path": "deploy/actor_s100/wheelhouse/aorta_msgs-0.0.0+g7649a87ebb03-py3-none-any.whl",
+      "source": "deploy/actor_s100/wheelhouse/aorta_msgs-0.0.0+g7649a87ebb03-py3-none-any.whl"
+    },
+    {
+      "path": "deploy/actor_s100/wheelhouse/aorta_sdk-0.0.0+g7649a87ebb03-py3-none-linux_aarch64.whl",
+      "source": "deploy/actor_s100/wheelhouse/aorta_sdk-0.0.0+g7649a87ebb03-py3-none-linux_aarch64.whl"
+    },
+    {
+      "path": "deploy/actor_s100/wheelhouse/coloredlogs-15.0.1-py2.py3-none-any.whl",
+      "source": "deploy/actor_s100/wheelhouse/coloredlogs-15.0.1-py2.py3-none-any.whl"
+    },
+    {
+      "path": "deploy/actor_s100/wheelhouse/daqp-0.10.3-cp310-cp310-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl",
+      "source": "deploy/actor_s100/wheelhouse/daqp-0.10.3-cp310-cp310-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl"
+    },
+    {
+      "path": "deploy/actor_s100/wheelhouse/etils-1.13.0-py3-none-any.whl",
+      "source": "deploy/actor_s100/wheelhouse/etils-1.13.0-py3-none-any.whl"
+    },
+    {
+      "path": "deploy/actor_s100/wheelhouse/flatbuffers-25.12.19-py2.py3-none-any.whl",
+      "source": "deploy/actor_s100/wheelhouse/flatbuffers-25.12.19-py2.py3-none-any.whl"
+    },
+    {
+      "path": "deploy/actor_s100/wheelhouse/fsspec-2026.9.0-py3-none-any.whl",
+      "source": "deploy/actor_s100/wheelhouse/fsspec-2026.9.0-py3-none-any.whl"
+    },
+    {
+      "path": "deploy/actor_s100/wheelhouse/glfw-2.11.0-py2.py3-none-manylinux_2_28_aarch64.whl",
+      "source": "deploy/actor_s100/wheelhouse/glfw-2.11.0-py2.py3-none-manylinux_2_28_aarch64.whl"
+    },
+    {
+      "path": "deploy/actor_s100/wheelhouse/humanfriendly-10.0-py2.py3-none-any.whl",
+      "source": "deploy/actor_s100/wheelhouse/humanfriendly-10.0-py2.py3-none-any.whl"
+    },
+    {
+      "path": "deploy/actor_s100/wheelhouse/importlib_resources-7.1.0-py3-none-any.whl",
+      "source": "deploy/actor_s100/wheelhouse/importlib_resources-7.1.0-py3-none-any.whl"
+    },
+    {
+      "path": "deploy/actor_s100/wheelhouse/locomotion_aorta-0.3.0-cp310-cp310-manylinux_2_35_aarch64.whl",
+      "source": "deploy/actor_s100/wheelhouse/locomotion_aorta-0.3.0-cp310-cp310-manylinux_2_35_aarch64.whl"
+    },
+    {
+      "path": "deploy/actor_s100/wheelhouse/mink-1.3.0-cp310-cp310-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl",
+      "source": "deploy/actor_s100/wheelhouse/mink-1.3.0-cp310-cp310-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl"
+    },
+    {
+      "path": "deploy/actor_s100/wheelhouse/mpmath-1.3.0-py3-none-any.whl",
+      "source": "deploy/actor_s100/wheelhouse/mpmath-1.3.0-py3-none-any.whl"
+    },
+    {
+      "path": "deploy/actor_s100/wheelhouse/mujoco-3.11.0-cp310-cp310-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl",
+      "source": "deploy/actor_s100/wheelhouse/mujoco-3.11.0-cp310-cp310-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl"
+    },
+    {
+      "path": "deploy/actor_s100/wheelhouse/numpy-1.26.4-cp310-cp310-manylinux_2_17_aarch64.manylinux2014_aarch64.whl",
+      "source": "deploy/actor_s100/wheelhouse/numpy-1.26.4-cp310-cp310-manylinux_2_17_aarch64.manylinux2014_aarch64.whl"
+    },
+    {
+      "path": "deploy/actor_s100/wheelhouse/onnxruntime-1.23.2-cp310-cp310-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl",
+      "source": "deploy/actor_s100/wheelhouse/onnxruntime-1.23.2-cp310-cp310-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl"
+    },
+    {
+      "path": "deploy/actor_s100/wheelhouse/packaging-26.3-py3-none-any.whl",
+      "source": "deploy/actor_s100/wheelhouse/packaging-26.3-py3-none-any.whl"
+    },
+    {
+      "path": "deploy/actor_s100/wheelhouse/protobuf-7.36.2-cp310-abi3-manylinux2014_aarch64.whl",
+      "source": "deploy/actor_s100/wheelhouse/protobuf-7.36.2-cp310-abi3-manylinux2014_aarch64.whl"
+    },
+    {
+      "path": "deploy/actor_s100/wheelhouse/pybind11-2.13.6-py3-none-any.whl",
+      "source": "deploy/actor_s100/wheelhouse/pybind11-2.13.6-py3-none-any.whl"
+    },
+    {
+      "path": "deploy/actor_s100/wheelhouse/pyopengl-3.1.10-py3-none-any.whl",
+      "source": "deploy/actor_s100/wheelhouse/pyopengl-3.1.10-py3-none-any.whl"
+    },
+    {
+      "path": "deploy/actor_s100/wheelhouse/pyyaml-6.0.3-py3-none-any.whl",
+      "source": "deploy/actor_s100/wheelhouse/pyyaml-6.0.3-py3-none-any.whl"
+    },
+    {
+      "path": "deploy/actor_s100/wheelhouse/qpsolvers-4.13.0-py3-none-any.whl",
+      "source": "deploy/actor_s100/wheelhouse/qpsolvers-4.13.0-py3-none-any.whl"
+    },
+    {
+      "path": "deploy/actor_s100/wheelhouse/scipy-1.15.3-cp310-cp310-manylinux_2_17_aarch64.manylinux2014_aarch64.whl",
+      "source": "deploy/actor_s100/wheelhouse/scipy-1.15.3-cp310-cp310-manylinux_2_17_aarch64.manylinux2014_aarch64.whl"
+    },
+    {
+      "path": "deploy/actor_s100/wheelhouse/sympy-1.14.0-py3-none-any.whl",
+      "source": "deploy/actor_s100/wheelhouse/sympy-1.14.0-py3-none-any.whl"
+    },
+    {
+      "path": "deploy/actor_s100/wheelhouse/typing_extensions-4.16.0-py3-none-any.whl",
+      "source": "deploy/actor_s100/wheelhouse/typing_extensions-4.16.0-py3-none-any.whl"
+    },
+    {
+      "path": "deploy/actor_s100/wheelhouse/vbot_humanoid_msgs-0.0.0+g35ce9eb82d5b-py3-none-any.whl",
+      "source": "deploy/actor_s100/wheelhouse/vbot_humanoid_msgs-0.0.0+g35ce9eb82d5b-py3-none-any.whl"
+    },
+    {
+      "path": "deploy/actor_s100/wheelhouse/zipp-4.1.2-py3-none-any.whl",
+      "source": "deploy/actor_s100/wheelhouse/zipp-4.1.2-py3-none-any.whl"
+    },
+    {
+      "path": "scripts/bootstrap_actor_s100.py",
+      "source": "scripts/bootstrap_actor_s100.py"
+    },
+    {
+      "path": "scripts/bootstrap_pico_inputs_s100.py",
+      "source": "scripts/bootstrap_pico_inputs_s100.py"
+    },
+    {
+      "path": "scripts/check_pico_aligned.py",
+      "source": "scripts/check_pico_aligned.py"
+    },
+    {
+      "path": "scripts/configure_actor_s100.py",
+      "source": "scripts/configure_actor_s100.py"
+    },
+    {
+      "path": "scripts/pico_actor_aligned.py",
+      "source": "scripts/pico_actor_aligned.py"
+    },
+    {
+      "path": "scripts/pico_aligned_modes.py",
+      "source": "scripts/pico_aligned_modes.py"
+    },
+    {
+      "path": "scripts/pico_camera_bridge.py",
+      "source": "scripts/pico_camera_bridge.py"
+    },
+    {
+      "path": "scripts/pico_inputs.py",
+      "source": "scripts/pico_inputs.py"
+    },
+    {
+      "path": "scripts/pico_session_services.py",
+      "source": "scripts/pico_session_services.py"
+    },
+    {
+      "path": "scripts/pico_smpl.py",
+      "source": "scripts/pico_smpl.py"
+    },
+    {
+      "path": "scripts/pico_smpl_live.py",
+      "source": "scripts/pico_smpl_live.py"
+    },
+    {
+      "path": "scripts/pico_smpl_workflow.py",
+      "source": "scripts/pico_smpl_workflow.py"
+    },
+    {
+      "path": "scripts/pico_teleop.py",
+      "source": "scripts/pico_teleop.py"
+    },
+    {
+      "path": "scripts/pico_teleop_live.py",
+      "source": "scripts/pico_teleop_live.py"
+    },
+    {
+      "path": "scripts/pico_threepoint.py",
+      "source": "scripts/pico_threepoint.py"
+    },
+    {
+      "path": "scripts/prepare_zenoh_session.py",
+      "source": "scripts/prepare_zenoh_session.py"
+    },
+    {
+      "path": "scripts/start_actor_pico.sh",
+      "source": "scripts/start_actor_pico.sh"
+    },
+    {
+      "path": "scripts/start_actor_pico_inputs.sh",
+      "source": "scripts/start_actor_pico_inputs.sh"
+    },
+    {
+      "path": "scripts/start_actor_pico_smpl.sh",
+      "source": "scripts/start_actor_pico_smpl.sh"
+    },
+    {
+      "path": "scripts/start_actor_pico_smpl_live.sh",
+      "source": "scripts/start_actor_pico_smpl_live.sh"
+    },
+    {
+      "path": "scripts/start_actor_pico_teleop_live.sh",
+      "source": "scripts/start_actor_pico_teleop_live.sh"
+    },
+    {
+      "path": "scripts/verify_bodycmd4_codec.py",
+      "source": "scripts/verify_bodycmd4_codec.py"
+    },
+    {
+      "path": "src/deployment/vita_s100_aorta_30dof/__init__.py",
+      "source": "src/deployment/vita_s100_aorta_30dof/__init__.py"
+    },
+    {
+      "path": "src/deployment/vita_s100_aorta_30dof/__main__.py",
+      "source": "src/deployment/vita_s100_aorta_30dof/__main__.py"
+    },
+    {
+      "path": "src/deployment/vita_s100_aorta_30dof/actor_bvh.py",
+      "source": "src/deployment/vita_s100_aorta_30dof/actor_bvh.py"
+    },
+    {
+      "path": "src/deployment/vita_s100_aorta_30dof/actor_groot_ankle.py",
+      "source": "src/deployment/vita_s100_aorta_30dof/actor_groot_ankle.py"
+    },
+    {
+      "path": "src/deployment/vita_s100_aorta_30dof/actor_human_encoder.py",
+      "source": "src/deployment/vita_s100_aorta_30dof/actor_human_encoder.py"
+    },
+    {
+      "path": "src/deployment/vita_s100_aorta_30dof/actor_morphmimic.py",
+      "source": "src/deployment/vita_s100_aorta_30dof/actor_morphmimic.py"
+    },
+    {
+      "path": "src/deployment/vita_s100_aorta_30dof/actor_morphmimic_sonic.py",
+      "source": "src/deployment/vita_s100_aorta_30dof/actor_morphmimic_sonic.py"
+    },
+    {
+      "path": "src/deployment/vita_s100_aorta_30dof/actor_motion.py",
+      "source": "src/deployment/vita_s100_aorta_30dof/actor_motion.py"
+    },
+    {
+      "path": "src/deployment/vita_s100_aorta_30dof/actor_parallel_ankle.py",
+      "source": "src/deployment/vita_s100_aorta_30dof/actor_parallel_ankle.py"
+    },
+    {
+      "path": "src/deployment/vita_s100_aorta_30dof/actor_pico_buttons.py",
+      "source": "src/deployment/vita_s100_aorta_30dof/actor_pico_buttons.py"
+    },
+    {
+      "path": "src/deployment/vita_s100_aorta_30dof/actor_pico_gmr.py",
+      "source": "src/deployment/vita_s100_aorta_30dof/actor_pico_gmr.py"
+    },
+    {
+      "path": "src/deployment/vita_s100_aorta_30dof/actor_pico_gmr_profile.py",
+      "source": "src/deployment/vita_s100_aorta_30dof/actor_pico_gmr_profile.py"
+    },
+    {
+      "path": "src/deployment/vita_s100_aorta_30dof/actor_pico_gripper.py",
+      "source": "src/deployment/vita_s100_aorta_30dof/actor_pico_gripper.py"
+    },
+    {
+      "path": "src/deployment/vita_s100_aorta_30dof/actor_pico_head.py",
+      "source": "src/deployment/vita_s100_aorta_30dof/actor_pico_head.py"
+    },
+    {
+      "path": "src/deployment/vita_s100_aorta_30dof/actor_pico_latest.py",
+      "source": "src/deployment/vita_s100_aorta_30dof/actor_pico_latest.py"
+    },
+    {
+      "path": "src/deployment/vita_s100_aorta_30dof/actor_pico_live.py",
+      "source": "src/deployment/vita_s100_aorta_30dof/actor_pico_live.py"
+    },
+    {
+      "path": "src/deployment/vita_s100_aorta_30dof/actor_pico_local.py",
+      "source": "src/deployment/vita_s100_aorta_30dof/actor_pico_local.py"
+    },
+    {
+      "path": "src/deployment/vita_s100_aorta_30dof/actor_pico_reference.py",
+      "source": "src/deployment/vita_s100_aorta_30dof/actor_pico_reference.py"
+    },
+    {
+      "path": "src/deployment/vita_s100_aorta_30dof/actor_pico_runtime.py",
+      "source": "src/deployment/vita_s100_aorta_30dof/actor_pico_runtime.py"
+    },
+    {
+      "path": "src/deployment/vita_s100_aorta_30dof/actor_pico_scheduling.py",
+      "source": "src/deployment/vita_s100_aorta_30dof/actor_pico_scheduling.py"
+    },
+    {
+      "path": "src/deployment/vita_s100_aorta_30dof/actor_pico_session_replay.py",
+      "source": "src/deployment/vita_s100_aorta_30dof/actor_pico_session_replay.py"
+    },
+    {
+      "path": "src/deployment/vita_s100_aorta_30dof/actor_pico_source_math.py",
+      "source": "src/deployment/vita_s100_aorta_30dof/actor_pico_source_math.py"
+    },
+    {
+      "path": "src/deployment/vita_s100_aorta_30dof/actor_pico_startup.py",
+      "source": "src/deployment/vita_s100_aorta_30dof/actor_pico_startup.py"
+    },
+    {
+      "path": "src/deployment/vita_s100_aorta_30dof/actor_pico_stream.py",
+      "source": "src/deployment/vita_s100_aorta_30dof/actor_pico_stream.py"
+    },
+    {
+      "path": "src/deployment/vita_s100_aorta_30dof/actor_pico_worker.py",
+      "source": "src/deployment/vita_s100_aorta_30dof/actor_pico_worker.py"
+    },
+    {
+      "path": "src/deployment/vita_s100_aorta_30dof/actor_smpl.py",
+      "source": "src/deployment/vita_s100_aorta_30dof/actor_smpl.py"
+    },
+    {
+      "path": "src/deployment/vita_s100_aorta_30dof/actor_smpl_input.py",
+      "source": "src/deployment/vita_s100_aorta_30dof/actor_smpl_input.py"
+    },
+    {
+      "path": "src/deployment/vita_s100_aorta_30dof/actor_sonic_planner.py",
+      "source": "src/deployment/vita_s100_aorta_30dof/actor_sonic_planner.py"
+    },
+    {
+      "path": "src/deployment/vita_s100_aorta_30dof/actor_supermimic.py",
+      "source": "src/deployment/vita_s100_aorta_30dof/actor_supermimic.py"
+    },
+    {
+      "path": "src/deployment/vita_s100_aorta_30dof/actor_teleop_modes.py",
+      "source": "src/deployment/vita_s100_aorta_30dof/actor_teleop_modes.py"
+    },
+    {
+      "path": "src/deployment/vita_s100_aorta_30dof/actor_threepoint.py",
+      "source": "src/deployment/vita_s100_aorta_30dof/actor_threepoint.py"
+    },
+    {
+      "path": "src/deployment/vita_s100_aorta_30dof/aorta_adapter.py",
+      "source": "src/deployment/vita_s100_aorta_30dof/aorta_adapter.py"
+    },
+    {
+      "path": "src/deployment/vita_s100_aorta_30dof/async_recording.py",
+      "source": "src/deployment/vita_s100_aorta_30dof/async_recording.py"
+    },
+    {
+      "path": "src/deployment/vita_s100_aorta_30dof/cli.py",
+      "source": "src/deployment/vita_s100_aorta_30dof/cli.py"
+    },
+    {
+      "path": "src/deployment/vita_s100_aorta_30dof/command_conditioning.py",
+      "source": "src/deployment/vita_s100_aorta_30dof/command_conditioning.py"
+    },
+    {
+      "path": "src/deployment/vita_s100_aorta_30dof/command_guard.py",
+      "source": "src/deployment/vita_s100_aorta_30dof/command_guard.py"
+    },
+    {
+      "path": "src/deployment/vita_s100_aorta_30dof/config.py",
+      "source": "src/deployment/vita_s100_aorta_30dof/config.py"
+    },
+    {
+      "path": "src/deployment/vita_s100_aorta_30dof/diagnostic_monitor.py",
+      "source": "src/deployment/vita_s100_aorta_30dof/diagnostic_monitor.py"
+    },
+    {
+      "path": "src/deployment/vita_s100_aorta_30dof/live_shadow.py",
+      "source": "src/deployment/vita_s100_aorta_30dof/live_shadow.py"
+    },
+    {
+      "path": "src/deployment/vita_s100_aorta_30dof/model_contract.py",
+      "source": "src/deployment/vita_s100_aorta_30dof/model_contract.py"
+    },
+    {
+      "path": "src/deployment/vita_s100_aorta_30dof/motion_groups.py",
+      "source": "src/deployment/vita_s100_aorta_30dof/motion_groups.py"
+    },
+    {
+      "path": "src/deployment/vita_s100_aorta_30dof/onboard_command_encoding.py",
+      "source": "src/deployment/vita_s100_aorta_30dof/onboard_command_encoding.py"
+    },
+    {
+      "path": "src/deployment/vita_s100_aorta_30dof/onboard_live_io.py",
+      "source": "src/deployment/vita_s100_aorta_30dof/onboard_live_io.py"
+    },
+    {
+      "path": "src/deployment/vita_s100_aorta_30dof/onboard_live_session.py",
+      "source": "src/deployment/vita_s100_aorta_30dof/onboard_live_session.py"
+    },
+    {
+      "path": "src/deployment/vita_s100_aorta_30dof/onboard_output.py",
+      "source": "src/deployment/vita_s100_aorta_30dof/onboard_output.py"
+    },
+    {
+      "path": "src/deployment/vita_s100_aorta_30dof/onboard_preprocessing.py",
+      "source": "src/deployment/vita_s100_aorta_30dof/onboard_preprocessing.py"
+    },
+    {
+      "path": "src/deployment/vita_s100_aorta_30dof/onboard_publish_profile.py",
+      "source": "src/deployment/vita_s100_aorta_30dof/onboard_publish_profile.py"
+    },
+    {
+      "path": "src/deployment/vita_s100_aorta_30dof/onboard_runtime.py",
+      "source": "src/deployment/vita_s100_aorta_30dof/onboard_runtime.py"
+    },
+    {
+      "path": "src/deployment/vita_s100_aorta_30dof/onboard_shadow.py",
+      "source": "src/deployment/vita_s100_aorta_30dof/onboard_shadow.py"
+    },
+    {
+      "path": "src/deployment/vita_s100_aorta_30dof/onboard_state.py",
+      "source": "src/deployment/vita_s100_aorta_30dof/onboard_state.py"
+    },
+    {
+      "path": "src/deployment/vita_s100_aorta_30dof/pico_aligned_runtime.py",
+      "source": "src/deployment/vita_s100_aorta_30dof/pico_aligned_runtime.py"
+    },
+    {
+      "path": "src/deployment/vita_s100_aorta_30dof/pico_camera_bridge.py",
+      "source": "src/deployment/vita_s100_aorta_30dof/pico_camera_bridge.py"
+    },
+    {
+      "path": "src/deployment/vita_s100_aorta_30dof/pico_input.py",
+      "source": "src/deployment/vita_s100_aorta_30dof/pico_input.py"
+    },
+    {
+      "path": "src/deployment/vita_s100_aorta_30dof/pico_input_process.py",
+      "source": "src/deployment/vita_s100_aorta_30dof/pico_input_process.py"
+    },
+    {
+      "path": "src/deployment/vita_s100_aorta_30dof/pico_realtime.py",
+      "source": "src/deployment/vita_s100_aorta_30dof/pico_realtime.py"
+    },
+    {
+      "path": "src/deployment/vita_s100_aorta_30dof/pico_service.py",
+      "source": "src/deployment/vita_s100_aorta_30dof/pico_service.py"
+    },
+    {
+      "path": "src/deployment/vita_s100_aorta_30dof/pico_shadow_math.py",
+      "source": "src/deployment/vita_s100_aorta_30dof/pico_shadow_math.py"
+    },
+    {
+      "path": "src/deployment/vita_s100_aorta_30dof/pico_smpl_workflow.py",
+      "source": "src/deployment/vita_s100_aorta_30dof/pico_smpl_workflow.py"
+    },
+    {
+      "path": "src/deployment/vita_s100_aorta_30dof/pico_threepoint_frontend.py",
+      "source": "src/deployment/vita_s100_aorta_30dof/pico_threepoint_frontend.py"
+    },
+    {
+      "path": "src/deployment/vita_s100_aorta_30dof/policy_contract.py",
+      "source": "src/deployment/vita_s100_aorta_30dof/policy_contract.py"
+    },
+    {
+      "path": "src/deployment/vita_s100_aorta_30dof/policy_limits.py",
+      "source": "src/deployment/vita_s100_aorta_30dof/policy_limits.py"
+    },
+    {
+      "path": "src/deployment/vita_s100_aorta_30dof/real_teleop.py",
+      "source": "src/deployment/vita_s100_aorta_30dof/real_teleop.py"
+    },
+    {
+      "path": "src/deployment/vita_s100_aorta_30dof/recording.py",
+      "source": "src/deployment/vita_s100_aorta_30dof/recording.py"
+    },
+    {
+      "path": "src/deployment/vita_s100_aorta_30dof/robot_adapter.py",
+      "source": "src/deployment/vita_s100_aorta_30dof/robot_adapter.py"
+    },
+    {
+      "path": "src/deployment/vita_s100_aorta_30dof/runtime.py",
+      "source": "src/deployment/vita_s100_aorta_30dof/runtime.py"
+    },
+    {
+      "path": "src/deployment/vita_s100_aorta_30dof/sdk021_guard.py",
+      "source": "src/deployment/vita_s100_aorta_30dof/sdk021_guard.py"
+    },
+    {
+      "path": "src/deployment/vita_s100_aorta_30dof/sdkmain_adapter.py",
+      "source": "src/deployment/vita_s100_aorta_30dof/sdkmain_adapter.py"
+    },
+    {
+      "path": "src/deployment/vita_s100_aorta_30dof/shadow_adapter.py",
+      "source": "src/deployment/vita_s100_aorta_30dof/shadow_adapter.py"
+    },
+    {
+      "path": "src/deployment/vita_s100_aorta_30dof/sonic_action14.py",
+      "source": "src/deployment/vita_s100_aorta_30dof/sonic_action14.py"
+    },
+    {
+      "path": "src/deployment/vita_s100_aorta_30dof/sonic_action14_bridge.py",
+      "source": "src/deployment/vita_s100_aorta_30dof/sonic_action14_bridge.py"
+    },
+    {
+      "path": "src/deployment/vita_s100_aorta_30dof/sonic_action14_cli.py",
+      "source": "src/deployment/vita_s100_aorta_30dof/sonic_action14_cli.py"
+    },
+    {
+      "path": "src/deployment/vita_s100_aorta_30dof/sonic_action14_gripper.py",
+      "source": "src/deployment/vita_s100_aorta_30dof/sonic_action14_gripper.py"
+    },
+    {
+      "path": "src/deployment/vita_s100_aorta_30dof/sonic_action14_head.py",
+      "source": "src/deployment/vita_s100_aorta_30dof/sonic_action14_head.py"
+    },
+    {
+      "path": "src/deployment/vita_s100_aorta_30dof/sonic_action14_orchestrator.py",
+      "source": "src/deployment/vita_s100_aorta_30dof/sonic_action14_orchestrator.py"
+    },
+    {
+      "path": "src/deployment/vita_s100_aorta_30dof/sonic_action14_resample.py",
+      "source": "src/deployment/vita_s100_aorta_30dof/sonic_action14_resample.py"
+    },
+    {
+      "path": "src/deployment/vita_s100_aorta_30dof/sonic_action14_same_input.py",
+      "source": "src/deployment/vita_s100_aorta_30dof/sonic_action14_same_input.py"
+    },
+    {
+      "path": "src/deployment/vita_s100_aorta_30dof/sonic_action14_source.py",
+      "source": "src/deployment/vita_s100_aorta_30dof/sonic_action14_source.py"
+    },
+    {
+      "path": "src/deployment/vita_s100_aorta_30dof/sonic_action14_transport.py",
+      "source": "src/deployment/vita_s100_aorta_30dof/sonic_action14_transport.py"
+    },
+    {
+      "path": "src/deployment/vita_s100_aorta_30dof/stand_control.py",
+      "source": "src/deployment/vita_s100_aorta_30dof/stand_control.py"
+    },
+    {
+      "path": "src/deployment/vita_s100_aorta_30dof/state_adapter.py",
+      "source": "src/deployment/vita_s100_aorta_30dof/state_adapter.py"
+    },
+    {
+      "path": "src/deployment/vita_s100_aorta_30dof/teleop_engine.py",
+      "source": "src/deployment/vita_s100_aorta_30dof/teleop_engine.py"
+    },
+    {
+      "path": "src/deployment/vita_s100_aorta_30dof/timing.py",
+      "source": "src/deployment/vita_s100_aorta_30dof/timing.py"
+    },
+    {
+      "path": "src/deployment/vita_s100_aorta_30dof/velocity_observation.py",
+      "source": "src/deployment/vita_s100_aorta_30dof/velocity_observation.py"
+    },
+    {
+      "path": "third_party/motion_stream_bridge/GMR-LICENSE",
+      "source": "third_party/motion_stream_bridge/GMR-LICENSE"
+    },
+    {
+      "path": "third_party/motion_stream_bridge/SOURCE.json",
+      "source": "third_party/motion_stream_bridge/SOURCE.json"
+    },
+    {
+      "path": "third_party/motion_stream_bridge/motion_stream_bridge/__init__.py",
+      "source": "third_party/motion_stream_bridge/motion_stream_bridge/__init__.py"
+    },
+    {
+      "path": "third_party/motion_stream_bridge/motion_stream_bridge/gmr_lite/__init__.py",
+      "source": "third_party/motion_stream_bridge/motion_stream_bridge/gmr_lite/__init__.py"
+    },
+    {
+      "path": "third_party/motion_stream_bridge/motion_stream_bridge/gmr_lite/configs/xrobot_to_vita02a.json",
+      "source": "third_party/motion_stream_bridge/motion_stream_bridge/gmr_lite/configs/xrobot_to_vita02a.json"
+    },
+    {
+      "path": "third_party/motion_stream_bridge/motion_stream_bridge/gmr_lite/geom_utils.py",
+      "source": "third_party/motion_stream_bridge/motion_stream_bridge/gmr_lite/geom_utils.py"
+    },
+    {
+      "path": "third_party/motion_stream_bridge/motion_stream_bridge/gmr_lite/retarget.py",
+      "source": "third_party/motion_stream_bridge/motion_stream_bridge/gmr_lite/retarget.py"
+    },
+    {
+      "path": "third_party/motion_stream_bridge/motion_stream_bridge/gmr_lite/robots/vita02a/vita02a_nomesh.xml",
+      "source": "third_party/motion_stream_bridge/motion_stream_bridge/gmr_lite/robots/vita02a/vita02a_nomesh.xml"
+    },
+    {
+      "path": "third_party/motion_stream_bridge/motion_stream_bridge/gmr_lite/streamer.py",
+      "source": "third_party/motion_stream_bridge/motion_stream_bridge/gmr_lite/streamer.py"
+    }
+  ],
+  "external_files": [
+    {
+      "path": "artifacts/actor_smpl/standing_human_reference.npz",
+      "bytes": 2364,
+      "sha256": "ce860e034fed9486c922ee4475775d5c5b9808fbaa21f258ef2ae1b69d2b33dc"
+    },
+    {
+      "path": "artifacts/actor_threepoint/standing_reference.npz",
+      "bytes": 2055,
+      "sha256": "81d55f6b0abf7460c3abb5ad5aa8e56f897a5c85dfd42574b436b196943f1a01"
+    },
+    {
+      "path": "checks/pico_historical_75frames.npz",
+      "bytes": 47868,
+      "sha256": "1d744df8f8376b2c6d2a6e9e1454d6667dd00369e8f1b0a5680c0ecd8c644b11"
+    },
+    {
+      "path": "checks/synthetic_trigger_scenario.json",
+      "bytes": 337,
+      "sha256": "4b301f05fbe1fe6bee8c0a0b54edead8fb27f923f4dad05974c5ecfb14c4a8d7"
+    },
+    {
+      "path": "checks/workflow/fixture.json",
+      "bytes": 1567,
+      "sha256": "8b72f6b5c9347cb1dee39e6fef4ae19c0a25fd857f974653c33f6dc8ccf94e6b"
+    },
+    {
+      "path": "checks/workflow/robot_config_readonly.yaml",
+      "bytes": 47257,
+      "sha256": "5bb09bf6a7a3781f8bf468aff13486b81850271d3fe19c20ca738f28c9389e87"
+    },
+    {
+      "path": "checks/workflow/robot_snapshot_readonly.json",
+      "bytes": 27673,
+      "sha256": "d4779b7794f839897a298333f4c5bbf1c5eedc984e16fa2ec75a8065a2da604a"
+    },
+    {
+      "path": "checks/workflow/synthetic_fault_timeline.npz",
+      "bytes": 94386,
+      "sha256": "2bf5544bf3381d157b5f2e81838dd0f11f3229f4bd51d06898cfe11f2879879a"
+    },
+    {
+      "path": "deploy/actor_s100/wheelhouse/locomotion_aorta-1.0.0rc1+bodycmdv4.6863ad7-cp310-cp310-linux_aarch64.whl",
+      "bytes": 6926499,
+      "sha256": "b55110e32165cab68d5bca7f97459b7facf741d66ee9ed83c215d3b8fc364813"
+    },
+    {
+      "path": "artifacts/actor_g1/model_step_035000_g1.onnx",
+      "bytes": 57562620,
+      "sha256": "94b8022ef666d607d2d7a649226e8621a69f7cdf2a3d81036e1eee59db5224ae"
+    },
+    {
+      "path": "artifacts/actor_smpl/human_encoder_step035000.onnx",
+      "bytes": 18743719,
+      "sha256": "d44250476b963b2c28bef94bbedf0f6e4f30a350e2cbba3ef4b54f70dee7be0d"
+    },
+    {
+      "path": "artifacts/actor_smpl/model_step_035000_decoder.onnx",
+      "bytes": 40630956,
+      "sha256": "40767b22124b54d66d45309c89ea565b510a3c05cacc4f58f66e3ba30f43061a"
+    },
+    {
+      "path": "artifacts/actor_smpl/model_step_035000_smpl.onnx",
+      "bytes": 59373305,
+      "sha256": "5092e1a46eed65634bf175b81aee2ada829b1d5bc5f6d8efcc81476d69f48edf"
+    },
+    {
+      "path": "artifacts/actor_threepoint/model_step_035000_decoder.onnx",
+      "bytes": 40630956,
+      "sha256": "40767b22124b54d66d45309c89ea565b510a3c05cacc4f58f66e3ba30f43061a"
+    },
+    {
+      "path": "artifacts/actor_threepoint/model_step_035000_teleop.onnx",
+      "bytes": 54688166,
+      "sha256": "6fda1b2e2a0a2d28894b8f888c3ffce6c4197f510f42e47388e66d1dc405eddb"
+    },
+    {
+      "path": "artifacts/actor_threepoint/teleop_encoder_step035000.onnx",
+      "bytes": 14058780,
+      "sha256": "156ef94a5133abd8cb7d3626f4eff32495f7f884782a8d6f3f37a9cccb04668f"
+    }
+  ]
+}

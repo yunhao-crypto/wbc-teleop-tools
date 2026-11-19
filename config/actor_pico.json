@@ -3,10 +3,9 @@
   "scope": "inference_only",
   "artifacts": {
     "model": {
-      "path": "artifacts/actor_g1/model_step_009700_longrun_closed_loop_g1.onnx",
-      "sha256": "2bc0ca6f0bddef1ba040a19a771181da68f5b7d2138d1e87913072def089135d",
-      "bytes": 57638926,
-      "source_name": "model_step_009700_longrun_closed_loop_g1.onnx"
+      "path": "artifacts/actor_g1/model_step_035000_g1.onnx",
+      "bytes": 57562620,
+      "sha256": "94b8022ef666d607d2d7a649226e8621a69f7cdf2a3d81036e1eee59db5224ae"
     },
     "urdf": {
       "path": "artifacts/output_envelopes.motion.urdf",
@@ -240,7 +239,7 @@
     "tracking_checkout_commit": "5eb34b2",
     "tracking_profile_source": "humanoid-sdk-tracking/examples/groot_tracking_asample.json",
     "tracking_profile_sha256": "7969af4d52d44e7a0ac4c6060a74300b233715c6a0430080c06c843629f2b1e7",
-    "model_source": "model_step_009700_longrun_closed_loop_g1.onnx",
+    "model_source": "model_step_035000_g1.onnx",
     "retargeter": "Unmodified motion-stream-bridge Vita02A GMR, named-joint selection"
   },
   "retargeting": {
@@ -283,5 +282,6 @@
       "d_cutoff_hz": 1.0
     },
     "note": "SONIC control-clock playback with the SuperMimic One-Euro filters. No root_max_tilt_deg: in closed-loop sim the 25 deg clamp made SONIC49000 fall during deep forward bends (reference pelvis tilt 45-53 deg); without it all runs completed."
-  }
+  },
+  "checkpoint_iteration": 35000
 }

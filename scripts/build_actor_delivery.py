@@ -126,8 +126,12 @@ def resolve_wheels(root, requirements, destination):
             raise RuntimeError('Resolved wheel differs from source: '+wheel.name)
 
 
-def build(root, output, variant='base', *, allow_dirty=False, source=None):
+def build(root, output, variant='base', *, allow_dirty=False, source=None, pico27000_assets=None):
     root, output = root.resolve(), output.resolve()
+    if pico27000_assets is not None:
+        if variant!='base':raise ValueError('27000 integration currently uses the base variant')
+        from build_pico_27000_delivery import build
+        return build(root,pico27000_assets,output,allow_dirty=allow_dirty)
     if variant not in ('base', 'planner'):
         raise ValueError('Unknown delivery variant: '+variant)
     # The verifier passes provenance when building its isolated source export.
@@ -203,8 +207,10 @@ def main():
     parser.add_argument('--output-dir', type=Path, default=ROOT/'outputs/actor_delivery')
     parser.add_argument('--variant', choices=('base', 'planner'), default='base')
     parser.add_argument('--allow-dirty', action='store_true', help='Mark an uncommitted development package explicitly')
+    parser.add_argument('--pico-assets','--pico27000-assets',dest='pico27000_assets',type=Path,
+                        help='Include the pinned SMPL/Teleop/G1 checkpoint assets in the shared base environment')
     args = parser.parse_args()
-    print(json.dumps(build(args.root, args.output_dir, args.variant, allow_dirty=args.allow_dirty), indent=2))
+    print(json.dumps(build(args.root, args.output_dir, args.variant, allow_dirty=args.allow_dirty,pico27000_assets=args.pico27000_assets), indent=2))
 
 
 if __name__ == '__main__':
