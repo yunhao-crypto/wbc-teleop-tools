@@ -47,6 +47,7 @@ XRT 连接、全身追踪准备与 A+B+X+Y 四键视角切换。安装 APK 不�
 
 [`start_mimiclite_native.sh` 的安装与验证](README_MIMICLITE_NATIVE.md)适用于
 在 vita-robot 内推理的 MimicLite v2，支持 Pico 跟随、站立和固定 NPZ。
+持久化诊断日志默认关闭，仅在明确需要采集时加 `--log`。
 
 ## 固定 NPZ 动作评测
 

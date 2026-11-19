@@ -146,7 +146,7 @@ class ReferenceStream:
 
 
 def _capture(root, config, contract, lower, upper, commands, output, stop, controls=None,
-             head_pose=None):
+             head_pose=None, *, record_logs=True):
     # All descendants (including the owned vendor service) belong to this
     # process group so the parent can clean up even if vendor init blocks.
     os.setsid()
@@ -166,15 +166,16 @@ def _capture(root, config, contract, lower, upper, commands, output, stop, contr
         from .pico_input import create_pico_source
         math_api = sdk_math(root, config)
         stream = ReferenceStream(root, config, contract, math_api)
-        source_path = Path(root)/'outputs'/f'actor_pico_gmr_input_{time.time_ns()}.jsonl'
         sdk = Path(root)/'vendor_packages/xrobotoolkit-arm64/opt/apps/roboticsservice'
-        log = (Path(root)/'outputs/pico_service_actor.log').open('a')
+        if record_logs:
+            log = (Path(root)/'outputs/pico_service_actor.log').open('a')
         # Narrow before the fork so the vendor service, SDK and reader threads
         # all inherit worker_cpus; only the GMR thread narrows further later.
         settings = worker_settings(config)
         worker_affinity = thread_affinity(settings.worker_cpus)
         service = subprocess.Popen([str(sdk/'RoboticsServiceProcess')], cwd=sdk,
-                                   stdout=log, stderr=subprocess.STDOUT)
+                                   stdout=log if log is not None else subprocess.DEVNULL,
+                                   stderr=subprocess.STDOUT)
         poll = settings.reader_poll_interval_s
         pico = create_pico_source(logger=logging.getLogger('actor-manual-pico'),
             timeline_sampling=config.get('policy_kind') == 'mimiclite_vita02a_tracking',
@@ -185,12 +186,14 @@ def _capture(root, config, contract, lower, upper, commands, output, stop, contr
             buttons = TriggerReader(pico.reader.sdk,controls,maximum_age=config['pico_max_age_s'])
             buttons.start()
         gmr_affinity = thread_affinity(settings.gmr_cpus)
-        source_log = SourceWriter(source_path, header=dict(record_type='header',
-            retargeting=config['retargeting'], model=config['artifacts']['model'],
-            pico_stream=config.get('pico_stream'), pico_worker=config.get('pico_worker'),
-            worker_affinity=worker_affinity,
-            gmr_affinity=gmr_affinity, reader_poll_interval_s=poll))
-        stream.source_log, stream.source_path = source_log, source_path
+        if record_logs:
+            source_path = Path(root)/'outputs'/f'actor_pico_gmr_input_{time.time_ns()}.jsonl'
+            source_log = SourceWriter(source_path, header=dict(record_type='header',
+                retargeting=config['retargeting'], model=config['artifacts']['model'],
+                pico_stream=config.get('pico_stream'), pico_worker=config.get('pico_worker'),
+                worker_affinity=worker_affinity,
+                gmr_affinity=gmr_affinity, reader_poll_interval_s=poll))
+            stream.source_log, stream.source_path = source_log, source_path
         _latest(output, dict(state='waiting_pico'))
         while not stop.is_set():
             if service.poll() is not None:
@@ -227,7 +230,7 @@ class PicoReferenceProcess:
 
     buttons=False omits the controller trigger reader (automatic following).
     """
-    def __init__(self, runtime, *, buttons=True):
+    def __init__(self, runtime, *, buttons=True, record_logs=True):
         context = multiprocessing.get_context('spawn')
         self.commands, self.output = context.Queue(maxsize=1), context.Queue(maxsize=2)
         self.stop = context.Event()
@@ -238,7 +241,8 @@ class PicoReferenceProcess:
         # cannot spawn it; close() owns and reaps the entire process group.
         self.process = context.Process(target=_capture, args=(str(runtime.root), runtime.config,
             runtime.model.contract, None, None,
-            self.commands, self.output, self.stop,self.controls,self.head_pose))
+            self.commands, self.output, self.stop,self.controls,self.head_pose),
+            kwargs=dict(record_logs=record_logs))
         self.connected = False
         self.closed = False
         self.previous = dict(state='idle')

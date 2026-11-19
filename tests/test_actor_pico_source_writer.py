@@ -183,6 +183,7 @@ class SourceWriterTests(unittest.TestCase):
             return list(cpus)
         def popen(*args, **kwargs):
             order.append(('service',))
+            self.assertEqual(kwargs['stdout'], worker.subprocess.DEVNULL)
             return service
         with tempfile.TemporaryDirectory() as tmp:
             (Path(tmp)/'outputs').mkdir()
@@ -194,7 +195,8 @@ class SourceWriterTests(unittest.TestCase):
                   patch.object(worker, 'ReferenceStream', return_value=NS()),
                   patch.object(worker.subprocess, 'Popen', side_effect=popen),
                   patch.object(pico_input, 'create_pico_source', return_value=source)):
-                worker._capture(tmp, config, None, None, None, commands, output, stop)
+                worker._capture(tmp, config, None, None, None, commands, output, stop, record_logs=False)
+            self.assertEqual(list((Path(tmp)/'outputs').iterdir()), [])
         self.assertEqual(order, [('affinity', (0, 2, 3)), ('service',), ('affinity', (1,))])
         service.terminate.assert_called_once()
 

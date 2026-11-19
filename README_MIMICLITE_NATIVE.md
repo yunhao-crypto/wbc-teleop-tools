@@ -57,8 +57,21 @@ both triggers to toggle following. Ctrl-C requests and confirms PASSIVE.
 Add `--camera` to a Pico session to enable the front-camera relay on TCP 13579.
 In the [PICO camera viewer](deploy/pico_viewer/README.md), use the same robot
 IP and press A+B+X+Y together to switch views. Wait for `PICO_VIDEO: ready`.
-The relay exits with the Pico session. Its startup or stream errors are
-reported separately from tracking.
+The relay exits with the Pico session, including when SSH disconnects and
+sends SIGHUP. Its startup or stream errors are reported separately from tracking.
+
+Persistent MimicLite native session diagnostics are disabled by default. Add
+`--log` only when an operator explicitly needs diagnostic capture:
+
+```bash
+bash scripts/start_mimiclite_native.sh --model student --native-root /absolute/native-bundle --camera --log
+```
+
+This writes tracking, GMR input, Pico service, inference pinning, and any
+enabled camera diagnostics under `outputs/`. Long captures can use significant
+disk space. With the default settings, lifecycle status and errors are still
+reported in the terminal and the launcher still prepares its Zenoh session
+configuration and temporary readiness files.
 
 The launcher uses the same WTT operator lock as the existing entries and checks
 the selected ONNX against the daemon's working directory before activation.
@@ -67,7 +80,9 @@ It uses the device-local Zenoh peer config. Set
 
 The launcher, bridge and receiver run on CPUs 0, 2 and 3. GMR runs on CPU 1.
 After the bridge confirms this session's activation, the inference pin helper
-looks for the locomotion ONNX worker and defaults to CPU 4. Use `MIMICLITE_INFERENCE_CPUS=off` to skip the helper. The helper reports
-its result under `outputs/`. A successful pin changes the worker's affinity until
-locomotion restarts or the affinity is changed again. The Pico worker publishes
-timestamped source frames and writes its GMR log through a bounded queue.
+looks for the locomotion ONNX worker and defaults to CPU 4. It reports the
+affinity in the terminal and works with logging disabled. Use
+`MIMICLITE_INFERENCE_CPUS=off` to skip the helper. A successful pin changes
+the worker's affinity until locomotion restarts or the affinity is changed
+again. The Pico worker publishes timestamped source frames and uses a bounded
+queue when GMR logging is enabled.

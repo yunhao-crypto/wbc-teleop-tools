@@ -11,6 +11,7 @@ Usage: start_mimiclite_native.sh --model NAME [options]
   --stand-only                  Stand without Pico following.
   --motion NPZ_PATH             Replay an existing NPZ instead of Pico.
   --camera                      Relay front-camera video during Pico following.
+  --log                         Save session diagnostics under outputs/ (off by default).
   --check                       Verify the native bundle without robot access.
   --plan                        Print the command only; do not check/start the package.
   --help, -h                    Show this help without accessing robot services.
@@ -36,6 +37,7 @@ PLAN=0
 CHECK=0
 STAND=0
 MOTION=0
+SAVE_LOGS=0
 CAMERA_OPTIONS=(--no-camera)
 ARGS=()
 while (($#)); do
@@ -56,6 +58,7 @@ while (($#)); do
     --stand-only) STAND=1; shift ;;
     --motion) value "$@"; MOTION=1; ARGS+=("$1" "$2"); shift 2 ;;
     --camera) CAMERA_OPTIONS=(); shift ;;
+    --log) SAVE_LOGS=1; shift ;;
     --check) CHECK=1; shift ;;
     --plan) PLAN=1; shift ;;
     *) fail "unknown option: $1 (see --help)" ;;
@@ -78,10 +81,24 @@ HOST_CPUS=0,2,3
 PIN_CPUS=${MIMICLITE_INFERENCE_CPUS-4}
 [[ $PIN_CPUS == off || $PIN_CPUS =~ ^[0-9]+(-[0-9]+)?(,[0-9]+(-[0-9]+)?)*$ ]] ||
   fail 'MIMICLITE_INFERENCE_CPUS must be a CPU list or off'
-LOG="$WTT_ROOT/outputs/mimiclite_native_$(date +%Y%m%d_%H%M%S)_$$.jsonl"
+XDG_RUNTIME_DIR="$WTT_ROOT/build/pico/actor_xdg"
 COMMAND=("$PYTHON" "$LAUNCHER" --wtt-root "$WTT_ROOT" --bridge "$BRIDGE"
-         --model-path "$MODEL_FILE" --contract "$CONTRACT" --log "$LOG" "${ARGS[@]}")
+         --model-path "$MODEL_FILE" --contract "$CONTRACT" "${ARGS[@]}")
+PIN_OPTIONS=()
+if [[ $PIN_CPUS != off ]]; then
+  ACTIVATION_FILE="$XDG_RUNTIME_DIR/mimiclite_$(date +%s%N)_$$.ready"
+  COMMAND+=(--activation-file "$ACTIVATION_FILE")
+  PIN_OPTIONS+=(--activation-file "$ACTIVATION_FILE")
+fi
+if [[ $SAVE_LOGS == 1 ]]; then
+  LOG="$WTT_ROOT/outputs/mimiclite_native_$(date +%Y%m%d_%H%M%S)_$$.jsonl"
+  COMMAND+=(--log "$LOG")
+  PIN_OPTIONS+=(--log "${LOG%.jsonl}_pin.jsonl")
+fi
 if [[ $STAND == 0 && $MOTION == 0 ]]; then
+  if [[ $SAVE_LOGS == 0 ]]; then
+    CAMERA_OPTIONS+=(--no-camera-logs)
+  fi
   COMMAND=("$PYTHON" "$WTT_ROOT/scripts/pico_session_services.py" "${CAMERA_OPTIONS[@]}" --
            "${COMMAND[@]}" --pico)
 elif ((${#CAMERA_OPTIONS[@]} == 0)); then
@@ -124,7 +141,7 @@ SDK="$WTT_ROOT/vendor_packages/xrobotoolkit-arm64/opt/apps/roboticsservice"
 export PYTHONPATH="$WTT_ROOT/src:$WTT_ROOT/src/deployment/unitree_g1_ros2_29dof/src:$WTT_ROOT/build/pico"
 export LD_LIBRARY_PATH="$WTT_ROOT/venv/lib/python3.10/site-packages/locomotion_aorta/_onnx/.libs:$WTT_ROOT/build/pico:$SDK:$SDK/lib:$SDK/SDK/arm64:/usr/hobot/lib:${LD_LIBRARY_PATH:-}"
 export QT_PLUGIN_PATH="$SDK/plugins" QT_QPA_PLATFORM=offscreen
-export XDG_RUNTIME_DIR="$WTT_ROOT/build/pico/actor_xdg"
+export XDG_RUNTIME_DIR
 mkdir -p "$XDG_RUNTIME_DIR" "$WTT_ROOT/outputs"
 chmod 700 "$XDG_RUNTIME_DIR"
 
@@ -142,6 +159,6 @@ export ZENOH_SESSION_CONFIG_URI="$WTT_ROOT/outputs/mimiclite_data_session.json5"
 export VITA_ACTOR_CLI_SESSION_CONFIG="$WTT_ROOT/outputs/mimiclite_cli_session.json5"
 if [[ $PIN_CPUS != off ]]; then
   taskset -c "$HOST_CPUS" "$PYTHON" "$WTT_ROOT/scripts/pin_native_inference.py" \
-    --cpus "$PIN_CPUS" --launcher-pid "$$" --activation-log "$LOG" --log "${LOG%.jsonl}_pin.jsonl" </dev/null 9>&- &
+    --cpus "$PIN_CPUS" --launcher-pid "$$" "${PIN_OPTIONS[@]}" </dev/null 9>&- &
 fi
 exec taskset -c "$HOST_CPUS" "${COMMAND[@]}"

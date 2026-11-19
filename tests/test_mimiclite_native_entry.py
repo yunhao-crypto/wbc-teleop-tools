@@ -39,12 +39,16 @@ def test_plan_defaults_to_cpu4_and_selects_reference_source(tmp_path):
     pico = run_entry(tmp_path, '--plan')
     assert 'native inference thread CPUs: 4' in pico
     assert '--no-camera' in pico and '--pico' in pico
+    assert '--activation-file' in pico and '--log' not in pico
     assert '--no-camera' not in run_entry(tmp_path, '--plan', '--stand-only')
     assert '--motion' in run_entry(tmp_path, '--plan', '--motion', '/example.npz')
 
 def test_camera_reuses_pico_session_relay(tmp_path):
     plan = run_entry(tmp_path, '--plan', '--camera')
     assert 'pico_session_services.py' in plan and '--pico' in plan
-    assert '--no-camera' not in plan
+    assert '--no-camera' not in plan.split()
+    assert '--no-camera-logs' in plan and '--log' not in plan
+    capture = run_entry(tmp_path, '--plan', '--camera', '--log')
+    assert '--no-camera-logs' not in capture and '--log' in capture
     run_entry(tmp_path, '--plan', '--camera', '--stand-only', expected=2)
     run_entry(tmp_path, '--plan', '--camera', '--motion', '/example.npz', expected=2)

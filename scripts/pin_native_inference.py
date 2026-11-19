@@ -7,7 +7,7 @@ locomotion_exec. That worker is unnamed, so it is identified by sampling the
 SCHED_OTHER locomotion threads with perf and taking the thread whose samples
 fall in libonnxruntime. Real-time (SCHED_FIFO/RR) threads are never sampled or
 changed. The mask lasts until locomotion restarts. Failure never stops the
-session; every decision is written to --log as JSON lines.
+session. Use --log to save decisions as JSON lines.
 """
 import argparse
 import collections
@@ -99,38 +99,37 @@ def sample(tids, seconds, frequency):
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--cpus', default='4', help='CPU list for the inference thread, e.g. 4 or 0-5')
-    p.add_argument('--log', type=Path, required=True)
+    p.add_argument('--log', type=Path)
     p.add_argument('--launcher-pid', type=int, help='Stop searching when the launching WTT session exits')
-    p.add_argument('--activation-log', type=Path,
+    p.add_argument('--activation-file', type=Path,
                    help='Wait for this session to confirm native activation before sampling')
     p.add_argument('--timeout', type=float, default=180.)
     p.add_argument('--window', type=float, default=1.)
     p.add_argument('--frequency', type=int, default=499)
     args = p.parse_args()
     signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
-    args.log.parent.mkdir(parents=True, exist_ok=True)
-    log = args.log.open('a')
+    log = None
+    if args.log is not None:
+        args.log.parent.mkdir(parents=True, exist_ok=True)
+        log = args.log.open('a')
 
     def write(event, **fields):
-        log.write(json.dumps(dict(event=event, realtime_ns=time.time_ns(), **fields))+'\n')
-        log.flush()
+        if log is not None:
+            log.write(json.dumps(dict(event=event, realtime_ns=time.time_ns(), **fields))+'\n')
+            log.flush()
 
     def say(text):
-        print('MIMICLITE_INFERENCE_PIN: '+text, file=sys.stderr, flush=True)
+        log_note = f' (log {args.log})' if args.log is not None else ''
+        print('MIMICLITE_INFERENCE_PIN: '+text+log_note, file=sys.stderr, flush=True)
 
     try:
         cpus = parse_cpus(args.cpus)
         deadline = time.monotonic()+args.timeout
         launcher = Path(f'/proc/{args.launcher_pid}') if args.launcher_pid else None
-        if args.activation_log is not None:
+        if args.activation_file is not None:
             while time.monotonic() < deadline and (launcher is None or launcher.exists()):
-                if args.activation_log.is_file():
-                    with args.activation_log.open() as records:
-                        activated = any(line.endswith('\n') and
-                                        json.loads(line).get('record_type') == 'native_activated'
-                                        for line in records)
-                    if activated:
-                        break
+                if args.activation_file.is_file():
+                    break
                 time.sleep(.2)
             else:
                 write('give_up', reason='native activation was not confirmed')
@@ -148,7 +147,8 @@ def main():
                       stderr=(error.stderr or b'').decode(errors='replace')[-500:])
                 return tids, None
 
-        while launcher is None or launcher.exists():
+        while (launcher is None or launcher.exists()) and (
+                args.activation_file is None or args.activation_file.is_file()):
             tids, result = try_sample()
             target = None
             if result is not None:
@@ -159,11 +159,12 @@ def main():
                 break
             if time.monotonic() >= deadline:
                 write('give_up', reason='no single thread running ONNX Runtime')
-                say(f'no inference activity found within {args.timeout:.0f} s; not pinned (log {args.log})')
+                say(f'no inference activity found within {args.timeout:.0f} s; not pinned')
                 return 0
             time.sleep(1.)
-        if launcher is not None and not launcher.exists():
-            write('give_up', reason='launcher exited')
+        if ((launcher is not None and not launcher.exists()) or
+                (args.activation_file is not None and not args.activation_file.is_file())):
+            write('give_up', reason='native session ended')
             return 0
         before = sorted(os.sched_getaffinity(target))
         os.sched_setaffinity(target, cpus)
@@ -171,26 +172,28 @@ def main():
         if set(after) != cpus:
             raise RuntimeError(f'requested CPUs {sorted(cpus)} but thread {target} has {after}')
         write('pinned', tid=target, before=before, after=after)
-        for _ in range(3):
-            _, result = try_sample()
-            if result is not None:
-                ort, every = result
-                intruders = {str(t): sum(n for cpu, n in c.items() if cpu in cpus)
-                             for t, c in every.items() if t != target}
-                write('verify', tid=target, ort_cpus={str(k): v for k, v in ort.get(target, {}).items()},
-                      other_locomotion_samples_on_target_cpus={t: n for t, n in intruders.items() if n})
-                break
-        say(f'thread {target} {before} -> {after} (log {args.log})')
+        if log is not None:
+            for _ in range(3):
+                _, result = try_sample()
+                if result is not None:
+                    ort, every = result
+                    intruders = {str(t): sum(n for cpu, n in c.items() if cpu in cpus)
+                                 for t, c in every.items() if t != target}
+                    write('verify', tid=target, ort_cpus={str(k): v for k, v in ort.get(target, {}).items()},
+                          other_locomotion_samples_on_target_cpus={t: n for t, n in intruders.items() if n})
+                    break
+        say(f'thread {target} {before} -> {after}')
         return 0
     except KeyboardInterrupt:
         write('interrupted')
         return 0
     except Exception as error:
         write('error', error=repr(error))
-        say(f'not pinned: {error!r} (log {args.log})')
+        say(f'not pinned: {error!r}')
         return 1
     finally:
-        log.close()
+        if log is not None:
+            log.close()
 
 
 if __name__ == '__main__':

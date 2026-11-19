@@ -42,7 +42,7 @@ class PinNativeInferenceTests(unittest.TestCase):
                 pin.parse_cpus(bad)
 
     def test_failed_perf_sample_is_retried_then_thread_pinned(self):
-        import json, subprocess, tempfile
+        import subprocess, tempfile
         ort, every = pin.ort_samples(SCRIPT)
         calls = iter([subprocess.CalledProcessError(255, ['perf'], stderr=b'thread exited'), (ort, every), (ort, every)])
 
@@ -53,8 +53,8 @@ class PinNativeInferenceTests(unittest.TestCase):
             return item
         masks = {1001: {0, 1, 2, 3, 4, 5}}
         with tempfile.TemporaryDirectory() as tmp:
-            activation = Path(tmp)/'activation.jsonl'
-            activation.write_text(json.dumps({'record_type': 'native_activated'})+'\n')
+            activation = Path(tmp)/'activation.ready'
+            activation.touch()
             self.assert_pin_retries(tmp, activation, masks, fake_sample)
 
     def assert_pin_retries(self, tmp, activation, masks, fake_sample):
@@ -69,13 +69,37 @@ class PinNativeInferenceTests(unittest.TestCase):
                 mock.patch.object(pin.os, 'sched_setaffinity', side_effect=lambda t, c: masks.__setitem__(t, set(c))), \
                 mock.patch.object(pin.signal, 'signal'), \
                 mock.patch.object(sys, 'argv', ['pin', '--cpus', '4', '--log', f'{tmp}/pin.log',
-                                                     '--activation-log', str(activation)]):
+                                                     '--activation-file', str(activation)]):
             self.assertEqual(pin.main(), 0)
             events = [json.loads(line) for line in open(f'{tmp}/pin.log')]
         self.assertEqual([e['event'] for e in events], ['start', 'sample_failed', 'sample', 'pinned', 'verify'])
         self.assertEqual(events[1]['stderr'], 'thread exited')
         self.assertEqual(events[3]['after'], [4])
         self.assertEqual(masks[1001], {4})
+
+    def test_activation_marker_allows_pinning_without_a_log(self):
+        import sys, tempfile
+        from unittest import mock
+        with tempfile.TemporaryDirectory() as tmp:
+            activation = Path(tmp)/'activation.ready'
+            affinity = {0, 2, 3}
+            def set_affinity(_, cpus):
+                affinity.clear()
+                affinity.update(cpus)
+            with (
+                mock.patch.object(pin, 'locomotion_pid', return_value=7),
+                mock.patch.object(pin, 'other_threads', return_value=[1001]),
+                mock.patch.object(pin, 'sample', return_value=pin.ort_samples(SCRIPT)) as sample,
+                mock.patch.object(pin.time, 'sleep', side_effect=lambda _: activation.touch()),
+                mock.patch.object(pin.os, 'sched_getaffinity', side_effect=lambda _: affinity),
+                mock.patch.object(pin.os, 'sched_setaffinity', side_effect=set_affinity),
+                mock.patch.object(pin.signal, 'signal'),
+                mock.patch.object(sys, 'argv', ['pin', '--activation-file', str(activation)]),
+            ):
+                self.assertEqual(pin.main(), 0)
+            sample.assert_called_once()
+            self.assertEqual(affinity, {4})
+            self.assertEqual(list(Path(tmp).iterdir()), [activation])
 
 
 if __name__ == '__main__':
