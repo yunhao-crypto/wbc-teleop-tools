@@ -15,9 +15,12 @@ launchers, SDK installation and protocol guards are not replaced.
 
 ## FBS Trace development integration
 
-The Trace candidate uses the installed SDK's recorder and automatic SDK call
-instrumentation. It does not wrap `publish`, add subscriptions, enable touch,
-or change the control handshake. With the matching SDK PR28 build:
+Trace uses the installed SDK's recorder and automatic SDK call instrumentation.
+The three Actor profiles pin SDK main at `3a7475136c48db299e6997b65790243e46bce1ca`
+(SDK #27). The published `1.0.1rc2` also has Trace, but predates BodyCmd v4
+and has a different `body_types.py` hash. Use a wheel built from the pinned
+source. An S100 delivery additionally requires the matching reviewed ARM64
+wheel and regenerated wheel guard before packaging or live use.
 
 ```bash
 python scripts/actor_pico.py check --steps 10 --trace=on --trace-output=new-run.ftrace
@@ -53,12 +56,6 @@ Trace; repeated SDK reads reference the captured sample instead of walking the
 Python DTO again. A decode record alone does not mean admission or device output.
 Python/GIL and target scheduling overhead still need measurement.
 
-The three actor configurations now name SDK source `6f68acfb0f5e90d17d0581b9f3f91cc4c2222b44`
-(`1.0.0rc1`) and the actual hashes of their math/Body DTO inputs. This is a source
-pairing for the Trace candidate. The existing sealed package/native-library
-guard remains in force: these edits do not replace its old wheel with a new
-release, and current-source ARM packaging/installation still needs verification.
-
 This is an incremental source candidate, **not complete JSONL retirement**.
 Native SDK-stage summaries and offline HTML/MCAP analysis are available through
 the paired SDK. Planner preprocess/model/postprocess, initial/replan Map,
@@ -69,8 +66,8 @@ received snapshots are observed, never reconstructed dropped work. Cached
 snapshots retain their original input identity. Independent gripper input/gate/
 submission and firmware/cycle outcomes use the same run recorder.
 
-Full fixed-model Actor integration, complete legacy diagnostic parity, target
-ARM/performance acceptance and the remaining JSONL retirement gate are open.
+Full-policy fixed-model integration, legacy diagnostic parity, target
+ARM/performance acceptance and JSONL retirement remain open.
 The grip source stamp in the existing floating shared-memory interface has no
 verified units/precision here: it is not claimed as an exact source timestamp. In FBS mode the generic
 policy-row JSONL writer is disabled; the listed model spans and SDK records do
@@ -193,8 +190,10 @@ name, the configuration or the robot:
 - `motor_theta`: the SDK layout is kept, but the ankle slots of the
   proprioception history and of the future joint references carry the two
   Achilles motor angles (IK of the pose, rates through the Jacobian, as in
-  training). With command space `policy`, these A/B
-  targets and model gains are transmitted directly (`actor_groot_ankle.py`).
+  training). When the command space resolves to `motor_theta`, EXTERNAL uses
+  BodyCmd v4 to send these A/B targets and motor gains directly. Virtual
+  pitch/roll commands use BodyCmd v3. BodyState v3 and BodyInfo v2 still carry
+  virtual pitch/roll feedback for either command space.
 
 GR00T/SONIC, SuperMimic and MorphMimic clip only the dimensionless action to
 their exported `action_clip` (20 for the current SONIC training run), then

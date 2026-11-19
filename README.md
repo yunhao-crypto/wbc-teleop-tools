@@ -1,6 +1,7 @@
 # Vita02A / S100 actor + Pico
 
-本分支是 FBS Trace 开发候选，三份 actor 配置已绑定 SDK PR28 的实际源码版本和哈希。
+本分支是 FBS Trace 开发候选。三份 Actor 配置固定到合入 SDK #27 后的 `3a747513`，
+支持 EXTERNAL 电机 A/B 命令所需的 BodyCmd v4。
 它尚未形成新的完整 ARM 部署包；下面旧交付的 wheel／设备验收记录不能作为本候选的验收。
 使用方式与剩余边界见 [FBS Trace 说明](README_ACTOR_PICO.md#fbs-trace-development-integration)。
 

@@ -45,6 +45,17 @@ def inside(root, relative):
     return target
 
 
+def verify_actor_sdk_pin(root):
+    guard = json.loads((root/'config/sdk021-wheel-guard.json').read_text())
+    for name in POLICY_CONFIGS.values():
+        config = json.loads((root/name).read_text())
+        if (any(config[key] != guard[key] for key in ('sdk_commit', 'sdk_version'))
+                or any(guard['source_sha256'].get(path) != digest
+                       for path, digest in config['sdk_sources'].items())):
+            raise RuntimeError('Actor SDK pin differs from the sealed ARM64 wheel guard: '+name
+                               +'; supply the reviewed wheel and regenerate its guard')
+
+
 def verify(root):
     try:
         manifest = json.loads((root/DELIVERY/'manifest.json').read_text())
@@ -92,6 +103,7 @@ def verify(root):
     payload = hashlib.sha256(json.dumps(manifest['files'], sort_keys=True).encode()).hexdigest()
     if payload != manifest['payload_sha256']:
         raise RuntimeError('Delivery payload identity mismatch')
+    verify_actor_sdk_pin(root)
     return manifest
 
 

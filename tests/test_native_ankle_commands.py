@@ -11,6 +11,8 @@ from unittest.mock import patch
 
 import numpy as np
 import locomotion_aorta.wbc_tracking_policy as sdk
+from locomotion_aorta import _body_cmd_native
+from lowlevel.BodyCmd import BodyCmd as WireBodyCmd
 from deployment.vita_s100_aorta_30dof import actor_groot_ankle as groot
 from deployment.vita_s100_aorta_30dof import actor_supermimic as supermimic
 from deployment.vita_s100_aorta_30dof import actor_morphmimic as morph
@@ -103,6 +105,21 @@ class NativeAnkleTests(unittest.TestCase):
             for i in policy.contract.ankle.slots:
                 self.assertAlmostEqual(cmd.joints[policy.mapping[i]].q,policy.contract.default[i],places=6)
             self.assertEqual(row['ankle_command_space'],'virtual_pitch_roll')
+
+    def test_command_space_is_explicit_on_native_encoded_wire(self):
+        for policy in self.policies():
+            for space, version in (('motor_theta', 4), ('virtual_pitch_roll', 3)):
+                with self.subTest(policy=policy.contract.policy_kind, space=space):
+                    policy.profile['ankle_command_space'] = space
+                    command, _ = policy.decode(np.zeros(28))
+                    command = replace(command, runtime_id=1, control_id=2, session_id=3, sequence=4)
+                    payload, _ = _body_cmd_native.encode(command, 1_000_000, 'wtt-offline', 5)
+                    wire = WireBodyCmd.GetRootAs(payload, 0)
+                    self.assertEqual(wire.ProtocolVersion(), version)
+                    self.assertEqual(wire.JointsLength(), 31)
+                    for index in policy.contract.ankle.slots:
+                        slot = policy.mapping[index]
+                        self.assertEqual(wire.Joints(slot).Q(), command.joints[slot].q)
 
     def test_nonfinite_and_wrong_width_rejected(self):
         for policy in self.policies():

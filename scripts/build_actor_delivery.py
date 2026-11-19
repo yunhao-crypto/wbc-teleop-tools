@@ -12,7 +12,9 @@ import sys
 import tarfile
 import tempfile
 
-from bootstrap_actor_s100 import DELIVERY, POLICY_CONFIGS, SCHEMA, TARGET, inside, sha, verify
+from bootstrap_actor_s100 import (
+    DELIVERY, POLICY_CONFIGS, SCHEMA, TARGET, inside, sha, verify, verify_actor_sdk_pin,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 ARCHIVES = [
@@ -133,6 +135,7 @@ def build(root, output, variant='base', *, allow_dirty=False, source=None):
     # The verifier passes provenance when building its isolated source export.
     source = source_revision(root, allow_dirty) if source is None else source
     commit, dirty = source['commit'], source['dirty']
+    verify_actor_sdk_pin(root)
     names, external = runtime_inputs(root, variant)
     if not allow_dirty and not set(names) <= set(git(root, 'ls-files').splitlines()):
         raise RuntimeError('Untracked runtime inputs cannot enter a release package')

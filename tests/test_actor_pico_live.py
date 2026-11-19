@@ -262,7 +262,7 @@ class LiveTests(unittest.TestCase):
         self.addCleanup(self.controller.close)
         self.pico = Pico(self.runtime, self.clock)
         self.args = NS(robot_config=self.config, robot_id='TEST-ONLY', startup_timeout=5.,
-                       seconds=3.12, stand_only=False)
+                       seconds=3.12, stand_only=False, profiling=False)
 
     def run_trial(self, **kwargs):
         write = kwargs.pop('write', lambda row, obs=None:self.rows.append(row))

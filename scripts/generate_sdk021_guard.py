@@ -19,7 +19,6 @@ ORIGINAL = (
     'brainco_capture.py', 'controller.py', 'end_effector.py', 'end_effector_types.py',
     'joy.py', 'state.py', 'transport.py', 'types.py', 'wbc_tracking_policy.py',
 )
-SDK_VERSION = '0.3.0'
 RUNTIME = ('pull.py', 'state_arrays.py', '_native_body_codec.py')
 
 
@@ -34,6 +33,7 @@ def generate(args):
                                         args.sdk_commit + ':' + name])
 
     compat = json.loads(blob('compatibility.json'))
+    sdk_version = compat['sdk_version']
     names = ORIGINAL + RUNTIME
     sources = {n: blob('python/locomotion_aorta/' + n) for n in names}
     wheel_record = None
@@ -47,8 +47,8 @@ def generate(args):
             if len(metadata_names) != 1:
                 raise ValueError('Ambiguous wheel metadata')
             metadata = Parser().parsestr(wheel.read(metadata_names[0]).decode())
-            if metadata['Version'] != SDK_VERSION or metadata['Name'].replace('_', '-') != 'locomotion-aorta':
-                raise ValueError('Expected the reviewed SDK ' + SDK_VERSION + ' wheel')
+            if metadata['Version'] != sdk_version or metadata['Name'].replace('_', '-') != 'locomotion-aorta':
+                raise ValueError('Expected the reviewed SDK ' + sdk_version + ' wheel')
             for name, source in sources.items():
                 if wheel.read('locomotion_aorta/' + name) != source:
                     raise ValueError('Wheel differs from reviewed Git source: ' + name)
@@ -73,7 +73,7 @@ def generate(args):
                         'bytes': args.sdk_wheel.stat().st_size}
     result = {
         'status': 'SEALED_FROM_REVIEWED_WHEEL',
-        'sdk_commit': args.sdk_commit, 'sdk_version': SDK_VERSION, 'wheel': wheel_record,
+        'sdk_commit': args.sdk_commit, 'sdk_version': sdk_version, 'wheel': wheel_record,
         'source_sha256': {n: hashlib.sha256(sources[n]).hexdigest() for n in ORIGINAL},
         'runtime_source_sha256': {n: hashlib.sha256(sources[n]).hexdigest() for n in RUNTIME},
         'native_sha256': native_sha256,

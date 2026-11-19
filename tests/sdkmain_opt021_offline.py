@@ -459,7 +459,8 @@ class GuardGeneratorTests(unittest.TestCase):
         self.directory = Path(self.temp.name)
         spec = importlib.util.spec_from_file_location('guard_generator', ROOT / 'scripts/generate_sdk021_guard.py')
         self.generator = importlib.util.module_from_spec(spec); spec.loader.exec_module(self.generator)
-        self.compat = {'aorta_version': '0.0.0+g7649a87ebb03', 'humanoid_msgs_version': '0.0.0+g35ce9eb82d5b',
+        self.compat = {'sdk_version': '1.0.1rc2',
+                       'aorta_version': '0.0.0+g7649a87ebb03', 'humanoid_msgs_version': '0.0.0+g35ce9eb82d5b',
                        'flatbuffers_version': '25.12.19', 'schema_sha256': {'body_state': 'fixture-sha'}}
         self.sources = {name: ('fixture:' + name).encode()
                         for name in self.generator.ORIGINAL + self.generator.RUNTIME}
@@ -467,13 +468,13 @@ class GuardGeneratorTests(unittest.TestCase):
     def wheel(self, *, changed=None, dependencies=True):
         import hashlib, zipfile
         path = self.directory / 'fixture.whl'
-        metadata = 'Name: locomotion-aorta\nVersion: 0.3.0\n'
+        metadata = 'Name: locomotion-aorta\nVersion: 1.0.1rc2\n'
         if dependencies:
             metadata += ''.join('Requires-Dist: ' + name + '\n' for name in (
                 'aorta-sdk==0.0.0+g7649a87ebb03', 'aorta-msgs==0.0.0+g7649a87ebb03',
                 'vbot-humanoid-msgs==0.0.0+g35ce9eb82d5b', 'flatbuffers==25.12.19'))
         with zipfile.ZipFile(path, 'w') as wheel:
-            wheel.writestr('locomotion_aorta-0.3.0.dist-info/METADATA', metadata)
+            wheel.writestr('locomotion_aorta-1.0.1rc2.dist-info/METADATA', metadata)
             for name, data in self.sources.items():
                 wheel.writestr('locomotion_aorta/' + name, b'changed' if name == changed else data)
             wheel.writestr('locomotion_aorta/_body_cmd_native.fixture.so', b'native encoder')
@@ -492,6 +493,7 @@ class GuardGeneratorTests(unittest.TestCase):
         with patch.object(self.generator.subprocess, 'check_output', side_effect=self.git_blob):
             result = self.generator.generate(args)
         self.assertEqual(result['status'], 'SEALED_FROM_REVIEWED_WHEEL')
+        self.assertEqual(result['sdk_version'], self.compat['sdk_version'])
         self.assertEqual(set(result['source_sha256']), set(guard.ORIGINAL_VENDOR_FILES))
         self.assertEqual(len(result['source_sha256']), 18)
         self.assertEqual(set(result['runtime_source_sha256']), set(guard.RUNTIME_FILES))
