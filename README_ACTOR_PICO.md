@@ -45,9 +45,11 @@ no motion permission. `--trace` accepts only `on` or `off`; FBS is the single
 recording format. The boolean default is `false` (`--trace off`), with no FBS
 writer. `--trace on` without an output uses a timestamped unique `.ftrace`
 path in `/tmp` and prints it; an explicit `--trace-output` is still supported.
-This increment still retains the legacy JSONL baseline and its default behavior until the
-complete replacement is validated. FBS cannot be combined with `--profiling`,
-`--log` or `--record-observations` in the same invocation.
+The dedicated body/OP3 performance JSONL recorder is retired. Old `--profiling`,
+`--no-profiling` and `--profiling-log` options fail with a migration message
+before runtime creation; use `--trace on` or `--trace off`. Normal actor/business
+JSONL remains available with Trace off. FBS cannot be combined with `--log`
+or `--record-observations` in the same invocation.
 
 The run owns one recorder. Connections borrow it, so a connection closing does
 not close a file still used by the Planner. Existing worker shutdown completes
@@ -67,7 +69,8 @@ Trace; repeated SDK reads reference the captured sample instead of walking the
 Python DTO again. A decode record alone does not mean admission or device output.
 Python/GIL and target scheduling overhead still need measurement.
 
-This is an incremental source candidate, **not complete JSONL retirement**.
+The dedicated performance JSONL files are removed; normal actor/business JSONL
+and legacy diagnostics remain. This is **not complete JSONL retirement**.
 Native SDK-stage summaries and offline HTML/MCAP analysis are available through
 the paired SDK. Planner preprocess/model/postprocess, initial/replan Map,
 ready/accept/fusion links retain old and new result identities. Actor observation
@@ -77,8 +80,8 @@ received snapshots are observed, never reconstructed dropped work. Cached
 snapshots retain their original input identity. Independent gripper input/gate/
 submission and firmware/cycle outcomes use the same run recorder.
 
-Full-policy fixed-model integration, legacy diagnostic parity, target
-ARM/performance acceptance and JSONL retirement remain open.
+Full-policy fixed-model integration, legacy diagnostic parity and target
+ARM/performance acceptance remain open. Normal business JSONL is retained.
 The grip source stamp in the existing floating shared-memory interface has no
 verified units/precision here: it is not claimed as an exact source timestamp. In FBS mode the generic
 policy-row JSONL writer is disabled; the listed model spans and SDK records do
@@ -766,61 +769,36 @@ does not open the Pico service or check hardware inputs.
 protocol, roster and freshness. It creates no control handles or Pico service.
 No feedback/timeout is reported as a failed check; it never starts robot services.
 
-### Opt-in body and OP3 profiling
+### Body and OP3 performance capture
 
-Profiling is **off by default**. Add `--profiling` to an already reviewed live
-command to record the existing BodyState reads, BodyCmd publications and both
-OP3 publication calls. For example, after the usual local configuration and
-motion authorization:
+Use the existing SDK FBS recorder for performance capture. Trace remains **off
+by default**; add `--trace on` to an already reviewed live invocation. The body,
+OP3, Actor, Planner and Map use the same run recorder and their existing calls.
 
 ```bash
-bash scripts/start_actor_pico.sh sonic --profiling
-# The same launch with no additional profiling:
-bash scripts/start_actor_pico.sh sonic --no-profiling
+bash scripts/start_actor_pico.sh sonic --trace on --trace-output /tmp/trial.ftrace
+# The same launch with performance capture disabled:
+bash scripts/start_actor_pico.sh sonic --trace off
+
+python -m locomotion_aorta.trace.summary /tmp/trial.ftrace
+python -m locomotion_aorta.trace.report /tmp/trial.ftrace --output reports/trial
 ```
 
-`--profiling-log outputs/trial` selects the prefix and requires `--profiling`.
-Otherwise the prefix comes from the unique normal actor log. The extra files
-are `<prefix>.body.jsonl` and `<prefix>.ee.jsonl`, created exclusively: existing
-files are never overwritten. Profiling is limited to `live`; it does not grant
-motion permission or change startup, freshness, stale-tick or CANCEL guards.
+The old `--profiling`, `--no-profiling` and `--profiling-log` options now fail
+with migration guidance. No `.body.jsonl` / `.ee.jsonl` performance files,
+synchronous per-cycle flushes or in-memory percentile sample arrays are
+created by that removed recorder. Existing capture files are not changed.
+Normal actor/business JSONL, including startup, error and control events,
+`--log` and `--record-observations`, remains available with Trace off.
+FBS mode retains its existing exclusion of that JSONL writer; it does not
+claim complete replacement of every old diagnostic field.
 
-When off, the recorder module is not loaded, no profiling file is opened and
-no profiling timestamps, serialization, statistics or extra feedback reads
-are taken. SDK publish timing is also disabled for that launch. The control
-paths retain constant `None` checks and call the original SDK directly; no
-thread, subscriber, scheduling delay or rate change is added. The existing
-normal actor log and its existing inference diagnostics remain unchanged.
-
-When on, the body control thread writes `.body.jsonl` and the existing gripper
-thread writes `.ee.jsonl`. Both carry one run ID and the normal policy-log path.
-Body records include the exact state ID, producer/publication/local receipt
-timestamps, SDK dequeue stamp when available, q/dq, target q, required fields,
-input read ID and actual session/sequence keys. Even a stale snapshot rejected
-by the existing guard is recorded before that rejection. OP3 records reuse the
-same cached feedback, receipt time and sample reference used for publication;
-there is no second read. Missing optional timestamps are `NOT_MEASURED`.
-
-The body command row copies existing `observation_ms`, `inference_ms` and
-`total_ms` diagnostics into `model_timing_ms`. The normal actor log also retains
-`compute_ms` and `publish_ms`. For an external planner that reports its latest
-`planner_inference_ms`, use its replan counter in that policy log to deduplicate
-planner invocations; repeated body ticks are not separate planner runs.
-
-`publish_call_ns` measures the synchronous SDK call; `feedback_age_ns` measures
-cached local receipt to command publication. Summaries give publication rates
-and p50/p95/p99/max durations per endpoint. These rates describe calls made by
-the actor, not the complete SDK reception stream. Source, publication and local
-realtime stamps need a verified common clock before computing cross-host
-latency; they do not prove CAN transmission, motor execution or target arrival.
-
-Profiling writes and flushes JSONL synchronously, so enabling it can affect
-cadence. `logging_overhead` records the cycle write cost, and the final summary
-includes writing both the cycle and overhead records. Percentile samples are
-retained until close: use bounded test durations for long captures. The normal
-actor `publish_ms` includes the profiling wrapper; the extra `publish_call_ns`
-isolates the SDK call. Write failures retain the existing fault/CANCEL path;
-logging or close failures never replace an already raised SDK/control fault.
+The offline SDK summary/report provides recorded model/SDK stage timings and
+integrity counters. Missing records or unmeasured stages are not zero latency.
+SDK software timestamps do not establish CAN transmission, physical execution
+or target arrival; native ONNX timing and cross-clock boundaries retain the
+limitations documented in the FBS Trace section above. Startup, feedback
+freshness, gripper faults and CANCEL/exit behavior are unchanged.
 
 The bootstrap creates the interpreter with the proper permissions and restores
 executable mode on the service from the sealed archive. The actor shadow entry
