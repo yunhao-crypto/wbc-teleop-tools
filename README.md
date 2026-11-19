@@ -1,9 +1,12 @@
 # Vita02A / S100 actor + Pico
 
-本分支是 FBS Trace 开发候选。三份 Actor 配置固定到 SDK #27 的 `6d4fa592`，
-源码树与合入 main 的 `3a747513` 一致。离线 S100 包使用 #27 最终 CI 的 ARM64 wheel，
-支持 EXTERNAL 电机 A/B 命令所需的 BodyCmd v4。下列旧交付记录保留供查阅。
+本分支将三份原 Actor 配置适配到正式 SDK `1.0.1rc3`（固定源码 `1e2bbfb7`），
+使用 `v1.0.1-rc.3` 的 ARM64 wheel 与可选 Trace 依赖。EXTERNAL 电机 A/B 命令使用
+BodyCmd v4；虚拟踝路径继续使用 BodyCmd v3。下列旧交付记录保留供查阅。
 使用方式与剩余边界见 [FBS Trace 说明](README_ACTOR_PICO.md#fbs-trace-development-integration)。
+
+35000 raw-body SMPL and stationary three-point routes: [shared actor environment](README_PICO_27000.md).
+Build with `--pico-assets` for a separate Pico-only R4 delivery; the original policies retain their SDK environment.
 
 Native SONIC action14 reference-only Pico/GMR design, explicit fixed-neck mode and current deployment safety limitations: [README_SONIC_ACTION14.md](README_SONIC_ACTION14.md). Existing EXTERNAL actor path remains unchanged.
 

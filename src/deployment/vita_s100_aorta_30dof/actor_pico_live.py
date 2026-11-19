@@ -615,14 +615,44 @@ def record_period_overrun(write, phase_name, elapsed, actions_sent, **details):
                    actions_sent=actions_sent,**details))
 
 
+class JointReferences:
+    """Reference interface for the single live owner/publish/cancel loop.
+
+    Adapters supply acquisition, heading alignment, standing references and
+    observation inference. They do not enter/exit EXTERNAL or publish commands.
+    The default retains the original robot-joint/GMR reference behavior.
+    """
+    def __init__(self, runtime):
+        self.runtime = runtime
+
+    def create_inputs(self, controller, pico, clock):
+        return Inputs(self.runtime, controller, pico, clock)
+
+    def acquire(self, snapshot, now):
+        return manual_reference(self.runtime, snapshot, now)
+
+    def align_heading(self, motion, root):
+        return reference_yaw(self.runtime, motion, root)
+
+    def follow(self, snapshot, now, **feedback):
+        return pico_reference_command(self.runtime, snapshot, now, **feedback)
+
+    def standing(self):
+        return self.runtime.hold_motion()
+
+    def infer(self, motion, **feedback):
+        return self.runtime.infer_motion_command(motion, **feedback)
+
+
 def run_live(runtime, args, write, controller, pico, stop, service_alive,
              clock=time, manual_pico=None, poll_command=lambda:None,
-             request_action=None, motion_source=None, profiling=None):
+             request_action=None, motion_source=None, profiling=None, reference_adapter=None):
     """One trial only. Every attempted entry is followed by checked CANCEL.
 
     Fake I/O in unit tests exercises this same runner; actual transport and
     hardware performance remain separate acceptance checks.
     """
+    references = reference_adapter if reference_adapter is not None else JointReferences(runtime)
     if not math.isfinite(args.seconds) or args.seconds < 0:
         raise ValueError('Live duration must be finite and nonnegative; 0 means until STOP')
     trace = getattr(runtime, 'trace', None)
@@ -664,7 +694,9 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
     # explicitly requests FIXED_STAND and verifies measured targets afterward;
     # an empty name alone is never treated as completed fixed stand.
     initial_actions = ('PASSIVE', 'QUIET_PASSIVE', 'FIXED_STAND', '') if auto else ('PASSIVE',)
-    inputs = Inputs(runtime, controller, pico if requires_pico else None, clock, profiling=profiling)
+    inputs = (Inputs(runtime, controller, pico if requires_pico else None, clock, profiling=profiling)
+              if reference_adapter is None else
+              references.create_inputs(controller, pico if requires_pico else None, clock))
     guard = StatusGuard(clock, initial_actions=initial_actions)
     if manual and manual_pico is None:
         raise ValueError('Manual Pico mode requires an idle capture worker')
@@ -708,12 +740,12 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
                 break
             started = clock.monotonic()
             if requires_pico:
-                command, obs, row = pico_reference_command(runtime, inputs.snapshot, started,
+                command, obs, row = references.follow(inputs.snapshot, started,
                     q=q, dq=dq, root=root, gyro=gyro)
             else:
-                motion = runtime.hold_motion()
+                motion = references.standing()
                 motion = motion.lead_in(q, root, runtime.config['body_profile']['lead_in'])
-                command, obs, row = runtime.infer_motion_command(motion,
+                command, obs, row = references.infer(motion,
                     q=q, dq=dq, root=root, gyro=gyro, yaw_offset=runtime.math.yaw(root))
             envelope.check(command)
             record_period_overrun(write,'preflight',clock.monotonic()-started,0)
@@ -779,9 +811,9 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
             # earlier passive snapshot, and still before requesting EXTERNAL.
             runtime.reset_inputs()
             begin = clock.monotonic()
-            lead = runtime.hold_motion().lead_in(
+            lead = references.standing().lead_in(
                 q, root, runtime.config['body_profile']['lead_in'])
-            command, obs, row = runtime.infer_motion_command(lead,q=q,dq=dq,root=root,gyro=gyro,
+            command, obs, row = references.infer(lead,q=q,dq=dq,root=root,gyro=gyro,
                                                             yaw_offset=runtime.math.yaw(root))
             model_elapsed = clock.monotonic()-begin
             # Preserve the actual failing input before any guard can raise.
@@ -846,7 +878,7 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
             startup.check_hardware_pose(envelope,state)
         if not auto:
             envelope.check_measured_pose(state)
-        lead = runtime.hold_motion().lead_in(
+        lead = references.standing().lead_in(
             q, root, runtime.config['body_profile']['lead_in'])
         offset = runtime.math.yaw(root)
         preparation = max(3., (len(lead.q)-1)*runtime.model.contract.period)
@@ -916,7 +948,7 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
             # terminal worker snapshot must not keep failing Inputs.read().
             # Manual re-engagement reads its separate manual_pico source.
             inputs.pico = None
-            lead = runtime.hold_motion().lead_in(q, root, runtime.config['body_profile']['lead_in'])
+            lead = references.standing().lead_in(q, root, runtime.config['body_profile']['lead_in'])
             offset = runtime.math.yaw(root)
             stand_tick = 0
             preparation = max(.3, (len(lead.q)-1)*runtime.model.contract.period)
@@ -1079,7 +1111,7 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
                         if event['record_type']=='teleop_mode_requested':request='toggle'
                     if not tracking and modes.pending is not None:
                         try:
-                            candidate,diag=manual_reference(runtime,snapshot,clock.monotonic())
+                            candidate,diag=references.acquire(snapshot,clock.monotonic())
                             if diag['pico_age_s']>runtime.config['pico_hold_age_s']:candidate=None
                         except (ValueError,TimeoutError):
                             candidate=None;modes.cancel()
@@ -1111,12 +1143,12 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
                     # An intentional standby transition; a source fault takes
                     # handle_pico_loss (pico_loss_action) instead of this path.
                     if planner is None:
-                        manual_reference(runtime,snapshot,clock.monotonic())
+                        references.acquire(snapshot,clock.monotonic())
                     tracking = False
                     auto_pico = False
                     transition_q=q if modes is None or modes.last_q is None else modes.last_q
                     transition_root=root if modes is None or modes.last_root is None else modes.last_root
-                    stand_target=runtime.hold_motion()
+                    stand_target=references.standing()
                     if modes is not None and modes.pending is not None:
                         # R3 returns only the lower body to stand. Arm targets
                         # continue from Pico below, using the same filter state.
@@ -1138,7 +1170,7 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
                 automatic_switch = False
                 if auto_pico and not tracking and elapsed >= preparation and snapshot.get('state') == 'ready':
                     try:
-                        manual_reference(runtime,snapshot,clock.monotonic())
+                        references.acquire(snapshot,clock.monotonic())
                         automatic_switch = True
                     except (ValueError,TimeoutError):
                         pass
@@ -1146,7 +1178,7 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
                     try:
                         if elapsed < preparation:
                             raise ValueError('Stand preparation has not completed')
-                        motion, _ = manual_reference(runtime, snapshot, clock.monotonic())
+                        motion, _ = references.acquire(snapshot, clock.monotonic())
                     except (ValueError, TimeoutError) as error:
                         print(f'PICO_SWITCH_REJECTED: {error}; ONNX stand continues. No switch is queued.', flush=True)
                         write(dict(record_type='pico_switch_rejected', error=str(error), actions_sent=sent_count))
@@ -1154,7 +1186,7 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
                         tracking = True
                         # GMR keeps its world root. Align heading at each new
                         # engagement using the current measured robot heading.
-                        tracking_yaw = reference_yaw(runtime, motion, root)
+                        tracking_yaw = references.align_heading(motion, root)
                         if modes is not None:
                             modes.engage(lead.q[-1],runtime.math.multiply(runtime.math.yaw_quaternion(offset),lead.quat[-1]))
                         print('PICO_TRACKING: same EXTERNAL session and policy history.', flush=True)
@@ -1177,24 +1209,24 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
                     reference_time = reference_frame*runtime.model.contract.period
                     command, obs, row = motion_source.infer(q=q, dq=dq, root=root, gyro=gyro)
                 elif manual and tracking:
-                    command, obs, row = pico_reference_command(runtime, snapshot, clock.monotonic(),
+                    command, obs, row = references.follow(snapshot, clock.monotonic(),
                         q=q, dq=dq, root=root, gyro=gyro, yaw_offset=tracking_yaw)
                 elif requires_pico and not pico_reengage_blocked and elapsed >= preparation:
                     if not tracking:
                         if not inputs.reference_ready():
                             raise TimeoutError('Pico reference window not ready after preparation')
-                        motion, _ = manual_reference(runtime, inputs.snapshot, clock.monotonic())
-                        tracking_yaw = reference_yaw(runtime, motion, root)
+                        motion, _ = references.acquire(inputs.snapshot, clock.monotonic())
+                        tracking_yaw = references.align_heading(motion, root)
                         tracking = True
                         write(dict(record_type='tracking_started', actions_sent=sent_count,
                                    reference_yaw_offset=tracking_yaw))
-                    command, obs, row = pico_reference_command(runtime, inputs.snapshot, clock.monotonic(),
+                    command, obs, row = references.follow(inputs.snapshot, clock.monotonic(),
                         q=q, dq=dq, root=root, gyro=gyro, yaw_offset=tracking_yaw)
                 else:
                     stand_motion=lead
                     if modes is not None and modes.upper_follow is not None:
                         try:
-                            upper,diag=manual_reference(runtime,snapshot,clock.monotonic())
+                            upper,diag=references.acquire(snapshot,clock.monotonic())
                             upper_q=upper.q if diag['pico_age_s']<=runtime.config['pico_hold_age_s'] else None
                         except (ValueError,TimeoutError):upper_q=None
                         # Infer a current-frame window so the persistent arm
@@ -1203,7 +1235,7 @@ def run_live(runtime, args, write, controller, pico, stop, service_alive,
                         indices=np.minimum(start+np.arange(runtime.reference.steps),len(lead.q)-1)
                         stand_motion=runtime.math.Motion(lead.q[indices],lead.base[indices],lead.quat[indices])
                         stand_motion=modes.follow_upper(stand_motion,upper_q)
-                    command, obs, row = runtime.infer_motion_command(stand_motion, q=q, dq=dq,
+                    command, obs, row = references.infer(stand_motion, q=q, dq=dq,
                         root=root, gyro=gyro, ref_time=0. if stand_motion is not lead else reference_time, yaw_offset=offset)
             except (ValueError, TimeoutError) as error:
                 if not handle_pico_loss(error, q, root):

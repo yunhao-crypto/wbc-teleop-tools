@@ -1,0 +1,32 @@
+{
+  "schema": "vita_pico_smpl_physical_workflow_v1",
+  "route": "pico_smpl",
+  "policy_step": 35000,
+  "entry_policy": "policy-online",
+  "stand_preparation_seconds": 3.0,
+  "bindings": {
+    "config/actor_smpl.json": "076688b179b0a2dab2dde6698826d841fefb9f714b5f41ec336f57eafe88fcb4",
+    "src/deployment/vita_s100_aorta_30dof/pico_realtime.py": "12d97d47af867cd2d47e27a990df1a72de947226e61759f406d3534be2947666",
+    "src/deployment/vita_s100_aorta_30dof/pico_input_process.py": "77ebb5e05174b99aba484c63b7432b32c684549c543b7ba3b248c1b2e979e2c9",
+    "src/deployment/vita_s100_aorta_30dof/actor_pico_live.py": "483ef26c467d0d84e9dcb6df9ccd9d84303db57c07d9cd3fb6dd48196ea77a01",
+    "src/deployment/vita_s100_aorta_30dof/pico_aligned_runtime.py": "3444a8e676b9c4d551dfaaad3aa85f9838c0b13130b7cc0644d701f715bc909a",
+    "src/deployment/vita_s100_aorta_30dof/actor_pico_startup.py": "fc4abaf444f0039aa2ee52d910111bbeace3e392709c1761efa0498e72a9c5b3",
+    "src/deployment/vita_s100_aorta_30dof/sdkmain_adapter.py": "7848b0127d6f9fdc8fbc67ba3ef3e71e57a5083af4a5a942dc03e4d88164c38d"
+  },
+  "output": "actual_original_sdk_body31",
+  "robot_configuration_modified": false,
+  "protection_relaxed": false,
+  "body_cmd_protocol_version": 4,
+  "body_cmd_coordinate_contract": "native_motor_ab_ankles_virtual_pr_feedback",
+  "standing_reference": {
+    "path": "artifacts/actor_smpl/standing_human_reference.npz",
+    "sha256": "ce860e034fed9486c922ee4475775d5c5b9808fbaa21f258ef2ae1b69d2b33dc"
+  },
+  "standing_reference_provenance": {
+    "source_sha256": "1d744df8f8376b2c6d2a6e9e1454d6667dd00369e8f1b0a5680c0ecd8c644b11",
+    "source": "historical_actual_Pico_frames_475_550",
+    "neutral_frames": 45,
+    "method": "first2s_quality_checked_median_positions_SO3_mean_root",
+    "physical_standing_validated": false
+  }
+}

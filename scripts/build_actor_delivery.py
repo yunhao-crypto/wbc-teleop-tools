@@ -79,7 +79,8 @@ def runtime_inputs(root, variant):
     module = 'src/deployment/vita_s100_aorta_30dof/'
     names.update(module+name for name in MODULES)
     names.update(str(p.relative_to(root)) for p in (root/module).glob('actor_*.py')
-                 if p.name != 'actor_pico_session_replay.py')
+                 if p.name not in ('actor_pico_session_replay.py','actor_smpl.py',
+                                   'actor_threepoint.py','actor_human_encoder.py'))
     human = 'src/deployment/unitree_g1_ros2_29dof/src/humanoid_policy/'
     names.update(human+name for name in ('__init__.py', 'local_smpl_source.py', 'pico_body_pose_reader.py'))
     for directory in ('third_party/motion_stream_bridge', 'third_party/pico_binding',
@@ -128,8 +129,12 @@ def resolve_wheels(root, requirements, destination):
             raise RuntimeError('Resolved wheel differs from source: '+wheel.name)
 
 
-def build(root, output, variant='base', *, allow_dirty=False, source=None):
+def build(root, output, variant='base', *, allow_dirty=False, source=None, pico27000_assets=None):
     root, output = root.resolve(), output.resolve()
+    if pico27000_assets is not None:
+        if variant!='base':raise ValueError('The isolated Pico package requires the base target, without planner assets')
+        from build_pico_27000_delivery import build
+        return build(root,pico27000_assets,output,allow_dirty=allow_dirty)
     if variant not in ('base', 'planner'):
         raise ValueError('Unknown delivery variant: '+variant)
     # The verifier passes provenance when building its isolated source export.
@@ -206,8 +211,10 @@ def main():
     parser.add_argument('--output-dir', type=Path, default=ROOT/'outputs/actor_delivery')
     parser.add_argument('--variant', choices=('base', 'planner'), default='base')
     parser.add_argument('--allow-dirty', action='store_true', help='Mark an uncommitted development package explicitly')
+    parser.add_argument('--pico-assets','--pico27000-assets',dest='pico27000_assets',type=Path,
+                        help='Build a separate actor-s100-pico package for SMPL/Teleop with its own R4 SDK environment')
     args = parser.parse_args()
-    print(json.dumps(build(args.root, args.output_dir, args.variant, allow_dirty=args.allow_dirty), indent=2))
+    print(json.dumps(build(args.root, args.output_dir, args.variant, allow_dirty=args.allow_dirty,pico27000_assets=args.pico27000_assets), indent=2))
 
 
 if __name__ == '__main__':
