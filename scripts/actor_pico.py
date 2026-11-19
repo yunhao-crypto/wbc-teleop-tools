@@ -350,6 +350,16 @@ def live(runtime, args, write):
 
 
 def main():
+    selection=argparse.ArgumentParser(add_help=False)
+    selection.add_argument('--policy')
+    selected,_=selection.parse_known_args()
+    if selected.policy in ('pico_smpl','pico_teleop'):
+        if not (ROOT/'scripts/pico_actor_aligned.py').is_file():
+            selection.error('Use the separately built Pico R4 delivery for pico_smpl/pico_teleop')
+        from pico_actor_aligned import main as modality_main
+        return modality_main()
+    if (ROOT/'config/actor_smpl.json').is_file() and not (ROOT/'config/actor_pico.json').is_file():
+        selection.error('This isolated Pico delivery only supports --policy pico_smpl or pico_teleop')
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('mode', choices=('check', 'replay', 'motion-check', 'state-check', 'shadow', 'live'))
     parser.add_argument('--root', type=Path, default=ROOT)

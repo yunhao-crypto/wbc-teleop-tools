@@ -6,6 +6,7 @@ requires Linux ARM64/Python 3.10. No robot node, control lease or publisher is
 created. The final model check uses a synthetic hold reference only.
 """
 import argparse
+from contextlib import contextmanager, nullcontext
 import hashlib
 import json
 import os
@@ -25,6 +26,38 @@ TARGET = dict(os='Linux', architecture='aarch64', python='3.10', glibc_min='2.35
 # Mirrors actor_pico_runtime.POLICY_CONFIGS; bootstrap runs before the venv exists.
 POLICY_CONFIGS = {'sonic': 'config/actor_pico.json', 'supermimic': 'config/actor_pico_supermimic.json',
                   'morphmimic': 'config/actor_pico_morphmimic.json'}
+PICO_POLICIES = ('pico_smpl', 'pico_teleop')
+
+
+@contextmanager
+def operator_lock(root, *, reuse_inherited=False):
+    """The same nonblocking deployment lock used by the live operator.
+
+    Windows supports portable unpack/check tooling with a native byte lock;
+    production Linux uses flock, exactly as the live entry does.
+    """
+    (root/'build').mkdir(exist_ok=True)
+    path=root/'build/operator.lock'
+    descriptor=None
+    if reuse_inherited:
+        try:
+            inherited=os.fstat(9);target=path.stat()
+            if (inherited.st_dev,inherited.st_ino)==(target.st_dev,target.st_ino):descriptor=os.dup(9)
+        except OSError:pass
+    if descriptor is None:descriptor=os.open(path,os.O_CREAT|os.O_RDWR,0o600)
+    with os.fdopen(descriptor,'r+b') as lock:
+        try:
+            if os.name == 'nt':
+                import msvcrt
+                lock.seek(0);msvcrt.locking(lock.fileno(),msvcrt.LK_NBLCK,1)
+            else:
+                import fcntl
+                fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
+        except OSError as exc:
+            raise RuntimeError('Another operator is using this deployment; installation is blocked') from exc
+        # Close our descriptor only. LOCK_UN would also release a reused shell
+        # fd9 lock because dup shares the same open file description.
+        yield
 
 
 def sha(path):
@@ -85,9 +118,10 @@ def verify(root):
             or any(c not in '0123456789abcdef' for c in source['commit'])
             or type(source['dirty']) is not bool):
         raise ValueError('Invalid delivery source identity')
-    requirements = str(DELIVERY/('requirements-planner.txt' if manifest['variant'] == 'planner' else 'requirements.txt'))
-    if (manifest['variant'] not in ('base', 'planner') or manifest['requirements'] != requirements
-            or requirements not in seen or str(DELIVERY/'requirements.txt') not in seen):
+    requirements = (DELIVERY/('requirements-planner.txt' if manifest['variant'] == 'planner' else 'requirements.txt')).as_posix()
+    canonical_seen={name.replace('\\','/') for name in seen}
+    if (manifest['variant'] not in ('base', 'planner') or manifest['requirements'].replace('\\','/') != requirements
+            or requirements not in canonical_seen or (DELIVERY/'requirements.txt').as_posix() not in canonical_seen):
         raise RuntimeError('Invalid or unsealed package requirements')
     payload = hashlib.sha256(json.dumps(manifest['files'], sort_keys=True).encode()).hexdigest()
     if payload != manifest['payload_sha256']:
@@ -200,12 +234,35 @@ def environment(root):
     return env
 
 
+def is_pico_package(manifest):
+    release=manifest.get('pico_inputs_release',{})
+    return (release.get('isolated_sdk') is True and release.get('unified_environment') is False
+        and release.get('allowed_policies')==list(PICO_POLICIES))
+
+
+def validate_environment(root,manifest,policy):
+    """An R4 Pico venv and a legacy policy must never replace one another."""
+    isolated=manifest.get('pico_inputs_release',{}).get('isolated_sdk') is True
+    if policy not in PICO_POLICIES:
+        if isolated or (root/'venv/.pico_bodycmd4_owned').exists():
+            raise RuntimeError('Legacy policies cannot use an isolated Pico R4 package or venv; use the original deployment directory')
+        return
+    if not is_pico_package(manifest):
+        raise RuntimeError('Use the separate --pico-assets deployment package for Pico policies')
+    from bootstrap_pico_inputs_s100 import validate_environment as validate_pico
+    validate_pico(root,manifest,policy)
+
+
 def install(root, manifest, *, build_pico=False, policy='sonic'):
+    validate_environment(root,manifest,policy)
     if sys.platform != 'linux' or platform.machine() != 'aarch64' or sys.version_info[:2] != (3, 10):
         raise RuntimeError('Install on S100 Linux aarch64 with Python 3.10; use --verify-only on x86')
     libc, version = platform.libc_ver()
     if libc != 'glibc' or tuple(int(v) for v in version.split('.')[:2]) < (2, 35):
         raise RuntimeError('The pinned SDK wheel requires glibc >= 2.35')
+    if policy in PICO_POLICIES:
+        if build_pico:
+            raise ValueError('Pico policies require a sealed --pico-assets base package')
     venv = root/'venv'
     marker = venv/'.actor_bootstrap_owned'
     if venv.exists() and not marker.is_file():
@@ -216,6 +273,8 @@ def install(root, manifest, *, build_pico=False, policy='sonic'):
         import venv as venv_module
         venv_module.EnvBuilder(with_pip=True).create(venv)
         marker.write_text('Created by bootstrap_actor_s100.py; safe to resume installation.\n')
+        if policy in PICO_POLICIES:
+            (venv/'.pico_bodycmd4_owned').write_text('Created for the isolated Pico BodyCmd4 SDK; no legacy policy may use this venv.\n')
     python = venv/'bin/python'
     env = environment(root)
     # Avoid the source snapshot's old .pth or caller Python paths during pip.
@@ -245,6 +304,11 @@ def install(root, manifest, *, build_pico=False, policy='sonic'):
                                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         if result.returncode or 'not found' in result.stdout:
             raise RuntimeError('Target OS shared-library dependency check failed for '+str(executable)+'\n'+result.stdout)
+    if policy in PICO_POLICIES:
+        from bootstrap_pico_inputs_s100 import check_installation, write_install_receipt
+        receipt=check_installation(root,manifest,python,env,policy)
+        write_install_receipt(root,receipt)
+        return receipt
     subprocess.run([str(python), str(root/'scripts/actor_pico.py'), 'check', '--steps', '10',
                     '--policy', policy], cwd=root, env=env, check=True)
     receipt = dict(status='PASS_S100_OFFLINE_INSTALL_AND_MODEL_CHECK',
@@ -259,7 +323,7 @@ def install(root, manifest, *, build_pico=False, policy='sonic'):
     return receipt
 
 
-def main():
+def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     modes = parser.add_mutually_exclusive_group()
     modes.add_argument('--verify-only', action='store_true')
@@ -268,12 +332,21 @@ def main():
     parser.add_argument('--model', type=Path, help='External model of --policy; verified before copying locally')
     parser.add_argument('--planner-model', type=Path, help='External SONIC planner ONNX; verified before copying locally')
     parser.add_argument('--bridge-model', type=Path, help='External map bridge ONNX; verified before copying locally')
-    parser.add_argument('--policy', choices=tuple(POLICY_CONFIGS), default='sonic',
+    parser.add_argument('--policy', choices=tuple(POLICY_CONFIGS)+PICO_POLICIES, default='sonic',
                         help='Actor whose pinned model --model supplies and the install check runs')
     parser.add_argument('--root', type=Path, default=ROOT)
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     root = args.root.resolve()
     manifest = verify(root)
+    pico=args.policy in PICO_POLICIES
+    if manifest.get('pico_inputs_release',{}).get('isolated_sdk') is True and not pico:
+        raise RuntimeError('This isolated Pico package only supports pico_smpl and pico_teleop')
+    if pico:
+        if not is_pico_package(manifest):
+            raise RuntimeError('Use the separate --pico-assets deployment package for Pico policies')
+        from bootstrap_pico_inputs_s100 import verify_inputs
+        verify_inputs(root)
+        if args.model:parser.error('Pico model assets are already sealed in this package')
     if manifest['variant'] != 'planner' and (args.planner_model or args.bridge_model):
         parser.error('Planner assets require a planner delivery package')
     if args.verify_only:
@@ -282,23 +355,22 @@ def main():
         result = dict(status='PASS_DELIVERY_FILES', files=len(manifest['files']),
                       external_model='separate asset; not checked by --verify-only',
                       s100_execution='not_measured', actions_sent=0)
-    elif args.unpack_only:
-        if args.model:
-            provision_model(root, manifest, args.model, args.policy)
-        provision_planner_assets(root, manifest, args.planner_model, args.bridge_model)
-        unpack(root, manifest)
-        result = dict(status='PASS_RUNTIME_UNPACK', s100_execution='not_measured', actions_sent=0)
     else:
-        import fcntl
-        (root/'build').mkdir(exist_ok=True)
-        with (root/'build/operator.lock').open('a') as lock:
-            try:
-                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            except BlockingIOError as exc:
-                raise RuntimeError('Another operator is using this deployment; installation is blocked') from exc
-            provision_model(root, manifest, args.model, args.policy)
-            provision_planner_assets(root, manifest, args.planner_model, args.bridge_model)
-            result = install(root, manifest, build_pico=args.build_pico, policy=args.policy)
+        with operator_lock(root):
+            validate_environment(root,manifest,args.policy)
+            transaction=nullcontext()
+            if manifest.get('pico_inputs_release',{}).get('isolated_sdk') is True:
+                from bootstrap_pico_inputs_s100 import installation_transaction
+                transaction=installation_transaction(root)
+            with transaction:
+                if args.model or not args.unpack_only:
+                    if not pico:provision_model(root, manifest, args.model, args.policy)
+                provision_planner_assets(root, manifest, args.planner_model, args.bridge_model)
+                if args.unpack_only:
+                    unpack(root, manifest)
+                    result = dict(status='PASS_RUNTIME_UNPACK', s100_execution='not_measured', actions_sent=0)
+                else:
+                    result = install(root, manifest, build_pico=args.build_pico, policy=args.policy)
     print(json.dumps(result, indent=2))
 
 
