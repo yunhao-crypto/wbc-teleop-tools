@@ -28,13 +28,14 @@ disables video. Offline validation modes do not start it.
 
 ## Included dependencies
 
-`wheelhouse/` contains 21 pinned wheels: locomotion-aorta 0.3.0,
+`wheelhouse/` contains 24 pinned base wheels: locomotion-aorta 1.0.1rc2 with
+its Trace extras (MCAP 1.3.1, Zstandard 0.25.0 and LZ4 4.4.5),
 aorta-sdk/aorta-msgs 0.0.0+g7649a87ebb03, vbot-humanoid-msgs 0.0.0+g35ce9eb82d5b,
 FlatBuffers 25.12.19, NumPy 1.26.4, PyYAML 6.0.3 and pybind11 2.13.6, plus the complete pinned GMR dependency closure
 (mink 1.3.0, MuJoCo 3.11.0, SciPy 1.15.3, DAQP 0.10.3 and qpsolvers 4.13.0).
 The optional [SONIC ONNX planner and map bridge](SONIC_ONNX_PLANNER.md) add seven
-pinned ARM64 wheels, bringing the bundled closure to 28 wheels.
-`requirements.txt` selects the 21-wheel base runtime;
+pinned ARM64 wheels, bringing the bundled closure to 31 wheels.
+`requirements.txt` selects the 24-wheel base runtime;
 `requirements-planner.txt` includes it and adds the seven planner wheels.
 The package variant selects the requirements automatically. The base installer
 does not install or import Python ONNX Runtime.
@@ -74,25 +75,19 @@ Retain the original license/notices associated with each dependency.
 - A Pico headset client with full-body tracking, calibrated trackers and Send
   enabled. The headset client and robot firmware are separate installed products.
 
-The pinned SDK build follows official main `a0b50cef329181b138239f5576238fcb9e0c02ca`
-(merged PR #23, which delegates BodyCmd device ranges to robot EXTERNAL).
-This is a local development repack, not an official SDK release: all 22 Python
-modules match that commit; `controller.py` and `_policy_state.py` replace the
-previous build's modules. Native build inputs, dependency pins and native library
-bytes are unchanged; no new native build or ARM execution is claimed. Repack
-provenance and the wheel and native library identities are
-sealed in `config/sdk021-wheel-guard.json` (file name kept from 0.2.1); update the
-per-deployment venv as well as the source/config files. Changing `/userdata/sdk-demo`
-alone does not update a WBC trial environment.
+The SDK wheel comes from [SDK #27 final CI](https://github.com/VitaDynamics/humanoid-sdk/actions/runs/44306830611).
+The reviewed source `6d4fa592`, CI merge `0ae0ae26` and SDK main `3a747513`
+have tree `997dbc53a81cf3025b991292f0c6c6ce58ca800c`. The ARM64 wheel SHA256 is
+`082a17fa1a8c0a2a7414ee69bfa13514e4360949de63a9ba97b2d566e5cfe555`.
+The packaging guard seals that build. The published RC2 has the same package
+version and predates SDK #27. Recreate the deployment venv from the packaged
+wheelhouse when changing SDK inputs.
 
-The actor uses SDK `0.3.0`: control protocol 4 with numeric client/control IDs
-and robot runtime binding, Body31 protocol 3 / roster 1, RobotInfo protocol 2,
-28 policy joints and two neck joints; waist-roll slot 14 is MOCK and every
-command leaves it zero. It needs robot firmware that speaks these protocols
-(vita-robot master `896385d5b` or later). The earlier tested baseline
-`1.6.0-200` (`c9b4e80c`, Aorta/messages `2026.10.20`) speaks only the 0.2.1
-protocols and cannot run this delivery. No robot run with SDK 0.3.0 has been made.
-A different firmware requires an interface/configuration review before live use.
+The actor uses control protocol 4 with numeric client/control IDs, BodyState v3
+and RobotInfo v2. Native motor A/B EXTERNAL commands use BodyCmd v4, while virtual
+pitch/roll uses v3. The 31-slot roster has 28 policy joints and two neck joints.
+Waist-roll slot 14 is MOCK and every command leaves it zero. Match the firmware's
+EXTERNAL command space to the actor configuration before live use.
 
 **Out-of-range PD targets for the motor-theta / unclipped policies (SONIC,
 SuperMimic, MorphMimic).** These policies send unclipped PD setpoints that leave

@@ -16,11 +16,11 @@ launchers, SDK installation and protocol guards are not replaced.
 ## FBS Trace development integration
 
 Trace uses the installed SDK's recorder and automatic SDK call instrumentation.
-The three Actor profiles pin SDK main at `3a7475136c48db299e6997b65790243e46bce1ca`
-(SDK #27). The published `1.0.1rc2` also has Trace, but predates BodyCmd v4
-and has a different `body_types.py` hash. Use a wheel built from the pinned
-source. An S100 delivery additionally requires the matching reviewed ARM64
-wheel and regenerated wheel guard before packaging or live use.
+The three Actor profiles pin SDK #27 at `6d4fa5920296a3b5c599cfad7a762b5b7bbee7f6`,
+whose tree matches SDK main at `3a7475136c48db299e6997b65790243e46bce1ca`.
+Use the matching wheel from SDK CI run 44306830611. The published `1.0.1rc2`
+also has Trace and has an earlier `body_types.py` hash. S100 packaging verifies
+the pinned ARM64 wheel and the source/native hashes in its wheel guard.
 
 ```bash
 python scripts/actor_pico.py check --steps 10 --trace=on --trace-output=new-run.ftrace
@@ -117,11 +117,10 @@ motor passthrough adapter: no target FK/IK roundtrip, virtual-box clamp or
 virtual-torque compensation. Rate/torque/gain caps still apply; motor travel
 does not clip the policy's PD position setpoints.
 
-SDK 0.3.0 (BodyState/BodyCmd protocol 3, RobotInfo protocol 2) keeps
-`BodyState` and `RobotInfo` in virtual pitch/roll coordinates. The SDK checks
-every target q against the RobotInfo range before sending, so unclipped
-setpoints outside it stop the session; see the known blocker in
-[`deploy/actor_s100/README.md`](deploy/actor_s100/README.md). EXTERNAL's command space is immutable for
+BodyState v3 and RobotInfo v2 keep virtual pitch/roll feedback for both
+command spaces. WTT checks the policy command envelope before SDK submission;
+see the firmware requirements in [the S100 deployment guide](deploy/actor_s100/README.md).
+EXTERNAL's command space is immutable for
 the robot process; there is no remote SDK negotiation. The client checks the
 provided effective YAML against the model/profile, but that file is not proof
 of the running firmware configuration. Install the matching robot build and
@@ -721,8 +720,7 @@ is pinned in `config/actor_pico.json` and the delivery manifest.
 The bootstrap creates a fresh environment and verifies/extracts the resources;
 it does not borrow an existing development environment. See
 [`deploy/actor_s100/README.md`](deploy/actor_s100/README.md) for prerequisites and
-the optional `--build-pico` source build on S100. The launcher selects SDK
-0.3.0's bundled native CPU ONNX runner on aarch64; a separate pip ORT install
+the optional `--build-pico` source build on S100. The launcher selects the SDK's bundled native CPU ONNX runner on aarch64; a separate pip ORT install
 is not needed. Neither the existing HoloMotion MoE backend nor BPU acceleration
 is used by this actor. 50 Hz scheduling is configured, but S100 timing remains
 unmeasured until an actual run; overruns and skipped ticks are logged.
